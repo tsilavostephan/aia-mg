@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestionnaire de colis — AIA</title>
+<style>
+  :root{
+    --bg:#f4f6f8;
+    --card:#ffffff;
+    --border:#e2e5ea;
+    --text:#1f2937;
+    --muted:#6b7280;
+    --primary:#2563eb;
+    --primary-dark:#1d4ed8;
+    --primary-soft:#eff4ff;
+    --danger:#dc2626;
+    --danger-soft:#fef2f2;
+    --success:#16a34a;
+    --success-soft:#f0fdf4;
+    --radius:10px;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 1040px;
+    margin: 32px auto;
+    padding: 0 20px 60px;
+    line-height: 1.5;
+  }
+  h1{ font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2{ font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--primary); margin: 0 0 16px; }
+  p.desc{ color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+
+  fieldset{
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin: 0 0 22px;
+    box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+    min-width: 0;
+  }
+
+  .row{ margin: 12px 0; }
+  label{ font-size: 13.5px; color: var(--text); }
+
+  input[type=text], textarea{
+    padding: 8px 11px;
+    font-size: 13.5px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--text);
+  }
+  input[type=text]:focus, textarea:focus{
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+  input[type=text]{ width: 320px; max-width: 100%; }
+  input[type=file]{ font-size: 13px; }
+
+  button{
+    padding: 8px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 8px;
+    border: 1px solid var(--primary);
+    background: var(--primary);
+    color: #fff;
+    border-radius: 7px;
+    transition: background .12s, border-color .12s, transform .04s;
+  }
+  button:hover{ background: var(--primary-dark); border-color: var(--primary-dark); }
+  button:active{ transform: translateY(1px); }
+  button:disabled{ background: #cbd2db; border-color: #cbd2db; cursor: not-allowed; }
+
+  button.secondary{ background: #fff; color: var(--text); border-color: var(--border); }
+  button.secondary:hover{ background: #f3f4f6; border-color: #d1d5db; }
+
+  button.danger{ background: #fff; color: var(--danger); border-color: var(--danger); }
+  button.danger:hover{ background: var(--danger-soft); }
+
+  .file-btn{
+    display: inline-block;
+    padding: 8px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 7px;
+  }
+  .file-btn:hover{ background: #f3f4f6; }
+
+  ul#filelist{ margin: 12px 0; padding-left: 0; list-style: none; font-size: 13px; }
+  ul#filelist li{
+    display: inline-block;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin: 2px 6px 2px 0;
+  }
+
+  .dropzone{
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 30px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .dropzone:hover{ border-color: var(--primary); background: var(--primary-soft); }
+  .dropzone.drag{ border-color: var(--primary); background: var(--primary-soft); }
+  .dropzone-text{ font-size: 14px; color: var(--text); margin-bottom: 4px; }
+  .dropzone-text strong{ color: var(--primary); }
+  .dropzone-sub{ font-size: 12px; color: var(--muted); }
+
+  #log{ font-size: 13px; margin-top: 12px; }
+  #log div{ margin: 3px 0; }
+  #log .err{ color: var(--danger); }
+  #log .ok{ color: var(--success); }
+
+  #dbLog{ font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  table{ border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 13px; }
+  th, td{ padding: 9px 12px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  th{ background: #f8f9fb; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.03em; border-bottom: 2px solid var(--border); }
+  tbody tr:hover{ background: #f8faff; }
+
+  select{
+    padding: 8px 11px;
+    font-size: 13.5px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--text);
+  }
+  select:focus{ outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+
+  .table-scroll{
+    max-height: 500px;
+    overflow-x: auto;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 10px;
+  }
+  .table-scroll table{ margin-top: 0; min-width: 780px; width: 100%; }
+  .table-scroll th:first-child, .table-scroll td:first-child{ padding-left: 14px; }
+  .table-scroll thead th{ position: sticky; top: 0; z-index: 1; }
+
+  td.copyable{ position: relative; padding-right: 30px; }
+  .copy-icon{
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 3px 5px;
+    border-radius: 4px;
+    transition: opacity .12s, color .12s, background .12s;
+  }
+  td.copyable:hover .copy-icon{ opacity: 1; }
+  .copy-icon:hover{ color: var(--primary); background: var(--primary-soft); }
+  .copy-icon.copied{ color: var(--success); opacity: 1; }
+
+  #count{ font-size: 12.5px; color: var(--muted); margin: 8px 0; }
+  #emptyState{ color: var(--muted); font-size: 13px; padding: 16px 0; text-align: center; }
+
+  .actions{ margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 0; }
+
+  .tabs{ display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .tabs button{
+    padding: 6px 14px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    margin-right: 0;
+  }
+  .tabs button.active{ background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  #trackingModalBg{ backdrop-filter: blur(2px); }
+  #trackingModalBg > div{ box-shadow: 0 10px 40px rgba(16,24,40,0.2); }
+
+  tbody tr{ cursor: pointer; }
+
+  #detailsModalBg{ backdrop-filter: blur(2px); }
+  #detailsModalBg > div{ box-shadow: 0 10px 40px rgba(16,24,40,0.2); }
+  .detail-row{ display:flex; justify-content:space-between; align-items:center; gap:14px; padding:9px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
+  .detail-row:last-of-type{ border-bottom:none; }
+  .detail-label{ color:var(--muted); flex-shrink:0; }
+  .detail-value{ font-weight:600; text-align:right; word-break:break-all; }
+  .qty-badge{ padding:3px 10px; border-radius:6px; font-weight:700; font-size:13px; }
+  .qty-badge.qty-ok{ background:var(--success-soft); color:var(--success); }
+  .qty-badge.qty-bad{ background:var(--danger-soft); color:var(--danger); }
+</style>
+</head>
+<body>
+
+<h1>AIA - Gestionnaire de suivi colis</h1>
+<p class="desc">v.1.0.1 © TSLV</p>
+
+<fieldset>
+  <h2>1. Importer des fichiers CSV</h2>
+  <div class="row">
+    <div id="dropzone" class="dropzone">
+      <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers CSV depuis amazon ici</div>
+      <div class="dropzone-sub">Plusieurs fichiers peuvent être sélectionnés en même temps</div>
+      <input type="file" id="fileInput" accept=".csv,text/csv" multiple style="display:none;">
+    </div>
+  </div>
+  <ul id="filelist"></ul>
+  <div class="row">
+    <label><input type="checkbox" id="hasHeader" checked> La première ligne de chaque fichier est un en-tête</label>
+  </div>
+  <div class="actions">
+    <button id="importBtn" disabled>Ajouter à la base de données</button>
+    <button id="resetSelection" class="secondary">Vider la sélection</button>
+  </div>
+  <div id="log"></div>
+</fieldset>
+
+<fieldset>
+  <h2>2. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s))</h2>
+  <div class="actions">
+    <button id="exportJsonBtn" class="secondary">Exporter en JSON</button>
+    <label class="file-btn" for="jsonFileInput">Importer un JSON</label>
+    <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;">
+    <button id="clearBtn" class="danger">Effacer la base de données</button>
+  </div>
+  <div class="row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+    <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)">
+    <label for="displayLimit" style="font-size:13px; color:var(--muted);">Afficher</label>
+    <select id="displayLimit">
+      <option value="all" selected>Toutes les lignes</option>
+      <option value="10">10 lignes</option>
+      <option value="25">25 lignes</option>
+      <option value="50">50 lignes</option>
+      <option value="100">100 lignes</option>
+    </select>
+  </div>
+  <div id="dbLog"></div>
+  <div id="count"></div>
+  <div class="table-scroll">
+    <table id="dataTable">
+      <thead>
+        <tr>
+          <th>N° Commande</th>
+          <th>Commande Amazon</th>
+          <th>QTE</th>
+          <th>Num Suivi</th>
+          <th>QTE_EXPED</th>
+          <th>Transporteur</th>
+          <th>Num dernier kilométrique</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div id="emptyState">Aucune données en base pour le moment. Importez un CSV ou JSON pour commencer.</div>
+</fieldset>
+
+<fieldset id="carrierSection" style="display:none;">
+  <h2>3. Suivi groupé par transporteur</h2>
+  <div class="tabs" id="carrierTabs"></div>
+  <div id="carrierPanel"></div>
+</fieldset>
+
+<div id="trackingModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
+  <div style="background:#fff; max-width:640px; margin:60px auto; padding:24px; border-radius:12px; max-height:75vh; overflow:auto;">
+    <h2 style="margin-top:0;" id="trackingModalTitle">Suivi groupé</h2>
+    <p id="trackingCount" style="color:var(--muted); font-size:13px;"></p>
+    <label style="font-size:13px;">URL de suivi</label>
+    <div class="row">
+      <textarea id="trackingUrlBox" readonly style="width:100%; height:80px; font-size:13px; padding:8px;"></textarea>
+    </div>
+    <div class="actions">
+      <button id="copyUrlBtn">Copier l'URL</button>
+      <button id="openUrlBtn" class="secondary">Ouvrir dans un nouvel onglet</button>
+      <button id="closeModalBtn" class="secondary">Fermer</button>
+    </div>
+    <p style="font-size:12px; color:var(--muted); margin-top:14px;">
+      Le contenu de la page de suivi ne peut pas être lu automatiquement depuis cette application (restrictions de sécurité des navigateurs). Ouvrez le lien pour consulter les résultats.
+    </p>
+  </div>
+</div>
+
+<div id="detailsModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
+  <div style="background:#fff; max-width:460px; margin:60px auto; padding:24px; border-radius:12px; max-height:85vh; overflow:auto;">
+    <h2 style="margin-top:0;">Détails du suivi</h2>
+
+    <div class="detail-row"><span class="detail-label">Recherché</span><span id="detNumSuivi" class="detail-value"></span></div>
+    <div class="detail-row"><span class="detail-label">Transporteur</span><span id="detTransporteur" class="detail-value"></span></div>
+    <div class="detail-row"><span class="detail-label">Numéro de suivi 2</span><span id="detNumKm" class="detail-value"></span></div>
+    <div class="detail-row"><span class="detail-label">Numéro de commande</span><span id="detNumCommande" class="detail-value"></span></div>
+    <div class="detail-row"><span class="detail-label">Commande Amazon</span><span id="detCommandeAmazon" class="detail-value"></span></div>
+    <div class="detail-row"><span class="detail-label">Quantité / Expédiée</span><span id="detQte" class="detail-value"></span></div>
+
+    <div style="text-align:center; margin:20px 0 6px;">
+      <img id="detQr" alt="QR code du numéro de suivi" style="width:170px; height:170px; border:1px solid var(--border); border-radius:8px; padding:6px; background:#fff;">
+    </div>
+
+    <div class="actions">
+      <button id="detTrackBtn">Suivre le colis</button>
+      <button id="detCloseBtn" class="secondary">Fermer</button>
+    </div>
+    <p id="detNoCarrierMsg" style="font-size:12px; color:var(--muted); display:none; margin-top:10px;">
+      Transporteur non reconnu automatiquement pour un suivi direct — utilisez le QR code ou le numéro de suivi manuellement.
+    </p>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Colonnes source (index 1-based dans le fichier CSV) -> champ de la base
+  const COLS = [
+    { key:'numCommande',   label:'N° Commande',               col:4  },
+    { key:'commandeAmazon',label:'Commande Amazon',           col:2  },
+    { key:'qteCommande',   label:'QTE',                       col:5  },
+    { key:'numSuivi',      label:'Num Suivi',                 col:24 },
+    { key:'qteExpedie',    label:'QTE_EXPED',                 col:25 },
+    { key:'transporteur',  label:'Transporteur',              col:34 },
+    { key:'numDernierKm',  label:'Num dernier kilométrique',  col:null } // toujours vide
+  ];
+  const STORAGE_KEY = 'commandes-db';
+
+  const els = {
+    dropzone: document.getElementById('dropzone'),
+    fileInput: document.getElementById('fileInput'),
+    filelist: document.getElementById('filelist'),
+    importBtn: document.getElementById('importBtn'),
+    resetSelection: document.getElementById('resetSelection'),
+    hasHeader: document.getElementById('hasHeader'),
+    log: document.getElementById('log'),
+    tbody: document.getElementById('tbody'),
+    dataTable: document.getElementById('dataTable'),
+    rowCount: document.getElementById('rowCount'),
+    count: document.getElementById('count'),
+    emptyState: document.getElementById('emptyState'),
+    search: document.getElementById('search'),
+    displayLimit: document.getElementById('displayLimit'),
+    exportJsonBtn: document.getElementById('exportJsonBtn'),
+    jsonFileInput: document.getElementById('jsonFileInput'),
+    dbLog: document.getElementById('dbLog'),
+    clearBtn: document.getElementById('clearBtn'),
+    carrierSection: document.getElementById('carrierSection'),
+    carrierTabs: document.getElementById('carrierTabs'),
+    carrierPanel: document.getElementById('carrierPanel'),
+    trackingModalBg: document.getElementById('trackingModalBg'),
+    trackingModalTitle: document.getElementById('trackingModalTitle'),
+    trackingCount: document.getElementById('trackingCount'),
+    trackingUrlBox: document.getElementById('trackingUrlBox'),
+    copyUrlBtn: document.getElementById('copyUrlBtn'),
+    openUrlBtn: document.getElementById('openUrlBtn'),
+    closeModalBtn: document.getElementById('closeModalBtn'),
+    detailsModalBg: document.getElementById('detailsModalBg'),
+    detNumSuivi: document.getElementById('detNumSuivi'),
+    detTransporteur: document.getElementById('detTransporteur'),
+    detNumKm: document.getElementById('detNumKm'),
+    detNumCommande: document.getElementById('detNumCommande'),
+    detCommandeAmazon: document.getElementById('detCommandeAmazon'),
+    detQte: document.getElementById('detQte'),
+    detQr: document.getElementById('detQr'),
+    detTrackBtn: document.getElementById('detTrackBtn'),
+    detCloseBtn: document.getElementById('detCloseBtn'),
+    detNoCarrierMsg: document.getElementById('detNoCarrierMsg'),
+  };
+
+  let selectedFiles = [];
+  let database = []; // { numCommande, commandeAmazon, qteCommande, numSuivi, qteExpedie, transporteur, numDernierKm }
+
+  // ---------- parseur CSV maison (aucune librairie externe) ----------
+  function parseCSV(text){
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    for(let i=0; i<text.length; i++){
+      const char = text[i];
+      const next = text[i+1];
+      if(inQuotes){
+        if(char === '"'){
+          if(next === '"'){ field += '"'; i++; }
+          else { inQuotes = false; }
+        } else {
+          field += char;
+        }
+      } else {
+        if(char === '"'){
+          inQuotes = true;
+        } else if(char === ','){
+          row.push(field); field = '';
+        } else if(char === '\r'){
+          // ignore
+        } else if(char === '\n'){
+          row.push(field); rows.push(row); row = []; field = '';
+        } else {
+          field += char;
+        }
+      }
+    }
+    if(field.length > 0 || row.length > 0){
+      row.push(field);
+      rows.push(row);
+    }
+    return rows.filter(r => !(r.length === 1 && r[0] === ''));
+  }
+
+  function readFileAsText(file){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result);
+      reader.onerror = ()=> reject(reader.error);
+      reader.readAsText(file, 'UTF-8');
+    });
+  }
+
+  // Nettoie la colonne Num Suivi : retire =, ", ', et les antislash d'échappement
+  function cleanNumSuivi(v){
+    return String(v ?? '').replace(/[="'\\]/g, '').trim();
+  }
+
+  // ---------- stockage persistant ----------
+  async function loadDatabase(){
+    try{
+      const res = await window.storage.get(STORAGE_KEY, false);
+      database = res && res.value ? JSON.parse(res.value) : [];
+    }catch(e){
+      database = [];
+    }
+    render();
+  }
+
+  async function saveDatabase(){
+    try{
+      await window.storage.set(STORAGE_KEY, JSON.stringify(database), false);
+    }catch(e){
+      logLine('Erreur lors de la sauvegarde de la base de données.', true);
+    }
+  }
+
+  // ---------- gestion des fichiers sélectionnés ----------
+  function renderFileList(){
+    els.filelist.innerHTML = '';
+    selectedFiles.forEach(f=>{
+      const li = document.createElement('li');
+      li.textContent = f.name;
+      els.filelist.appendChild(li);
+    });
+    els.importBtn.disabled = selectedFiles.length === 0;
+  }
+
+  els.fileInput.addEventListener('change', e=>{
+    selectedFiles = Array.from(e.target.files);
+    renderFileList();
+  });
+  els.resetSelection.addEventListener('click', ()=>{
+    selectedFiles = [];
+    els.fileInput.value = '';
+    renderFileList();
+  });
+
+  // ---------- glisser-déposer ----------
+  els.dropzone.addEventListener('click', ()=> els.fileInput.click());
+
+  ['dragenter','dragover'].forEach(evt=>{
+    els.dropzone.addEventListener(evt, e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      els.dropzone.classList.add('drag');
+    });
+  });
+  ['dragleave','drop'].forEach(evt=>{
+    els.dropzone.addEventListener(evt, e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      els.dropzone.classList.remove('drag');
+    });
+  });
+  els.dropzone.addEventListener('drop', e=>{
+    const dropped = Array.from(e.dataTransfer.files || []);
+    const csvFiles = dropped.filter(f => f.name.toLowerCase().endsWith('.csv') || f.type === 'text/csv');
+    if(dropped.length > 0 && csvFiles.length === 0){
+      logLine('Aucun fichier .csv valide détecté parmi les fichiers déposés.', true);
+      return;
+    }
+    if(dropped.length > csvFiles.length){
+      logLine(`${dropped.length - csvFiles.length} fichier(s) ignoré(s) car non reconnu(s) comme CSV.`, true);
+    }
+    selectedFiles = csvFiles;
+    renderFileList();
+  });
+
+  // empêche le navigateur d'ouvrir le fichier s'il est déposé hors de la zone dédiée
+  window.addEventListener('dragover', e=> e.preventDefault());
+  window.addEventListener('drop', e=> e.preventDefault());
+
+  function logLine(text, isErr){
+    const div = document.createElement('div');
+    div.textContent = (isErr ? '✕ ' : '✓ ') + text;
+    div.className = isErr ? 'err' : 'ok';
+    els.log.prepend(div);
+  }
+
+  function rowToRecord(row){
+    const rec = {};
+    COLS.forEach(c=>{
+      if(c.col === null){
+        rec[c.key] = '';
+      }else{
+        const raw = row[c.col - 1];
+        const v = (raw === undefined || raw === null) ? '' : String(raw).trim();
+        rec[c.key] = c.key === 'numSuivi' ? cleanNumSuivi(v) : v;
+      }
+    });
+    return rec;
+  }
+
+  els.importBtn.addEventListener('click', async ()=>{
+    if(selectedFiles.length === 0) return;
+    els.importBtn.disabled = true;
+    let totalAdded = 0;
+
+    for(const file of selectedFiles){
+      let text;
+      try{
+        text = await readFileAsText(file);
+      }catch(e){
+        logLine(`${file.name} — échec de la lecture du fichier (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+        continue;
+      }
+
+      if(!text || text.trim().length === 0){
+        logLine(`${file.name} — le fichier est vide.`, true);
+        continue;
+      }
+
+      let rows;
+      try{
+        rows = parseCSV(text);
+      }catch(e){
+        logLine(`${file.name} — échec de l'analyse du CSV (${e && e.message ? e.message : 'format invalide'}).`, true);
+        continue;
+      }
+
+      if(!rows || rows.length === 0){
+        logLine(`${file.name} — aucune ligne détectée dans le fichier (vérifiez qu'il s'agit bien d'un CSV séparé par des virgules).`, true);
+        continue;
+      }
+
+      if(els.hasHeader.checked){
+        rows = rows.slice(1);
+      }
+
+      if(rows.length === 0){
+        logLine(`${file.name} — le fichier ne contient que la ligne d'en-tête, aucune donnée à importer.`, true);
+        continue;
+      }
+
+      const maxColNeeded = Math.max(...COLS.filter(c=>c.col !== null).map(c=>c.col));
+
+      let added = 0;
+      let shortRows = 0;
+      rows.forEach(row=>{
+        if(!row || row.every(c => c === '' || c === undefined)) return;
+        if(row.length < maxColNeeded) shortRows++;
+        database.push(rowToRecord(row));
+        added++;
+      });
+
+      if(added === 0){
+        logLine(`${file.name} — 0 ligne ajoutée (toutes les lignes lues étaient vides).`, true);
+        continue;
+      }
+
+      totalAdded += added;
+      logLine(`${file.name} — ${added} ligne(s) ajoutée(s).`);
+      if(shortRows > 0){
+        logLine(`${file.name} — attention : ${shortRows} ligne(s) ont moins de ${maxColNeeded} colonnes, certains champs ont été laissés vides.`, true);
+      }
+    }
+
+    await saveDatabase();
+    render();
+    selectedFiles = [];
+    els.fileInput.value = '';
+    renderFileList();
+    els.importBtn.disabled = false;
+    logLine(`Import terminé — ${totalAdded} commande(s) ajoutée(s) au total.`);
+  });
+
+  // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------
+  const CARRIERS = [
+    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1 },
+    { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1 },
+    { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2 },
+  ];
+  const CHUNK_SIZE = 99;
+
+  let carrierGroups = [];   // groupes actuellement présents dans la base (avec numéros + chunks)
+  let activeCarrierKey = null;
+  let pastedTextByCarrier = {};   // key -> texte collé (conservé lors du changement d'onglet)
+  let importLogByCarrier = {};    // key -> { text, err }
+
+  function normCarrierName(v){
+    return String(v || '').trim().toUpperCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function chunkArray(arr, size){
+    const out = [];
+    for(let i=0; i<arr.length; i+=size) out.push(arr.slice(i, i+size));
+    return out;
+  }
+
+  function computeCarrierGroups(){
+    return CARRIERS.map(c=>{
+      const nums = database
+        .filter(r => c.match.includes(normCarrierName(r.transporteur)))
+        .map(r => cleanNumSuivi(r.numSuivi))
+        .filter(v => v.length > 0);
+      return { ...c, nums, chunks: chunkArray(nums, CHUNK_SIZE) };
+    }).filter(g => g.nums.length > 0);
+  }
+
+  function getActiveGroup(){
+    return carrierGroups.find(g => g.key === activeCarrierKey) || carrierGroups[0] || null;
+  }
+
+  function renderCarrierTabs(){
+    els.carrierTabs.innerHTML = '';
+    carrierGroups.forEach(g=>{
+      const btn = document.createElement('button');
+      btn.textContent = `${g.label} (${g.nums.length})`;
+      if(g.key === activeCarrierKey) btn.classList.add('active');
+      btn.addEventListener('click', ()=>{
+        activeCarrierKey = g.key;
+        renderCarrierTabs();
+        renderCarrierPanel();
+      });
+      els.carrierTabs.appendChild(btn);
+    });
+  }
+
+  // Analyse générique du texte collé : 1re colonne = numéro de suivi, colonne kmColIndex (0-based) = numéro dernier kilométrique
+  // 4PX / YANWEN -> 2e colonne (index 1). Yun Express -> 3e colonne (index 2).
+  function parseTrackingPaste(text, kmColIndex){
+    const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+    const updates = [];
+    lines.forEach(line=>{
+      const trimmed = line.trim();
+      if(trimmed.length === 0) return;
+      if(/^=+$/.test(trimmed)) return;                 // ligne séparatrice ======
+      if(/^Powered by/i.test(trimmed)) return;          // pied de page Cainiao
+
+      let parts = line.split('\t');
+      if(parts.length < 2){
+        parts = line.trim().split(/\s{2,}/);            // repli : séparation par espaces multiples
+      }
+      const trackingNumber = cleanNumSuivi(parts[0]);
+      if(!trackingNumber) return;
+
+      let lastKm = parts.length > kmColIndex ? String(parts[kmColIndex]) : '';
+      lastKm = lastKm.replace(/^'+/, '');                // retire l'apostrophe de tête (YANWEN)
+      lastKm = lastKm.replace(/["=\\]/g, '').trim();     // retire = " ' \
+
+      if(!lastKm || /^\(?unknown\)?$/i.test(lastKm)){
+        lastKm = '';
+      }
+      updates.push({ trackingNumber, lastKm });
+    });
+    return updates;
+  }
+
+  async function handleImportPaste(g){
+    const pasteArea = document.getElementById('pasteArea');
+    const text = pasteArea ? pasteArea.value : '';
+
+    if(!text.trim()){
+      importLogByCarrier[g.key] = { text: "Collez des données avant d'importer.", err: true };
+      renderCarrierPanel();
+      return;
+    }
+
+    const updates = parseTrackingPaste(text, g.kmColIndex);
+    if(updates.length === 0){
+      importLogByCarrier[g.key] = { text: 'Aucune ligne exploitable trouvée dans le texte collé.', err: true };
+      renderCarrierPanel();
+      return;
+    }
+
+    const updateMap = new Map();
+    updates.forEach(u => updateMap.set(u.trackingNumber, u.lastKm));
+
+    let matched = 0;
+    database.forEach(r=>{
+      if(!g.match.includes(normCarrierName(r.transporteur))) return;
+      const key = cleanNumSuivi(r.numSuivi);
+      if(updateMap.has(key)){
+        r.numDernierKm = updateMap.get(key);
+        matched++;
+      }
+    });
+
+    const notFound = Math.max(0, updates.length - matched);
+    await saveDatabase();
+
+    pastedTextByCarrier[g.key] = ''; // vide le champ après un import terminé avec succès
+
+    importLogByCarrier[g.key] = {
+      text: `${matched} commande(s) mise(s) à jour dans la base.` + (notFound > 0 ? ` ${notFound} numéro(s) collé(s) sans correspondance dans la base pour ${g.label}.` : ''),
+      err: false
+    };
+    render();
+  }
+
+  function renderCarrierPanel(){
+    const g = getActiveGroup();
+    if(!g){ els.carrierPanel.innerHTML = ''; return; }
+    activeCarrierKey = g.key;
+
+    const linksHtml = g.chunks.map((chunk, idx)=>
+      `<div class="row" style="display:flex; gap:8px; align-items:center; margin:6px 0;">
+        <span style="font-size:13px; min-width:150px;">Lien ${idx+1} — ${chunk.length} colis</span>
+        <button class="linkOpenBtn" data-idx="${idx}">Ouvrir</button>
+        <button class="linkShowBtn" data-idx="${idx}">Afficher</button>
+      </div>`
+    ).join('');
+
+    const log = importLogByCarrier[g.key];
+    const logHtml = log ? `<div style="font-size:12px; margin-top:6px; color:${log.err ? 'var(--danger)' : 'var(--success)'};">${log.text}</div>` : '';
+
+    els.carrierPanel.innerHTML = `
+      <p style="font-size:13px; color:var(--muted);">
+        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
+      </p>
+      ${linksHtml}
+      <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
+        <label style="font-size:13px;">Coller les données de suivi ${g.label} (max 10000 caractères) puis cliquer sur Importer</label>
+        <div class="row">
+          <textarea id="pasteArea" maxlength="10000" rows="5" style="width:100%; font-size:12px; padding:8px;" placeholder="Collez ici les données copiées depuis la page de suivi ${g.label}…"></textarea>
+        </div>
+        <div class="actions"><button id="importPasteBtn">Importer</button></div>
+        ${logHtml}
+      </div>
+    `;
+
+    const pasteArea = document.getElementById('pasteArea');
+    pasteArea.value = pastedTextByCarrier[g.key] || '';
+    pasteArea.addEventListener('input', ()=>{ pastedTextByCarrier[g.key] = pasteArea.value; });
+
+    els.carrierPanel.querySelectorAll('.linkOpenBtn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = parseInt(btn.dataset.idx, 10);
+        window.open(g.baseUrl + g.chunks[idx].join(','), '_blank');
+      });
+    });
+    els.carrierPanel.querySelectorAll('.linkShowBtn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const idx = parseInt(btn.dataset.idx, 10);
+        const url = g.baseUrl + g.chunks[idx].join(',');
+        els.trackingModalTitle.textContent = `Suivi groupé — ${g.label}` + (g.chunks.length > 1 ? ` (lien ${idx+1}/${g.chunks.length})` : '');
+        els.trackingCount.textContent = `${g.chunks[idx].length} numéro(s) de suivi groupé(s) dans ce lien.`;
+        els.trackingUrlBox.value = url;
+        els.trackingModalBg.style.display = 'block';
+      });
+    });
+
+    document.getElementById('importPasteBtn').addEventListener('click', ()=> handleImportPaste(g));
+  }
+
+  function updateCarrierTracking(){
+    carrierGroups = computeCarrierGroups();
+
+    if(carrierGroups.length === 0){
+      els.carrierSection.style.display = 'none';
+      activeCarrierKey = null;
+      return;
+    }
+
+    if(!carrierGroups.some(g => g.key === activeCarrierKey)){
+      activeCarrierKey = carrierGroups[0].key;
+    }
+
+    els.carrierSection.style.display = 'block';
+    renderCarrierTabs();
+    renderCarrierPanel();
+  }
+
+  els.closeModalBtn.addEventListener('click', ()=>{
+    els.trackingModalBg.style.display = 'none';
+  });
+  els.trackingModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.trackingModalBg) els.trackingModalBg.style.display = 'none';
+  });
+
+  els.copyUrlBtn.addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(els.trackingUrlBox.value);
+      els.copyUrlBtn.textContent = 'Copié !';
+      setTimeout(()=> els.copyUrlBtn.textContent = "Copier l'URL", 1200);
+    }catch(e){
+      els.trackingUrlBox.select();
+      document.execCommand('copy');
+    }
+  });
+
+  els.openUrlBtn.addEventListener('click', ()=>{
+    if(els.trackingUrlBox.value) window.open(els.trackingUrlBox.value, '_blank');
+  });
+
+  // ---------- modale "Détails du suivi" (clic sur une ligne) ----------
+  let currentDetailRecord = null;
+
+  function findCarrierForRecord(r){
+    return CARRIERS.find(c => c.match.includes(normCarrierName(r.transporteur))) || null;
+  }
+
+  function openDetailsModal(r){
+    currentDetailRecord = r;
+    const numSuivi = cleanNumSuivi(r.numSuivi);
+
+    els.detNumSuivi.textContent = numSuivi || '—';
+    els.detTransporteur.textContent = r.transporteur || '—';
+    els.detNumKm.textContent = r.numDernierKm || '—';
+    els.detNumCommande.textContent = r.numCommande || '—';
+    els.detCommandeAmazon.textContent = r.commandeAmazon || '—';
+
+    const qte = r.qteCommande || '';
+    const qteExped = r.qteExpedie || '';
+    els.detQte.innerHTML = '';
+    const badge = document.createElement('span');
+    badge.className = 'qty-badge ' + (qte !== '' && qte === qteExped ? 'qty-ok' : 'qty-bad');
+    badge.textContent = `${qte || '—'} / ${qteExped || '—'}`;
+    els.detQte.appendChild(badge);
+
+    if(numSuivi){
+      els.detQr.style.display = '';
+      els.detQr.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(numSuivi);
+    }else{
+      els.detQr.style.display = 'none';
+    }
+
+    const carrier = findCarrierForRecord(r);
+    if(carrier && numSuivi){
+      els.detTrackBtn.disabled = false;
+      els.detNoCarrierMsg.style.display = 'none';
+    }else{
+      els.detTrackBtn.disabled = true;
+      els.detNoCarrierMsg.style.display = numSuivi ? 'block' : 'none';
+    }
+
+    els.detailsModalBg.style.display = 'block';
+  }
+
+  function closeDetailsModal(){
+    els.detailsModalBg.style.display = 'none';
+    currentDetailRecord = null;
+    els.search.focus();
+  }
+
+  els.detTrackBtn.addEventListener('click', ()=>{
+    if(!currentDetailRecord) return;
+    const carrier = findCarrierForRecord(currentDetailRecord);
+    const numSuivi = cleanNumSuivi(currentDetailRecord.numSuivi);
+    if(carrier && numSuivi){
+      window.open(carrier.baseUrl + numSuivi, '_blank');
+    }
+    closeDetailsModal();
+  });
+  els.detCloseBtn.addEventListener('click', closeDetailsModal);
+  els.detailsModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.detailsModalBg) closeDetailsModal();
+  });
+  document.addEventListener('keydown', (e)=>{
+    if(e.key === 'Escape' && els.detailsModalBg.style.display === 'block') closeDetailsModal();
+  });
+
+  // ---------- affichage table ----------
+  function render(){
+    const term = els.search.value.trim().toLowerCase();
+    const filtered = term
+      ? database.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(term)))
+      : database;
+    const limitVal = els.displayLimit.value; // 'all' ou nombre en chaîne
+    const reversedFiltered = filtered.slice().reverse();
+    const rows = limitVal === 'all' ? reversedFiltered : reversedFiltered.slice(0, parseInt(limitVal, 10));
+
+    els.tbody.innerHTML = '';
+    rows.forEach(r=>{
+      const tr = document.createElement('tr');
+      COLS.forEach(c=>{
+        const td = document.createElement('td');
+        const val = r[c.key] || '';
+
+        const valSpan = document.createElement('span');
+        valSpan.textContent = val;
+        td.appendChild(valSpan);
+
+        if(val){
+          td.classList.add('copyable');
+          const copyBtn = document.createElement('button');
+          copyBtn.type = 'button';
+          copyBtn.className = 'copy-icon';
+          copyBtn.title = 'Copier la valeur';
+          copyBtn.textContent = '⧉';
+          copyBtn.addEventListener('click', async (e)=>{
+            e.stopPropagation();
+            try{
+              await navigator.clipboard.writeText(val);
+            }catch(err){
+              const ta = document.createElement('textarea');
+              ta.value = val;
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+            }
+            copyBtn.textContent = '✓';
+            copyBtn.classList.add('copied');
+            setTimeout(()=>{
+              copyBtn.textContent = '⧉';
+              copyBtn.classList.remove('copied');
+            }, 900);
+          });
+          td.appendChild(copyBtn);
+        }
+
+        tr.appendChild(td);
+      });
+      tr.addEventListener('click', ()=> openDetailsModal(r));
+      els.tbody.appendChild(tr);
+    });
+
+    els.rowCount.textContent = database.length;
+
+    if(term && filtered.length < database.length){
+      els.count.textContent = `${rows.length} affichée(s) / ${filtered.length} résultat(s) / ${database.length} commande(s) au total`;
+    }else if(limitVal !== 'all' && database.length > parseInt(limitVal, 10)){
+      els.count.textContent = `${rows.length} affichée(s) sur ${database.length} commande(s) (limite : ${limitVal})`;
+    }else{
+      els.count.textContent = '';
+    }
+
+    els.emptyState.textContent = database.length === 0
+      ? 'Aucune commande en base pour le moment. Importez un CSV pour commencer.'
+      : 'Aucun résultat pour cette recherche.';
+    const showTable = rows.length > 0;
+    els.dataTable.style.display = showTable ? 'table' : 'none';
+    els.emptyState.style.display = showTable ? 'none' : 'block';
+
+    updateCarrierTracking();
+  }
+
+  els.search.addEventListener('input', render);
+  els.displayLimit.addEventListener('change', render);
+
+  // ---------- export / import JSON ----------
+  function setDbLog(text, isErr){
+    els.dbLog.textContent = text;
+    els.dbLog.style.color = isErr ? 'var(--danger)' : 'var(--success)';
+  }
+
+  els.exportJsonBtn.addEventListener('click', ()=>{
+    if(database.length === 0){ setDbLog('Aucune donnée à exporter.', true); return; }
+    try{
+      const json = JSON.stringify(database, null, 2);
+      const blob = new Blob([json], { type:'application/json;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'base-commandes-' + new Date().toISOString().slice(0,10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setDbLog(`Export réussi — ${database.length} commande(s) exportée(s) en JSON.`, false);
+    }catch(e){
+      setDbLog(`Échec de l'export JSON (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+    }
+  });
+
+  els.jsonFileInput.addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+
+    let text;
+    try{
+      text = await readFileAsText(file);
+    }catch(err){
+      setDbLog(`${file.name} — échec de la lecture du fichier (${err && err.message ? err.message : 'erreur inconnue'}).`, true);
+      e.target.value = '';
+      return;
+    }
+
+    if(!text || text.trim().length === 0){
+      setDbLog(`${file.name} — le fichier est vide.`, true);
+      e.target.value = '';
+      return;
+    }
+
+    let parsed;
+    try{
+      parsed = JSON.parse(text);
+    }catch(err){
+      setDbLog(`${file.name} — ce n'est pas un JSON valide (${err.message}).`, true);
+      e.target.value = '';
+      return;
+    }
+
+    if(!Array.isArray(parsed)){
+      setDbLog(`${file.name} — le fichier JSON doit contenir un tableau de commandes ([...]), pas un objet unique.`, true);
+      e.target.value = '';
+      return;
+    }
+
+    if(parsed.length === 0){
+      setDbLog(`${file.name} — le tableau JSON est vide, aucune commande à importer.`, true);
+      e.target.value = '';
+      return;
+    }
+
+    const keys = COLS.map(c=>c.key);
+    let added = 0;
+    let skipped = 0;
+    parsed.forEach(item=>{
+      if(item && typeof item === 'object' && !Array.isArray(item)){
+        const rec = {};
+        keys.forEach(k => rec[k] = item[k] !== undefined && item[k] !== null ? String(item[k]) : '');
+        rec.numSuivi = cleanNumSuivi(rec.numSuivi);
+        database.push(rec);
+        added++;
+      }else{
+        skipped++;
+      }
+    });
+
+    if(added === 0){
+      setDbLog(`${file.name} — aucune entrée valide trouvée dans le tableau JSON (${skipped} élément(s) ignoré(s), format inattendu).`, true);
+      e.target.value = '';
+      return;
+    }
+
+    await saveDatabase();
+    render();
+    e.target.value = '';
+    setDbLog(`${file.name} — ${added} commande(s) importée(s) avec succès.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
+  });
+
+  els.clearBtn.addEventListener('click', async ()=>{
+    if(database.length === 0) return;
+    if(!confirm('Voulez-vous vraiment effacer toute la base de données de commandes ? Cette action est irréversible.')) return;
+    database = [];
+    await saveDatabase();
+    render();
+    setDbLog('Base de données effacée.', false);
+  });
+
+  loadDatabase();
+})();
+</script>
+</body>
+</html>

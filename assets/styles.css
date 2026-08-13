@@ -258,6 +258,10 @@
   .package-detail-row:last-child{ border-bottom: none; }
   .package-detail-label{ color: var(--muted); flex-shrink: 0; }
 
+  /* QTE / QTE_EXPED : vert si les deux quantités correspondent, rouge sinon */
+  .qty-match{ color: var(--success); font-weight: 700; }
+  .qty-mismatch{ color: var(--danger); font-weight: 700; }
+
   .package-qr{ display: flex; justify-content: center; padding: 8px 0 16px; }
   .package-qr img, .package-qr canvas{ border-radius: 8px; border: 1px solid var(--border); padding: 8px; background: #fff; }
 

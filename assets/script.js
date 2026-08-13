@@ -122,78 +122,32 @@
     return String(str || '').replace(/^[^0-9]+/, '').replace(/[^0-9]+$/, '');
   }
 
-  // Calcul de la clé Colissimo (algorithme du fichier Calcul_clé_Colis_colisimo.xlsx)
-  // On retire d'abord les caractères non numériques en début/fin de scan, puis on ne garde que
-  // les 27 caractères utiles : le préfixe (2 lettres) et le numéro à 10 chiffres, pour calculer
-  // la clé de contrôle et renvoyer le numéro de suivi final.
-  function computeColissimoTracking(raw){
+  // Calcul du numéro de recherche Colissimo / DPD : plus de calcul de clé de contrôle.
+  // On retire d'abord les caractères non numériques en tout début et toute fin du scan, on exige
+  // qu'il reste exactement 27 caractères utiles, puis on extrait directement les caractères de la
+  // 10ème à la 20ème position (incluses) : ce fragment est collé tel quel dans le champ de recherche.
+  function computeColissimoDpdTracking(raw){
     const clean = trimNonDigitEdges(String(raw || '').replace(/\s+/g, ''));
     if(clean.length !== 27) return null;
 
-    const seg = clean; // la valeur nettoyée constitue la zone utile (27 caractères)
-    const prefix = seg.slice(9, 11);   // 2 lettres (ex. "6C")
-    const core = seg.slice(11, 21);    // 10 chiffres du numéro de suivi
-
-    if(!/^[A-Za-z0-9]{2}$/.test(prefix) || !/^\d{10}$/.test(core)) return null;
-
-    const digits = core.split('').map(Number);
-    const oddSum  = digits[0] + digits[2] + digits[4] + digits[6] + digits[8]; // positions 1,3,5,7,9
-    const evenSum = digits[1] + digits[3] + digits[5] + digits[7] + digits[9]; // positions 2,4,6,8,10
-    const total = oddSum + evenSum * 3;
-    const roundedUp = Math.ceil(total / 10) * 10;
-    const checkDigit = roundedUp - total;
-
-    return prefix.toUpperCase() + core + String(checkDigit);
+    return clean.slice(9, 20); // positions 10 à 20 (1-indexées) = 11 caractères
   }
 
-  // Calcule la clé de contrôle ISO/IEC 7064 MOD 37,36 d'une chaîne alphanumérique
-  // (algorithme partagé par les convertisseurs DPD et La Poste).
-  function mod3736CheckChar(core){
-    const MOD = 36, MODP1 = 37;
-    let r = MOD;
-    for(let i=0; i<core.length; i++){
-      const ch = core[i];
-      const val = /[0-9]/.test(ch) ? Number(ch) : (ch.toUpperCase().charCodeAt(0) - 55);
-      let sum = r + val;
-      if(sum > MOD) sum -= MOD;
-      const doubled = sum * 2;
-      r = doubled >= MODP1 ? doubled - MODP1 : doubled;
-    }
-    const k = (MODP1 - r) === MOD ? 0 : (MODP1 - r);
-    return k < 10 ? String(k) : String.fromCharCode(55 + k);
-  }
-
-  // Calcul du numéro de suivi DPD (algorithme du fichier dpd.xlsx)
-  // On retire d'abord les caractères non numériques en début/fin de scan (ex. la lettre de pays
-  // en fin de code), puis on ne garde que les 27 caractères utiles : on en extrait le numéro de
-  // suivi brut (14 caractères), on calcule la clé de contrôle via ISO/IEC 7064 MOD 37,36, et on
-  // renvoie le numéro de suivi final (14 caractères + 1 clé).
-  function computeDpdTracking(raw){
-    const clean = trimNonDigitEdges(String(raw || '').replace(/\s+/g, ''));
-    if(clean.length !== 27) return null;
-
-    const core = clean.slice(7, 21); // 14 caractères du numéro de suivi brut
-    if(!/^[A-Za-z0-9]{14}$/.test(core)) return null;
-
-    return core + mod3736CheckChar(core);
-  }
-
-  // Calcul du numéro de suivi La Poste, à partir d'un code-barres scanné de 32 caractères
-  // encadré par % ... ^ (ex. "%000000088000232558316600250A18^").
-  // Découpage en 2 étapes : on coupe la chaîne à la position 22 et on garde la première partie,
-  // puis on coupe cette première partie à la position 9 et on garde la deuxième partie : le
-  // résultat est le numéro de suivi brut (14 caractères) à rechercher dans la base de données.
-  // La clé de contrôle se calcule avec le même algorithme ISO/IEC 7064 MOD 37,36 que DPD.
+  // Calcul du numéro de recherche La Poste, à partir d'un code-barres scanné de 32 caractères
+  // encadré par % ... ^ (ex. "%000000088000232558316600250A18^"). Plus de calcul de clé de
+  // contrôle : découpage en 2 étapes uniquement. On coupe la chaîne à la position 21 et on garde
+  // la première partie, puis on coupe cette première partie à la position 9 et on garde la
+  // deuxième partie : le résultat (13 caractères) est utilisé tel quel comme numéro à rechercher.
   function computeLaPosteTracking(raw){
     const clean = String(raw || '').replace(/\s+/g, '');
     if(clean.length !== 32) return null;
     if(clean[0] !== '%' || clean[clean.length - 1] !== '^') return null;
 
-    const firstPart = clean.slice(0, 22);  // 1ère partie : tout ce qui précède la position 22
-    const core = firstPart.slice(8);       // 2ème partie : tout ce qui suit la position 9 (14 caractères)
-    if(!/^[A-Za-z0-9]{14}$/.test(core)) return null;
+    const firstPart = clean.slice(0, 21);  // 1ère partie : tout ce qui précède la position 21
+    const core = firstPart.slice(8);       // 2ème partie : à partir de la position 9 (13 caractères)
+    if(!/^[A-Za-z0-9]{13}$/.test(core)) return null;
 
-    return core + mod3736CheckChar(core);
+    return core;
   }
 
   // Un numéro de suivi calculé correspond-il à une commande déjà présente en base ?
@@ -204,22 +158,20 @@
   }
 
   // Détermine le meilleur numéro de suivi à partir d'une valeur scannée/collée : on essaie
-  // Colissimo, puis DPD, puis La Poste, et on retient le premier résultat qui correspond à une
-  // commande déjà présente en base. Si aucun ne correspond, on garde le comportement historique
-  // (Colissimo par défaut si calculable, sinon DPD, sinon La Poste).
+  // Colissimo/DPD (extraction directe, sans transformation), puis La Poste, et on retient le
+  // premier résultat qui correspond à une commande déjà présente en base. Si aucun ne correspond,
+  // on garde le comportement historique (Colissimo/DPD par défaut si calculable, sinon La Poste).
   function computeBestTracking(raw){
-    const colissimo = computeColissimoTracking(raw);
-    const dpd = computeDpdTracking(raw);
+    const colissimoDpd = computeColissimoDpdTracking(raw);
     const laposte = computeLaPosteTracking(raw);
 
-    if(colissimo && trackingExistsInDb(colissimo)) return colissimo;
-    if(dpd && trackingExistsInDb(dpd)) return dpd;
+    if(colissimoDpd && trackingExistsInDb(colissimoDpd)) return colissimoDpd;
     if(laposte && trackingExistsInDb(laposte)) return laposte;
 
-    return colissimo || dpd || laposte || null;
+    return colissimoDpd || laposte || null;
   }
 
-  // Applique la transformation (Colissimo, DPD ou La Poste selon ce qui correspond en base)
+  // Applique la transformation (Colissimo/DPD ou La Poste selon ce qui correspond en base)
   // sur le champ de recherche
   function applyColissimoTransformIfNeeded(){
     const transformed = computeBestTracking(els.search.value);

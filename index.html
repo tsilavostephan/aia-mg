@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gestionnaire de colis — AIA</title>
+<title>Gestionnaire de commandes — Import CSV</title>
 <style>
   :root{
     --bg:#f4f6f8;
@@ -17,7 +17,6 @@
     --danger:#dc2626;
     --danger-soft:#fef2f2;
     --success:#16a34a;
-    --success-soft:#f0fdf4;
     --radius:10px;
   }
   *{ box-sizing:border-box; }
@@ -131,11 +130,6 @@
 
   #dbLog{ font-size: 13px; margin-top: 10px; min-height: 18px; }
 
-  table{ border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 13px; }
-  th, td{ padding: 9px 12px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); }
-  th{ background: #f8f9fb; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.03em; border-bottom: 2px solid var(--border); }
-  tbody tr:hover{ background: #f8faff; }
-
   select{
     padding: 8px 11px;
     font-size: 13.5px;
@@ -147,36 +141,73 @@
   }
   select:focus{ outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 
-  .table-scroll{
+  .list-scroll{
     max-height: 500px;
-    overflow-x: auto;
     overflow-y: auto;
+    overflow-x: hidden;
     border: 1px solid var(--border);
     border-radius: 8px;
     margin-top: 10px;
   }
-  .table-scroll table{ margin-top: 0; min-width: 780px; width: 100%; }
-  .table-scroll th:first-child, .table-scroll td:first-child{ padding-left: 14px; }
-  .table-scroll thead th{ position: sticky; top: 0; z-index: 1; }
+  .db-cards{ display: flex; flex-direction: column; }
 
-  td.copyable{ position: relative; padding-right: 30px; }
-  .copy-icon{
+  .db-card{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 13px 16px;
+    border-bottom: 1px dashed var(--border);
+    cursor: pointer;
+  }
+  .db-card:last-child{ border-bottom: none; }
+  .db-card:hover{ background: #f8faff; }
+
+  .db-card-info{ min-width: 0; }
+  .db-card-title{ display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+
+  .carrier-badge{
+    display: inline-block;
+    flex-shrink: 0;
+    background: #f3f4f6;
+    color: #4b5563;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+  }
+
+  .db-card-meta{ font-size: 12.5px; color: var(--muted); }
+  .meta-sep{ margin: 0 2px; }
+
+  .db-card-right{
+    font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--text);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .db-card-right.empty{ color: var(--muted); font-family: inherit; }
+
+  .copy-field{ position: relative; display: inline-block; padding-right: 18px; }
+  .copy-field .copy-icon{
     position: absolute;
-    right: 6px;
+    right: -2px;
     top: 50%;
     transform: translateY(-50%);
     opacity: 0;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1;
     color: var(--muted);
     background: none;
     border: none;
-    padding: 3px 5px;
+    padding: 2px 4px;
     border-radius: 4px;
     transition: opacity .12s, color .12s, background .12s;
   }
-  td.copyable:hover .copy-icon{ opacity: 1; }
+  .copy-field:hover .copy-icon{ opacity: 1; }
   .copy-icon:hover{ color: var(--primary); background: var(--primary-soft); }
   .copy-icon.copied{ color: var(--success); opacity: 1; }
 
@@ -198,30 +229,73 @@
 
   #trackingModalBg{ backdrop-filter: blur(2px); }
   #trackingModalBg > div{ box-shadow: 0 10px 40px rgba(16,24,40,0.2); }
+  .copy-box{ position: relative; }
+  .copy-icon-box{
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0;
+    cursor: pointer;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 7px;
+    font-size: 12px;
+    color: var(--muted);
+    transition: opacity .12s, color .12s, background .12s;
+  }
+  .copy-box:hover .copy-icon-box{ opacity: 1; }
+  .copy-icon-box:hover{ color: var(--primary); background: var(--primary-soft); }
+  .copy-icon-box.copied{ color: var(--success); }
 
-  tbody tr{ cursor: pointer; }
+  .package-detail-row{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+  }
+  .package-detail-row:last-child{ border-bottom: none; }
+  .package-detail-label{ color: var(--muted); flex-shrink: 0; }
 
-  #detailsModalBg{ backdrop-filter: blur(2px); }
-  #detailsModalBg > div{ box-shadow: 0 10px 40px rgba(16,24,40,0.2); }
-  .detail-row{ display:flex; justify-content:space-between; align-items:center; gap:14px; padding:9px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
-  .detail-row:last-of-type{ border-bottom:none; }
-  .detail-label{ color:var(--muted); flex-shrink:0; }
-  .detail-value{ font-weight:600; text-align:right; word-break:break-all; }
-  .qty-badge{ padding:3px 10px; border-radius:6px; font-weight:700; font-size:13px; }
-  .qty-badge.qty-ok{ background:var(--success-soft); color:var(--success); }
-  .qty-badge.qty-bad{ background:var(--danger-soft); color:var(--danger); }
+  .package-qr{ display: flex; justify-content: center; padding: 8px 0 16px; }
+  .package-qr img, .package-qr canvas{ border-radius: 8px; border: 1px solid var(--border); padding: 8px; background: #fff; }
+
+  .scan-btn{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    font-size: 17px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .scan-btn:hover{ background: #f3f4f6; border-color: #d1d5db; }
+
+  #scannerReaderContainer{ width: 100%; border-radius: 8px; overflow: hidden; }
+  #scannerReaderContainer video{ border-radius: 8px; }
+  .scanner-hint{ font-size: 12.5px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
-<h1>AIA - Gestionnaire de suivi colis</h1>
-<p class="desc">v.1.0.1 © TSLV</p>
+<h1>Gestionnaire de commandes</h1>
+<p class="desc">Importez plusieurs fichiers CSV pour alimenter la base de données de commandes.</p>
 
 <fieldset>
   <h2>1. Importer des fichiers CSV</h2>
   <div class="row">
     <div id="dropzone" class="dropzone">
-      <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers CSV depuis amazon ici</div>
+      <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers CSV ici</div>
       <div class="dropzone-sub">Plusieurs fichiers peuvent être sélectionnés en même temps</div>
       <input type="file" id="fileInput" accept=".csv,text/csv" multiple style="display:none;">
     </div>
@@ -247,34 +321,22 @@
   </div>
   <div class="row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
     <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)">
+    <button type="button" id="scanBtn" class="scan-btn" title="Scanner un code-barres / QR code">📷</button>
     <label for="displayLimit" style="font-size:13px; color:var(--muted);">Afficher</label>
     <select id="displayLimit">
-      <option value="all" selected>Toutes les lignes</option>
-      <option value="10">10 lignes</option>
+      <option value="10" selected>10 lignes</option>
       <option value="25">25 lignes</option>
       <option value="50">50 lignes</option>
       <option value="100">100 lignes</option>
+      <option value="all">Toutes les lignes</option>
     </select>
   </div>
   <div id="dbLog"></div>
   <div id="count"></div>
-  <div class="table-scroll">
-    <table id="dataTable">
-      <thead>
-        <tr>
-          <th>N° Commande</th>
-          <th>Commande Amazon</th>
-          <th>QTE</th>
-          <th>Num Suivi</th>
-          <th>QTE_EXPED</th>
-          <th>Transporteur</th>
-          <th>Num dernier kilométrique</th>
-        </tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
+  <div class="list-scroll">
+    <div id="dbCards" class="db-cards"></div>
   </div>
-  <div id="emptyState">Aucune données en base pour le moment. Importez un CSV ou JSON pour commencer.</div>
+  <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer.</div>
 </fieldset>
 
 <fieldset id="carrierSection" style="display:none;">
@@ -287,12 +349,13 @@
   <div style="background:#fff; max-width:640px; margin:60px auto; padding:24px; border-radius:12px; max-height:75vh; overflow:auto;">
     <h2 style="margin-top:0;" id="trackingModalTitle">Suivi groupé</h2>
     <p id="trackingCount" style="color:var(--muted); font-size:13px;"></p>
-    <label style="font-size:13px;">URL de suivi</label>
-    <div class="row">
-      <textarea id="trackingUrlBox" readonly style="width:100%; height:80px; font-size:13px; padding:8px;"></textarea>
+    <label id="trackingBoxLabel" style="font-size:13px;">URL de suivi</label>
+    <div class="row copy-box">
+      <textarea id="trackingUrlBox" readonly style="width:100%; height:80px; font-size:13px; padding:8px; padding-right:34px;"></textarea>
+      <button id="modalCopyIconBtn" class="copy-icon-box" type="button" title="Copier">⧉</button>
     </div>
     <div class="actions">
-      <button id="copyUrlBtn">Copier l'URL</button>
+      <button id="copyUrlBtn">Copier</button>
       <button id="openUrlBtn" class="secondary">Ouvrir dans un nouvel onglet</button>
       <button id="closeModalBtn" class="secondary">Fermer</button>
     </div>
@@ -302,28 +365,26 @@
   </div>
 </div>
 
-<div id="detailsModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
-  <div style="background:#fff; max-width:460px; margin:60px auto; padding:24px; border-radius:12px; max-height:85vh; overflow:auto;">
-    <h2 style="margin-top:0;">Détails du suivi</h2>
-
-    <div class="detail-row"><span class="detail-label">Recherché</span><span id="detNumSuivi" class="detail-value"></span></div>
-    <div class="detail-row"><span class="detail-label">Transporteur</span><span id="detTransporteur" class="detail-value"></span></div>
-    <div class="detail-row"><span class="detail-label">Numéro de suivi 2</span><span id="detNumKm" class="detail-value"></span></div>
-    <div class="detail-row"><span class="detail-label">Numéro de commande</span><span id="detNumCommande" class="detail-value"></span></div>
-    <div class="detail-row"><span class="detail-label">Commande Amazon</span><span id="detCommandeAmazon" class="detail-value"></span></div>
-    <div class="detail-row"><span class="detail-label">Quantité / Expédiée</span><span id="detQte" class="detail-value"></span></div>
-
-    <div style="text-align:center; margin:20px 0 6px;">
-      <img id="detQr" alt="QR code du numéro de suivi" style="width:170px; height:170px; border:1px solid var(--border); border-radius:8px; padding:6px; background:#fff;">
+<div id="packageModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
+  <div style="background:#fff; max-width:480px; margin:60px auto; padding:24px; border-radius:12px; max-height:75vh; overflow:auto;">
+    <h2 style="margin-top:0;">Détails du colis</h2>
+    <div id="packageModalBody"></div>
+    <div id="packageQrCode" class="package-qr"></div>
+    <div class="actions" style="margin-top:16px;">
+      <button id="closePackageModalBtn" class="secondary">Fermer</button>
     </div>
+  </div>
+</div>
 
+<div id="scannerModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
+  <div style="background:#fff; max-width:420px; margin:60px auto; padding:24px; border-radius:12px; max-height:80vh; overflow:auto;">
+    <h2 style="margin-top:0;">Scanner un code-barres / QR code</h2>
+    <div id="scannerReaderContainer"></div>
+    <div id="scannerError" style="font-size:13px; color:var(--danger); margin-top:10px; display:none;"></div>
+    <p class="scanner-hint">Pointez la caméra vers le code-barres ou le QR code du colis. La fenêtre se ferme automatiquement dès qu'une valeur est détectée.</p>
     <div class="actions">
-      <button id="detTrackBtn">Suivre le colis</button>
-      <button id="detCloseBtn" class="secondary">Fermer</button>
+      <button id="closeScannerBtn" class="secondary">Annuler</button>
     </div>
-    <p id="detNoCarrierMsg" style="font-size:12px; color:var(--muted); display:none; margin-top:10px;">
-      Transporteur non reconnu automatiquement pour un suivi direct — utilisez le QR code ou le numéro de suivi manuellement.
-    </p>
   </div>
 </div>
 
@@ -349,8 +410,7 @@
     resetSelection: document.getElementById('resetSelection'),
     hasHeader: document.getElementById('hasHeader'),
     log: document.getElementById('log'),
-    tbody: document.getElementById('tbody'),
-    dataTable: document.getElementById('dataTable'),
+    dbCards: document.getElementById('dbCards'),
     rowCount: document.getElementById('rowCount'),
     count: document.getElementById('count'),
     emptyState: document.getElementById('emptyState'),
@@ -366,21 +426,21 @@
     trackingModalBg: document.getElementById('trackingModalBg'),
     trackingModalTitle: document.getElementById('trackingModalTitle'),
     trackingCount: document.getElementById('trackingCount'),
+    trackingBoxLabel: document.getElementById('trackingBoxLabel'),
     trackingUrlBox: document.getElementById('trackingUrlBox'),
     copyUrlBtn: document.getElementById('copyUrlBtn'),
+    modalCopyIconBtn: document.getElementById('modalCopyIconBtn'),
     openUrlBtn: document.getElementById('openUrlBtn'),
     closeModalBtn: document.getElementById('closeModalBtn'),
-    detailsModalBg: document.getElementById('detailsModalBg'),
-    detNumSuivi: document.getElementById('detNumSuivi'),
-    detTransporteur: document.getElementById('detTransporteur'),
-    detNumKm: document.getElementById('detNumKm'),
-    detNumCommande: document.getElementById('detNumCommande'),
-    detCommandeAmazon: document.getElementById('detCommandeAmazon'),
-    detQte: document.getElementById('detQte'),
-    detQr: document.getElementById('detQr'),
-    detTrackBtn: document.getElementById('detTrackBtn'),
-    detCloseBtn: document.getElementById('detCloseBtn'),
-    detNoCarrierMsg: document.getElementById('detNoCarrierMsg'),
+    packageModalBg: document.getElementById('packageModalBg'),
+    packageModalBody: document.getElementById('packageModalBody'),
+    packageQrCode: document.getElementById('packageQrCode'),
+    closePackageModalBtn: document.getElementById('closePackageModalBtn'),
+    scanBtn: document.getElementById('scanBtn'),
+    scannerModalBg: document.getElementById('scannerModalBg'),
+    scannerReaderContainer: document.getElementById('scannerReaderContainer'),
+    scannerError: document.getElementById('scannerError'),
+    closeScannerBtn: document.getElementById('closeScannerBtn'),
   };
 
   let selectedFiles = [];
@@ -435,6 +495,110 @@
   // Nettoie la colonne Num Suivi : retire =, ", ', et les antislash d'échappement
   function cleanNumSuivi(v){
     return String(v ?? '').replace(/[="'\\]/g, '').trim();
+  }
+
+  // Calcul de la clé Colissimo (algorithme du fichier Calcul_clé_Colis_colisimo.xlsx)
+  // S'applique uniquement si la valeur scannée fait exactement 28 caractères : en extrait le préfixe (2 lettres)
+  // et le numéro à 10 chiffres, calcule la clé de contrôle, et renvoie le numéro de suivi final.
+  function computeColissimoTracking(raw){
+    const clean = String(raw || '').replace(/\s+/g, '');
+    if(clean.length !== 28) return null;
+
+    const seg = clean; // la valeur entière constitue la zone utile (28 caractères)
+    const prefix = seg.slice(9, 11);   // 2 lettres (ex. "6C")
+    const core = seg.slice(11, 21);    // 10 chiffres du numéro de suivi
+
+    if(!/^[A-Za-z0-9]{2}$/.test(prefix) || !/^\d{10}$/.test(core)) return null;
+
+    const digits = core.split('').map(Number);
+    const oddSum  = digits[0] + digits[2] + digits[4] + digits[6] + digits[8]; // positions 1,3,5,7,9
+    const evenSum = digits[1] + digits[3] + digits[5] + digits[7] + digits[9]; // positions 2,4,6,8,10
+    const total = oddSum + evenSum * 3;
+    const roundedUp = Math.ceil(total / 10) * 10;
+    const checkDigit = roundedUp - total;
+
+    return prefix.toUpperCase() + core + String(checkDigit);
+  }
+
+  // Calcule la clé de contrôle ISO/IEC 7064 MOD 37,36 d'une chaîne alphanumérique
+  // (algorithme partagé par les convertisseurs DPD et La Poste).
+  function mod3736CheckChar(core){
+    const MOD = 36, MODP1 = 37;
+    let r = MOD;
+    for(let i=0; i<core.length; i++){
+      const ch = core[i];
+      const val = /[0-9]/.test(ch) ? Number(ch) : (ch.toUpperCase().charCodeAt(0) - 55);
+      let sum = r + val;
+      if(sum > MOD) sum -= MOD;
+      const doubled = sum * 2;
+      r = doubled >= MODP1 ? doubled - MODP1 : doubled;
+    }
+    const k = (MODP1 - r) === MOD ? 0 : (MODP1 - r);
+    return k < 10 ? String(k) : String.fromCharCode(55 + k);
+  }
+
+  // Calcul du numéro de suivi DPD (algorithme du fichier dpd.xlsx)
+  // S'applique uniquement si la valeur scannée fait exactement 28 caractères : en extrait le
+  // numéro de suivi brut (14 caractères), calcule la clé de contrôle via ISO/IEC 7064 MOD 37,36,
+  // et renvoie le numéro de suivi final (14 caractères + 1 clé).
+  function computeDpdTracking(raw){
+    const clean = String(raw || '').replace(/\s+/g, '');
+    if(clean.length !== 28) return null;
+
+    const core = clean.slice(7, 21); // 14 caractères du numéro de suivi brut
+    if(!/^[A-Za-z0-9]{14}$/.test(core)) return null;
+
+    return core + mod3736CheckChar(core);
+  }
+
+  // Calcul du numéro de suivi La Poste, à partir d'un code-barres scanné de 32 caractères
+  // encadré par % ... ^ (ex. "%000000088000232558316600250A18^").
+  // Le numéro de suivi brut (14 caractères) se trouve aux positions 9 à 22 ; la clé de contrôle
+  // se calcule avec le même algorithme ISO/IEC 7064 MOD 37,36 que le convertisseur DPD.
+  function computeLaPosteTracking(raw){
+    const clean = String(raw || '').replace(/\s+/g, '');
+    if(clean.length !== 32) return null;
+    if(clean[0] !== '%' || clean[clean.length - 1] !== '^') return null;
+
+    const core = clean.slice(8, 22); // 14 caractères du numéro de suivi brut
+    if(!/^[A-Za-z0-9]{14}$/.test(core)) return null;
+
+    return core + mod3736CheckChar(core);
+  }
+
+  // Un numéro de suivi calculé correspond-il à une commande déjà présente en base ?
+  function trackingExistsInDb(value){
+    if(!value) return false;
+    const v = value.toLowerCase();
+    return database.some(r => cleanNumSuivi(r.numSuivi).toLowerCase() === v);
+  }
+
+  // Détermine le meilleur numéro de suivi à partir d'une valeur scannée/collée : on essaie
+  // Colissimo, puis DPD, puis La Poste, et on retient le premier résultat qui correspond à une
+  // commande déjà présente en base. Si aucun ne correspond, on garde le comportement historique
+  // (Colissimo par défaut si calculable, sinon DPD, sinon La Poste).
+  function computeBestTracking(raw){
+    const colissimo = computeColissimoTracking(raw);
+    const dpd = computeDpdTracking(raw);
+    const laposte = computeLaPosteTracking(raw);
+
+    if(colissimo && trackingExistsInDb(colissimo)) return colissimo;
+    if(dpd && trackingExistsInDb(dpd)) return dpd;
+    if(laposte && trackingExistsInDb(laposte)) return laposte;
+
+    return colissimo || dpd || laposte || null;
+  }
+
+  // Applique la transformation (Colissimo, DPD ou La Poste selon ce qui correspond en base)
+  // sur le champ de recherche
+  function applyColissimoTransformIfNeeded(){
+    const transformed = computeBestTracking(els.search.value);
+    if(transformed){
+      els.search.value = transformed;
+      render();
+      return true;
+    }
+    return false;
   }
 
   // ---------- stockage persistant ----------
@@ -599,6 +763,7 @@
 
     await saveDatabase();
     render();
+
     selectedFiles = [];
     els.fileInput.value = '';
     renderFileList();
@@ -608,9 +773,10 @@
 
   // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------
   const CARRIERS = [
-    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1 },
-    { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1 },
-    { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2 },
+    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url' },
+    { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url' },
+    { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2, mode:'url' },
+    { key:'sfc',        label:'SFC',        match:['SFC'],                     baseUrl:'https://www.sendfromchina.com/track',                kmColIndex:2, mode:'clipboard', pasteHasHeader:true, matchColIndex:1 },
   ];
   const CHUNK_SIZE = 99;
 
@@ -618,6 +784,7 @@
   let activeCarrierKey = null;
   let pastedTextByCarrier = {};   // key -> texte collé (conservé lors du changement d'onglet)
   let importLogByCarrier = {};    // key -> { text, err }
+  let modalOpenUrl = '';          // URL à ouvrir via le bouton "Ouvrir" de la fenêtre modale
 
   function normCarrierName(v){
     return String(v || '').trim().toUpperCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -658,10 +825,19 @@
     });
   }
 
-  // Analyse générique du texte collé : 1re colonne = numéro de suivi, colonne kmColIndex (0-based) = numéro dernier kilométrique
-  // 4PX / YANWEN -> 2e colonne (index 1). Yun Express -> 3e colonne (index 2).
-  function parseTrackingPaste(text, kmColIndex){
-    const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+  // Analyse générique du texte collé : colonne matchColIndex (0-based) = numéro de suivi (clé de correspondance),
+  // colonne kmColIndex (0-based) = numéro dernier kilométrique.
+  // 4PX / YANWEN -> correspondance colonne 1, valeur colonne 2. Yun Express -> valeur colonne 3.
+  // SFC -> correspondance colonne 2 (AE Order No.), valeur colonne 3 (Tracking No.).
+  function parseTrackingPaste(text, kmColIndex, skipHeader, matchColIndex){
+    matchColIndex = matchColIndex || 0;
+    let lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+
+    if(skipHeader){
+      const firstNonEmpty = lines.findIndex(l => l.trim().length > 0);
+      if(firstNonEmpty !== -1) lines.splice(firstNonEmpty, 1); // retire la ligne d'en-tête
+    }
+
     const updates = [];
     lines.forEach(line=>{
       const trimmed = line.trim();
@@ -673,7 +849,7 @@
       if(parts.length < 2){
         parts = line.trim().split(/\s{2,}/);            // repli : séparation par espaces multiples
       }
-      const trackingNumber = cleanNumSuivi(parts[0]);
+      const trackingNumber = parts.length > matchColIndex ? cleanNumSuivi(parts[matchColIndex]) : '';
       if(!trackingNumber) return;
 
       let lastKm = parts.length > kmColIndex ? String(parts[kmColIndex]) : '';
@@ -698,7 +874,7 @@
       return;
     }
 
-    const updates = parseTrackingPaste(text, g.kmColIndex);
+    const updates = parseTrackingPaste(text, g.kmColIndex, g.pasteHasHeader, g.matchColIndex);
     if(updates.length === 0){
       importLogByCarrier[g.key] = { text: 'Aucune ligne exploitable trouvée dans le texte collé.', err: true };
       renderCarrierPanel();
@@ -730,15 +906,37 @@
     render();
   }
 
+  async function copyTextToClipboard(text){
+    try{
+      await navigator.clipboard.writeText(text);
+      return true;
+    }catch(e){
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return true;
+      }catch(e2){
+        return false;
+      }
+    }
+  }
+
   function renderCarrierPanel(){
     const g = getActiveGroup();
     if(!g){ els.carrierPanel.innerHTML = ''; return; }
     activeCarrierKey = g.key;
 
+    const openLabel = g.mode === 'clipboard' ? 'Copier + Ouvrir' : 'Ouvrir';
     const linksHtml = g.chunks.map((chunk, idx)=>
       `<div class="row" style="display:flex; gap:8px; align-items:center; margin:6px 0;">
         <span style="font-size:13px; min-width:150px;">Lien ${idx+1} — ${chunk.length} colis</span>
-        <button class="linkOpenBtn" data-idx="${idx}">Ouvrir</button>
+        <button class="linkOpenBtn" data-idx="${idx}">${openLabel}</button>
         <button class="linkShowBtn" data-idx="${idx}">Afficher</button>
       </div>`
     ).join('');
@@ -746,11 +944,16 @@
     const log = importLogByCarrier[g.key];
     const logHtml = log ? `<div style="font-size:12px; margin-top:6px; color:${log.err ? 'var(--danger)' : 'var(--success)'};">${log.text}</div>` : '';
 
+    const noteHtml = g.mode === 'clipboard'
+      ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">Le bouton « ${openLabel} » copie les numéros de colis dans le presse-papier puis ouvre la page de suivi ${g.label} — collez-les directement sur le site.</p>`
+      : '';
+
     els.carrierPanel.innerHTML = `
       <p style="font-size:13px; color:var(--muted);">
         ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
       </p>
       ${linksHtml}
+      ${noteHtml}
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
         <label style="font-size:13px;">Coller les données de suivi ${g.label} (max 10000 caractères) puis cliquer sur Importer</label>
         <div class="row">
@@ -766,18 +969,36 @@
     pasteArea.addEventListener('input', ()=>{ pastedTextByCarrier[g.key] = pasteArea.value; });
 
     els.carrierPanel.querySelectorAll('.linkOpenBtn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+      btn.addEventListener('click', async ()=>{
         const idx = parseInt(btn.dataset.idx, 10);
-        window.open(g.baseUrl + g.chunks[idx].join(','), '_blank');
+        if(g.mode === 'clipboard'){
+          const ok = await copyTextToClipboard(g.chunks[idx].join('\n'));
+          btn.textContent = ok ? 'Copié !' : 'Échec de la copie';
+          window.open(g.baseUrl, '_blank');
+          setTimeout(()=>{ btn.textContent = openLabel; }, 1500);
+        }else{
+          window.open(g.baseUrl + g.chunks[idx].join(','), '_blank');
+        }
       });
     });
     els.carrierPanel.querySelectorAll('.linkShowBtn').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const idx = parseInt(btn.dataset.idx, 10);
-        const url = g.baseUrl + g.chunks[idx].join(',');
-        els.trackingModalTitle.textContent = `Suivi groupé — ${g.label}` + (g.chunks.length > 1 ? ` (lien ${idx+1}/${g.chunks.length})` : '');
-        els.trackingCount.textContent = `${g.chunks[idx].length} numéro(s) de suivi groupé(s) dans ce lien.`;
-        els.trackingUrlBox.value = url;
+        const chunkInfo = g.chunks.length > 1 ? ` (lien ${idx+1}/${g.chunks.length})` : '';
+        els.trackingModalTitle.textContent = `Suivi groupé — ${g.label}${chunkInfo}`;
+
+        if(g.mode === 'clipboard'){
+          els.trackingBoxLabel.textContent = 'Numéros de colis (un par ligne)';
+          els.trackingCount.textContent = `${g.chunks[idx].length} numéro(s) de colis ${g.label} — copiez-les puis collez-les sur la page de suivi.`;
+          els.trackingUrlBox.value = g.chunks[idx].join('\n');
+          modalOpenUrl = g.baseUrl;
+        }else{
+          els.trackingBoxLabel.textContent = 'URL de suivi';
+          els.trackingCount.textContent = `${g.chunks[idx].length} numéro(s) de suivi groupé(s) dans ce lien.`;
+          const url = g.baseUrl + g.chunks[idx].join(',');
+          els.trackingUrlBox.value = url;
+          modalOpenUrl = url;
+        }
         els.trackingModalBg.style.display = 'block';
       });
     });
@@ -810,89 +1031,252 @@
     if(e.target === els.trackingModalBg) els.trackingModalBg.style.display = 'none';
   });
 
-  els.copyUrlBtn.addEventListener('click', async ()=>{
-    try{
-      await navigator.clipboard.writeText(els.trackingUrlBox.value);
-      els.copyUrlBtn.textContent = 'Copié !';
-      setTimeout(()=> els.copyUrlBtn.textContent = "Copier l'URL", 1200);
-    }catch(e){
-      els.trackingUrlBox.select();
-      document.execCommand('copy');
-    }
-  });
-
-  els.openUrlBtn.addEventListener('click', ()=>{
-    if(els.trackingUrlBox.value) window.open(els.trackingUrlBox.value, '_blank');
-  });
-
-  // ---------- modale "Détails du suivi" (clic sur une ligne) ----------
-  let currentDetailRecord = null;
-
-  function findCarrierForRecord(r){
-    return CARRIERS.find(c => c.match.includes(normCarrierName(r.transporteur))) || null;
-  }
-
-  function openDetailsModal(r){
-    currentDetailRecord = r;
-    const numSuivi = cleanNumSuivi(r.numSuivi);
-
-    els.detNumSuivi.textContent = numSuivi || '—';
-    els.detTransporteur.textContent = r.transporteur || '—';
-    els.detNumKm.textContent = r.numDernierKm || '—';
-    els.detNumCommande.textContent = r.numCommande || '—';
-    els.detCommandeAmazon.textContent = r.commandeAmazon || '—';
-
-    const qte = r.qteCommande || '';
-    const qteExped = r.qteExpedie || '';
-    els.detQte.innerHTML = '';
-    const badge = document.createElement('span');
-    badge.className = 'qty-badge ' + (qte !== '' && qte === qteExped ? 'qty-ok' : 'qty-bad');
-    badge.textContent = `${qte || '—'} / ${qteExped || '—'}`;
-    els.detQte.appendChild(badge);
-
-    if(numSuivi){
-      els.detQr.style.display = '';
-      els.detQr.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(numSuivi);
-    }else{
-      els.detQr.style.display = 'none';
-    }
-
-    const carrier = findCarrierForRecord(r);
-    if(carrier && numSuivi){
-      els.detTrackBtn.disabled = false;
-      els.detNoCarrierMsg.style.display = 'none';
-    }else{
-      els.detTrackBtn.disabled = true;
-      els.detNoCarrierMsg.style.display = numSuivi ? 'block' : 'none';
-    }
-
-    els.detailsModalBg.style.display = 'block';
-  }
-
-  function closeDetailsModal(){
-    els.detailsModalBg.style.display = 'none';
-    currentDetailRecord = null;
+  function closePackageModal(){
+    els.packageModalBg.style.display = 'none';
     els.search.focus();
   }
 
-  els.detTrackBtn.addEventListener('click', ()=>{
-    if(!currentDetailRecord) return;
-    const carrier = findCarrierForRecord(currentDetailRecord);
-    const numSuivi = cleanNumSuivi(currentDetailRecord.numSuivi);
-    if(carrier && numSuivi){
-      window.open(carrier.baseUrl + numSuivi, '_blank');
-    }
-    closeDetailsModal();
-  });
-  els.detCloseBtn.addEventListener('click', closeDetailsModal);
-  els.detailsModalBg.addEventListener('click', (e)=>{
-    if(e.target === els.detailsModalBg) closeDetailsModal();
-  });
-  document.addEventListener('keydown', (e)=>{
-    if(e.key === 'Escape' && els.detailsModalBg.style.display === 'block') closeDetailsModal();
+  els.closePackageModalBtn.addEventListener('click', closePackageModal);
+  els.packageModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.packageModalBg) closePackageModal();
   });
 
-  // ---------- affichage table ----------
+  document.addEventListener('keydown', (e)=>{
+    if(e.key !== 'Escape') return;
+    if(els.packageModalBg.style.display === 'block'){
+      closePackageModal();
+    }else if(els.trackingModalBg.style.display === 'block'){
+      els.trackingModalBg.style.display = 'none';
+    }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
+      stopScanner();
+    }
+  });
+
+  els.copyUrlBtn.addEventListener('click', async ()=>{
+    const ok = await copyTextToClipboard(els.trackingUrlBox.value);
+    els.copyUrlBtn.textContent = ok ? 'Copié !' : 'Échec de la copie';
+    setTimeout(()=> els.copyUrlBtn.textContent = 'Copier', 1200);
+  });
+
+  els.modalCopyIconBtn.addEventListener('click', async ()=>{
+    const ok = await copyTextToClipboard(els.trackingUrlBox.value);
+    els.modalCopyIconBtn.textContent = ok ? '✓' : '⧉';
+    els.modalCopyIconBtn.classList.toggle('copied', ok);
+    setTimeout(()=>{ els.modalCopyIconBtn.textContent = '⧉'; els.modalCopyIconBtn.classList.remove('copied'); }, 1200);
+  });
+
+  els.openUrlBtn.addEventListener('click', ()=>{
+    if(modalOpenUrl) window.open(modalOpenUrl, '_blank');
+  });
+
+  const CARRIER_BADGE_COLORS = {
+    '4PX': { bg:'#fdece0', fg:'#c2540a' },
+    'YANWEN': { bg:'#e8f3ff', fg:'#1d4ed8' },
+    'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
+    'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },
+  };
+  function badgeColorsFor(transporteur){
+    const norm = normCarrierName(transporteur);
+    return CARRIER_BADGE_COLORS[norm] || { bg:'#f3f4f6', fg:'#4b5563' };
+  }
+
+  // Construit un span copiable : texte + icône de copie visible au survol
+  function createCopySpan(value, extraClass){
+    const wrap = document.createElement('span');
+    wrap.className = 'copy-field' + (extraClass ? ' ' + extraClass : '');
+    const textNode = document.createElement('span');
+    textNode.textContent = value;
+    wrap.appendChild(textNode);
+
+    if(value){
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copy-icon';
+      btn.title = 'Copier';
+      btn.textContent = '⧉';
+      btn.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const ok = await copyTextToClipboard(value);
+        btn.textContent = ok ? '✓' : '⧉';
+        btn.classList.toggle('copied', ok);
+        setTimeout(()=>{ btn.textContent = '⧉'; btn.classList.remove('copied'); }, 900);
+      });
+      wrap.appendChild(btn);
+    }
+    return wrap;
+  }
+
+  function buildMetaItem(label, value){
+    const item = document.createElement('span');
+    item.className = 'meta-item';
+    item.textContent = `${label}: ${value || '—'}`;
+    return item;
+  }
+
+  function buildDbCard(r){
+    const card = document.createElement('div');
+    card.className = 'db-card';
+    card.addEventListener('click', ()=> openPackageModal(r));
+
+    const info = document.createElement('div');
+    info.className = 'db-card-info';
+
+    const title = document.createElement('div');
+    title.className = 'db-card-title';
+    if(r.transporteur){
+      const colors = badgeColorsFor(r.transporteur);
+      const badge = document.createElement('span');
+      badge.className = 'carrier-badge';
+      badge.style.background = colors.bg;
+      badge.style.color = colors.fg;
+      badge.textContent = r.transporteur;
+      title.appendChild(badge);
+    }
+    const numSuiviSpan = document.createElement('span');
+    numSuiviSpan.textContent = r.numSuivi || '—';
+    title.appendChild(numSuiviSpan);
+    info.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'db-card-meta';
+    const metaItems = [
+      buildMetaItem('Amazon', r.commandeAmazon),
+      buildMetaItem('Cmd', r.numCommande),
+      buildMetaItem('Qté', r.qteCommande),
+      buildMetaItem('Exp', r.qteExpedie),
+    ];
+    metaItems.forEach((el, idx)=>{
+      meta.appendChild(el);
+      if(idx < metaItems.length - 1) meta.appendChild(document.createTextNode(' · '));
+    });
+    info.appendChild(meta);
+
+    card.appendChild(info);
+
+    const right = document.createElement('div');
+    right.className = 'db-card-right';
+    if(!r.numDernierKm) right.classList.add('empty');
+    right.textContent = r.numDernierKm || '–';
+    card.appendChild(right);
+
+    return card;
+  }
+
+  // ---------- fenêtre de détails d'un colis (clic sur une carte) ----------
+  function openPackageModal(r){
+    const fields = [
+      { label:'Transporteur',              value:r.transporteur },
+      { label:'Num Suivi',                 value:r.numSuivi },
+      { label:'Commande Amazon',           value:r.commandeAmazon },
+      { label:'N° Commande',               value:r.numCommande },
+      { label:'QTE',                       value:r.qteCommande },
+      { label:'QTE_EXPED',                 value:r.qteExpedie },
+      { label:'Num dernier kilométrique',  value:r.numDernierKm },
+    ];
+
+    els.packageModalBody.innerHTML = '';
+    fields.forEach(f=>{
+      const row = document.createElement('div');
+      row.className = 'package-detail-row';
+      const labelEl = document.createElement('span');
+      labelEl.className = 'package-detail-label';
+      labelEl.textContent = f.label;
+      row.appendChild(labelEl);
+      row.appendChild(createCopySpan(f.value || '—'));
+      els.packageModalBody.appendChild(row);
+    });
+
+    // QR code encodant le numéro de suivi (permet de le rescanner plus tard)
+    els.packageQrCode.innerHTML = '';
+    if(r.numSuivi && typeof QRCode !== 'undefined'){
+      try{
+        new QRCode(els.packageQrCode, {
+          text: r.numSuivi,
+          width: 128,
+          height: 128,
+          colorDark: '#1f2937',
+          colorLight: '#ffffff'
+        });
+      }catch(e){ /* génération QR indisponible, on ignore silencieusement */ }
+    }
+
+    els.packageModalBg.style.display = 'block';
+  }
+
+  // ---------- scanner caméra (code-barres / QR code) ----------
+  let scannerInstance = null;
+  let scannerStopping = false;
+
+  function scannerFormats(){
+    if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
+    return [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.CODE_93,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.CODABAR,
+      Html5QrcodeSupportedFormats.DATA_MATRIX,
+    ];
+  }
+
+  async function stopScanner(){
+    if(scannerStopping) return;
+    scannerStopping = true;
+    if(scannerInstance){
+      try{
+        await scannerInstance.stop();
+        scannerInstance.clear();
+      }catch(e){ /* déjà arrêté ou jamais démarré */ }
+      scannerInstance = null;
+    }
+    els.scannerModalBg.style.display = 'none';
+    els.scannerError.style.display = 'none';
+    els.scannerReaderContainer.innerHTML = '';
+    scannerStopping = false;
+  }
+
+  async function startScanner(){
+    if(typeof Html5Qrcode === 'undefined'){
+      setDbLog("La bibliothèque de scan (html5-qrcode) n'a pas pu être chargée — vérifiez votre connexion internet.", true);
+      return;
+    }
+
+    els.scannerError.style.display = 'none';
+    els.scannerModalBg.style.display = 'block';
+    scannerInstance = new Html5Qrcode('scannerReaderContainer', { formatsToSupport: scannerFormats(), verbose: false });
+
+    try{
+      await scannerInstance.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        (decodedText)=>{
+          // une valeur a été détectée : on arrête le scan et on colle la valeur dans la recherche
+          stopScanner();
+          const transformed = computeBestTracking(decodedText);
+          els.search.value = transformed || decodedText;
+          els.search.dispatchEvent(new Event('input'));
+          els.search.focus();
+        },
+        ()=>{ /* échecs de lecture image par image : ignorés silencieusement */ }
+      );
+    }catch(err){
+      els.scannerError.textContent = `Impossible d'accéder à la caméra (${err && err.message ? err.message : 'permission refusée ou aucune caméra détectée'}).`;
+      els.scannerError.style.display = 'block';
+    }
+  }
+
+  els.scanBtn.addEventListener('click', startScanner);
+  els.closeScannerBtn.addEventListener('click', stopScanner);
+  els.scannerModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.scannerModalBg) stopScanner();
+  });
+
+  // ---------- affichage liste ----------
   function render(){
     const term = els.search.value.trim().toLowerCase();
     const filtered = term
@@ -902,53 +1286,8 @@
     const reversedFiltered = filtered.slice().reverse();
     const rows = limitVal === 'all' ? reversedFiltered : reversedFiltered.slice(0, parseInt(limitVal, 10));
 
-    els.tbody.innerHTML = '';
-    rows.forEach(r=>{
-      const tr = document.createElement('tr');
-      COLS.forEach(c=>{
-        const td = document.createElement('td');
-        const val = r[c.key] || '';
-
-        const valSpan = document.createElement('span');
-        valSpan.textContent = val;
-        td.appendChild(valSpan);
-
-        if(val){
-          td.classList.add('copyable');
-          const copyBtn = document.createElement('button');
-          copyBtn.type = 'button';
-          copyBtn.className = 'copy-icon';
-          copyBtn.title = 'Copier la valeur';
-          copyBtn.textContent = '⧉';
-          copyBtn.addEventListener('click', async (e)=>{
-            e.stopPropagation();
-            try{
-              await navigator.clipboard.writeText(val);
-            }catch(err){
-              const ta = document.createElement('textarea');
-              ta.value = val;
-              ta.style.position = 'fixed';
-              ta.style.opacity = '0';
-              document.body.appendChild(ta);
-              ta.select();
-              document.execCommand('copy');
-              document.body.removeChild(ta);
-            }
-            copyBtn.textContent = '✓';
-            copyBtn.classList.add('copied');
-            setTimeout(()=>{
-              copyBtn.textContent = '⧉';
-              copyBtn.classList.remove('copied');
-            }, 900);
-          });
-          td.appendChild(copyBtn);
-        }
-
-        tr.appendChild(td);
-      });
-      tr.addEventListener('click', ()=> openDetailsModal(r));
-      els.tbody.appendChild(tr);
-    });
+    els.dbCards.innerHTML = '';
+    rows.forEach(r=> els.dbCards.appendChild(buildDbCard(r)));
 
     els.rowCount.textContent = database.length;
 
@@ -963,15 +1302,25 @@
     els.emptyState.textContent = database.length === 0
       ? 'Aucune commande en base pour le moment. Importez un CSV pour commencer.'
       : 'Aucun résultat pour cette recherche.';
-    const showTable = rows.length > 0;
-    els.dataTable.style.display = showTable ? 'table' : 'none';
-    els.emptyState.style.display = showTable ? 'none' : 'block';
+    const showList = rows.length > 0;
+    els.dbCards.style.display = showList ? 'flex' : 'none';
+    els.emptyState.style.display = showList ? 'none' : 'block';
 
     updateCarrierTracking();
   }
 
   els.search.addEventListener('input', render);
   els.displayLimit.addEventListener('change', render);
+
+  // Transformation Colissimo : au collage (Ctrl+V), à la touche Entrée (bipeur physique)
+  // ou en quittant le champ (change), si la valeur dépasse 28 caractères.
+  els.search.addEventListener('paste', ()=>{
+    setTimeout(()=>{ if(!applyColissimoTransformIfNeeded()) render(); }, 0);
+  });
+  els.search.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') applyColissimoTransformIfNeeded();
+  });
+  els.search.addEventListener('change', applyColissimoTransformIfNeeded);
 
   // ---------- export / import JSON ----------
   function setDbLog(text, isErr){

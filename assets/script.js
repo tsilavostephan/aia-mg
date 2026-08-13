@@ -6,6 +6,7 @@
     { key:'qteCommande',   label:'QTE',                       col:5  },
     { key:'numSuivi',      label:'Num Suivi',                 col:24 },
     { key:'qteExpedie',    label:'QTE_EXPED',                 col:25 },
+    { key:'nom',           label:'Nom',                       col:26 },
     { key:'transporteur',  label:'Transporteur',              col:34 },
     { key:'numDernierKm',  label:'Num dernier kilométrique',  col:null } // toujours vide
   ];
@@ -53,7 +54,7 @@
   };
 
   let selectedFiles = [];
-  let database = []; // { numCommande, commandeAmazon, qteCommande, numSuivi, qteExpedie, transporteur, numDernierKm }
+  let database = []; // { numCommande, commandeAmazon, qteCommande, numSuivi, qteExpedie, nom, transporteur, numDernierKm }
 
   // ---------- parseur CSV maison (aucune librairie externe) ----------
   function parseCSV(text){
@@ -106,14 +107,30 @@
     return String(v ?? '').replace(/[="'\\]/g, '').trim();
   }
 
-  // Calcul de la clé Colissimo (algorithme du fichier Calcul_clé_Colis_colisimo.xlsx)
-  // S'applique uniquement si la valeur scannée fait exactement 28 caractères : en extrait le préfixe (2 lettres)
-  // et le numéro à 10 chiffres, calcule la clé de contrôle, et renvoie le numéro de suivi final.
-  function computeColissimoTracking(raw){
-    const clean = String(raw || '').replace(/\s+/g, '');
-    if(clean.length !== 28) return null;
+  // Extrait le Nom depuis la colonne 26 : la valeur utile se trouve entre "CART'IN" et ", CART'IN"
+  // (apostrophe droite ou typographique acceptée). Si le motif n'est pas trouvé, renvoie ''.
+  function extractNomFromCol26(v){
+    const str = String(v ?? '');
+    const m = str.match(/CART['’]IN(.*?),\s*CART['’]IN/i);
+    return m ? m[1].trim() : '';
+  }
 
-    const seg = clean; // la valeur entière constitue la zone utile (28 caractères)
+  // Retire les caractères qui ne sont pas des chiffres, uniquement au tout début et à la toute fin
+  // de la chaîne scannée (ex. lettre de service/pays parfois présente en fin de code Colissimo/DPD),
+  // sans toucher aux caractères internes (lettres du préfixe Colissimo, etc.).
+  function trimNonDigitEdges(str){
+    return String(str || '').replace(/^[^0-9]+/, '').replace(/[^0-9]+$/, '');
+  }
+
+  // Calcul de la clé Colissimo (algorithme du fichier Calcul_clé_Colis_colisimo.xlsx)
+  // On retire d'abord les caractères non numériques en début/fin de scan, puis on ne garde que
+  // les 27 caractères utiles : le préfixe (2 lettres) et le numéro à 10 chiffres, pour calculer
+  // la clé de contrôle et renvoyer le numéro de suivi final.
+  function computeColissimoTracking(raw){
+    const clean = trimNonDigitEdges(String(raw || '').replace(/\s+/g, ''));
+    if(clean.length !== 27) return null;
+
+    const seg = clean; // la valeur nettoyée constitue la zone utile (27 caractères)
     const prefix = seg.slice(9, 11);   // 2 lettres (ex. "6C")
     const core = seg.slice(11, 21);    // 10 chiffres du numéro de suivi
 
@@ -147,12 +164,13 @@
   }
 
   // Calcul du numéro de suivi DPD (algorithme du fichier dpd.xlsx)
-  // S'applique uniquement si la valeur scannée fait exactement 28 caractères : en extrait le
-  // numéro de suivi brut (14 caractères), calcule la clé de contrôle via ISO/IEC 7064 MOD 37,36,
-  // et renvoie le numéro de suivi final (14 caractères + 1 clé).
+  // On retire d'abord les caractères non numériques en début/fin de scan (ex. la lettre de pays
+  // en fin de code), puis on ne garde que les 27 caractères utiles : on en extrait le numéro de
+  // suivi brut (14 caractères), on calcule la clé de contrôle via ISO/IEC 7064 MOD 37,36, et on
+  // renvoie le numéro de suivi final (14 caractères + 1 clé).
   function computeDpdTracking(raw){
-    const clean = String(raw || '').replace(/\s+/g, '');
-    if(clean.length !== 28) return null;
+    const clean = trimNonDigitEdges(String(raw || '').replace(/\s+/g, ''));
+    if(clean.length !== 27) return null;
 
     const core = clean.slice(7, 21); // 14 caractères du numéro de suivi brut
     if(!/^[A-Za-z0-9]{14}$/.test(core)) return null;
@@ -162,14 +180,17 @@
 
   // Calcul du numéro de suivi La Poste, à partir d'un code-barres scanné de 32 caractères
   // encadré par % ... ^ (ex. "%000000088000232558316600250A18^").
-  // Le numéro de suivi brut (14 caractères) se trouve aux positions 9 à 22 ; la clé de contrôle
-  // se calcule avec le même algorithme ISO/IEC 7064 MOD 37,36 que le convertisseur DPD.
+  // Découpage en 2 étapes : on coupe la chaîne à la position 22 et on garde la première partie,
+  // puis on coupe cette première partie à la position 9 et on garde la deuxième partie : le
+  // résultat est le numéro de suivi brut (14 caractères) à rechercher dans la base de données.
+  // La clé de contrôle se calcule avec le même algorithme ISO/IEC 7064 MOD 37,36 que DPD.
   function computeLaPosteTracking(raw){
     const clean = String(raw || '').replace(/\s+/g, '');
     if(clean.length !== 32) return null;
     if(clean[0] !== '%' || clean[clean.length - 1] !== '^') return null;
 
-    const core = clean.slice(8, 22); // 14 caractères du numéro de suivi brut
+    const firstPart = clean.slice(0, 22);  // 1ère partie : tout ce qui précède la position 22
+    const core = firstPart.slice(8);       // 2ème partie : tout ce qui suit la position 9 (14 caractères)
     if(!/^[A-Za-z0-9]{14}$/.test(core)) return null;
 
     return core + mod3736CheckChar(core);
@@ -300,7 +321,13 @@
       }else{
         const raw = row[c.col - 1];
         const v = (raw === undefined || raw === null) ? '' : String(raw).trim();
-        rec[c.key] = c.key === 'numSuivi' ? cleanNumSuivi(v) : v;
+        if(c.key === 'numSuivi'){
+          rec[c.key] = cleanNumSuivi(v);
+        }else if(c.key === 'nom'){
+          rec[c.key] = extractNomFromCol26(v);
+        }else{
+          rec[c.key] = v;
+        }
       }
     });
     return rec;
@@ -773,13 +800,26 @@
 
   // ---------- fenêtre de détails d'un colis (clic sur une carte) ----------
   function openPackageModal(r){
+    // QTE et QTE_EXPED sont comparées (numériquement si possible, sinon en texte) pour les colorer :
+    // vert si elles correspondent, rouge sinon.
+    const qteRaw = r.qteCommande, qteExpRaw = r.qteExpedie;
+    const qteNum = Number(String(qteRaw ?? '').trim());
+    const qteExpNum = Number(String(qteExpRaw ?? '').trim());
+    const bothNumeric = String(qteRaw ?? '').trim() !== '' && String(qteExpRaw ?? '').trim() !== ''
+      && !Number.isNaN(qteNum) && !Number.isNaN(qteExpNum);
+    const qteMatch = bothNumeric
+      ? qteNum === qteExpNum
+      : String(qteRaw ?? '').trim() === String(qteExpRaw ?? '').trim() && String(qteRaw ?? '').trim() !== '';
+    const qteClass = qteMatch ? 'qty-match' : 'qty-mismatch';
+
     const fields = [
       { label:'Transporteur',              value:r.transporteur },
       { label:'Num Suivi',                 value:r.numSuivi },
       { label:'Commande Amazon',           value:r.commandeAmazon },
       { label:'N° Commande',               value:r.numCommande },
-      { label:'QTE',                       value:r.qteCommande },
-      { label:'QTE_EXPED',                 value:r.qteExpedie },
+      { label:'Nom',                       value:r.nom },
+      { label:'QTE',                       value:r.qteCommande, extraClass: qteClass },
+      { label:'QTE_EXPED',                 value:r.qteExpedie,  extraClass: qteClass },
       { label:'Num dernier kilométrique',  value:r.numDernierKm },
     ];
 
@@ -791,7 +831,7 @@
       labelEl.className = 'package-detail-label';
       labelEl.textContent = f.label;
       row.appendChild(labelEl);
-      row.appendChild(createCopySpan(f.value || '—'));
+      row.appendChild(createCopySpan(f.value || '—', f.extraClass));
       els.packageModalBody.appendChild(row);
     });
 
@@ -922,7 +962,7 @@
   els.displayLimit.addEventListener('change', render);
 
   // Transformation Colissimo : au collage (Ctrl+V), à la touche Entrée (bipeur physique)
-  // ou en quittant le champ (change), si la valeur dépasse 28 caractères.
+  // ou en quittant le champ (change).
   els.search.addEventListener('paste', ()=>{
     setTimeout(()=>{ if(!applyColissimoTransformIfNeeded()) render(); }, 0);
   });

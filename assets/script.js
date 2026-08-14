@@ -51,6 +51,7 @@
     scannerReaderContainer: document.getElementById('scannerReaderContainer'),
     scannerError: document.getElementById('scannerError'),
     closeScannerBtn: document.getElementById('closeScannerBtn'),
+    focusDbBtn: document.getElementById('focusDbBtn'),
   };
 
   let selectedFiles = [];
@@ -150,6 +151,20 @@
     return core;
   }
 
+  // Calcul du numéro de recherche Chronopost : on retire le caractère % ou ^ s'il est en toute
+  // première position du scan, puis on extrait directement les caractères de la 8ème à la 18ème
+  // position (incluses), toujours sans calcul de clé de contrôle : le résultat est collé tel quel
+  // dans le champ de recherche.
+  function computeChronopostTracking(raw){
+    let clean = String(raw || '').replace(/\s+/g, '');
+    if(clean[0] === '%' || clean[0] === '^'){
+      clean = clean.slice(1);
+    }
+    if(clean.length < 18) return null;
+
+    return clean.slice(7, 18); // positions 8 à 18 (1-indexées) = 11 caractères
+  }
+
   // Un numéro de suivi calculé correspond-il à une commande déjà présente en base ?
   function trackingExistsInDb(value){
     if(!value) return false;
@@ -158,17 +173,20 @@
   }
 
   // Détermine le meilleur numéro de suivi à partir d'une valeur scannée/collée : on essaie
-  // Colissimo/DPD (extraction directe, sans transformation), puis La Poste, et on retient le
-  // premier résultat qui correspond à une commande déjà présente en base. Si aucun ne correspond,
-  // on garde le comportement historique (Colissimo/DPD par défaut si calculable, sinon La Poste).
+  // Colissimo/DPD, La Poste, puis Chronopost (extractions directes, sans aucun calcul de clé), et
+  // on retient le premier résultat qui correspond à une commande déjà présente en base. Si aucun
+  // ne correspond, on garde le comportement historique (Colissimo/DPD par défaut si calculable,
+  // sinon La Poste, sinon Chronopost).
   function computeBestTracking(raw){
     const colissimoDpd = computeColissimoDpdTracking(raw);
     const laposte = computeLaPosteTracking(raw);
+    const chronopost = computeChronopostTracking(raw);
 
     if(colissimoDpd && trackingExistsInDb(colissimoDpd)) return colissimoDpd;
     if(laposte && trackingExistsInDb(laposte)) return laposte;
+    if(chronopost && trackingExistsInDb(chronopost)) return chronopost;
 
-    return colissimoDpd || laposte || null;
+    return colissimoDpd || laposte || chronopost || null;
   }
 
   // Applique la transformation (Colissimo/DPD ou La Poste selon ce qui correspond en base)
@@ -263,6 +281,8 @@
     div.textContent = (isErr ? '✕ ' : '✓ ') + text;
     div.className = isErr ? 'err' : 'ok';
     els.log.prepend(div);
+    // Le message disparaît tout seul au bout d'1 minute
+    setTimeout(()=>{ div.remove(); }, 60000);
   }
 
   function rowToRecord(row){
@@ -637,7 +657,39 @@
       els.trackingModalBg.style.display = 'none';
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
+    }else if(els.search.value){
+      // Aucune fenêtre ouverte : Échap vide le champ de recherche
+      els.search.value = '';
+      render();
     }
+  });
+
+  // Raccourci ALT+Q : place le curseur dans le champ de recherche, où qu'on soit sur la page.
+  // On utilise e.code (position physique de la touche) plutôt que e.key pour que ça marche
+  // quel que soit l'agencement du clavier (AZERTY, QWERTY…).
+  document.addEventListener('keydown', (e)=>{
+    if(!e.altKey || e.ctrlKey || e.metaKey) return;
+    if(e.code !== 'KeyQ') return;
+    e.preventDefault();
+    els.search.focus();
+    els.search.select();
+  });
+
+  // Coller n'importe où sur la page colle directement dans le champ de recherche, sauf si on a
+  // déjà le focus sur un champ éditable (recherche elle-même, zone de collage transporteur, etc.),
+  // auquel cas on laisse le comportement natif de collage du champ actif.
+  document.addEventListener('paste', (e)=>{
+    const active = document.activeElement;
+    const isEditable = active && (
+      active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
+    );
+    if(isEditable) return;
+    const text = (e.clipboardData || window.clipboardData)?.getData('text');
+    if(!text) return;
+    e.preventDefault();
+    els.search.value = text;
+    els.search.focus();
+    if(!applyColissimoTransformIfNeeded()) render();
   });
 
   els.copyUrlBtn.addEventListener('click', async ()=>{
@@ -923,10 +975,24 @@
   });
   els.search.addEventListener('change', applyColissimoTransformIfNeeded);
 
+  // ---------- mode plein écran de la section "2. Base de données" ----------
+  // Le bouton en haut à droite de la section bascule l'affichage : seuls l'en-tête de l'app et
+  // cette section restent visibles. Seul un nouveau clic sur ce même bouton permet de revenir en
+  // arrière — volontairement, la touche Échap ne fait rien dans ce mode.
+  els.focusDbBtn.addEventListener('click', ()=>{
+    const active = document.body.classList.toggle('focus-mode');
+    els.focusDbBtn.textContent = active ? '✕' : '⛶';
+    els.focusDbBtn.title = active ? 'Quitter le mode plein écran' : 'Afficher uniquement cette section';
+  });
+
   // ---------- export / import JSON ----------
+  let dbLogTimer = null;
   function setDbLog(text, isErr){
     els.dbLog.textContent = text;
     els.dbLog.style.color = isErr ? 'var(--danger)' : 'var(--success)';
+    // Le message disparaît tout seul au bout d'1 minute
+    if(dbLogTimer) clearTimeout(dbLogTimer);
+    dbLogTimer = setTimeout(()=>{ els.dbLog.textContent = ''; }, 60000);
   }
 
   els.exportJsonBtn.addEventListener('click', ()=>{

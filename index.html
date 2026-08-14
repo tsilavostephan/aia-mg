@@ -20,7 +20,7 @@
   </div>
 </div>
 
-<fieldset>
+<fieldset id="csvSection">
   <h2>1. Importer des fichiers CSV</h2>
   <div class="row">
     <div id="dropzone" class="dropzone">
@@ -40,15 +40,18 @@
   <div id="log"></div>
 </fieldset>
 
-<fieldset>
-  <h2>2. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s))</h2>
+<fieldset id="dbSection">
+  <h2 class="section-title">
+    <span>2. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s))</span>
+    <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Afficher uniquement cette section">⛶</button>
+  </h2>
   <div class="actions">
     <button id="exportJsonBtn" class="secondary">Exporter en JSON</button>
     <label class="file-btn" for="jsonFileInput">Importer un JSON</label>
     <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;">
     <button id="clearBtn" class="danger">Effacer la base de données</button>
   </div>
-  <div class="row" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+  <div class="row search-row">
     <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)">
     <button type="button" id="scanBtn" class="scan-btn" title="Scanner un code-barres / QR code">📷</button>
     <label for="displayLimit" style="font-size:13px; color:var(--muted);">Afficher</label>
@@ -74,13 +77,13 @@
   <div id="carrierPanel"></div>
 </fieldset>
 
-<div id="trackingModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
-  <div style="background:#fff; max-width:640px; margin:60px auto; padding:24px; border-radius:12px; max-height:75vh; overflow:auto;">
-    <h2 style="margin-top:0;" id="trackingModalTitle">Suivi groupé</h2>
-    <p id="trackingCount" style="color:var(--muted); font-size:13px;"></p>
-    <label id="trackingBoxLabel" style="font-size:13px;">URL de suivi</label>
+<div id="trackingModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box">
+    <h2 class="modal-title" id="trackingModalTitle">Suivi groupé</h2>
+    <p id="trackingCount" class="modal-subtext"></p>
+    <label id="trackingBoxLabel" class="modal-label">URL de suivi</label>
     <div class="row copy-box">
-      <textarea id="trackingUrlBox" readonly style="width:100%; height:80px; font-size:13px; padding:8px; padding-right:34px;"></textarea>
+      <textarea id="trackingUrlBox" readonly class="modal-textarea"></textarea>
       <button id="modalCopyIconBtn" class="copy-icon-box" type="button" title="Copier">⧉</button>
     </div>
     <div class="actions">
@@ -88,15 +91,15 @@
       <button id="openUrlBtn" class="secondary">Ouvrir dans un nouvel onglet</button>
       <button id="closeModalBtn" class="secondary">Fermer</button>
     </div>
-    <p style="font-size:12px; color:var(--muted); margin-top:14px;">
+    <p class="modal-footnote">
       Le contenu de la page de suivi ne peut pas être lu automatiquement depuis cette application (restrictions de sécurité des navigateurs). Ouvrez le lien pour consulter les résultats.
     </p>
   </div>
 </div>
 
-<div id="packageModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
-  <div style="background:#fff; max-width:480px; margin:60px auto; padding:24px; border-radius:12px; max-height:75vh; overflow:auto;">
-    <h2 style="margin-top:0;">Détails du colis</h2>
+<div id="packageModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box modal-box-narrow">
+    <h2 class="modal-title">Détails du colis</h2>
     <div id="packageModalBody"></div>
     <div id="packageQrCode" class="package-qr"></div>
     <div class="actions" style="margin-top:16px;">
@@ -105,11 +108,11 @@
   </div>
 </div>
 
-<div id="scannerModalBg" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.45); z-index:100;">
-  <div style="background:#fff; max-width:420px; margin:60px auto; padding:24px; border-radius:12px; max-height:80vh; overflow:auto;">
-    <h2 style="margin-top:0;">Scanner un code-barres / QR code</h2>
+<div id="scannerModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box modal-box-narrow">
+    <h2 class="modal-title">Scanner un code-barres / QR code</h2>
     <div id="scannerReaderContainer"></div>
-    <div id="scannerError" style="font-size:13px; color:var(--danger); margin-top:10px; display:none;"></div>
+    <div id="scannerError" class="scanner-error" style="display:none;"></div>
     <p class="scanner-hint">Pointez la caméra vers le code-barres ou le QR code du colis. La fenêtre se ferme automatiquement dès qu'une valeur est détectée.</p>
     <div class="actions">
       <button id="closeScannerBtn" class="secondary">Annuler</button>

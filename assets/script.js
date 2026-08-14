@@ -201,20 +201,23 @@
     return false;
   }
 
-  // ---------- stockage persistant ----------
-  async function loadDatabase(){
+  // ---------- stockage persistant (localStorage du navigateur) ----------
+  // Remarque : window.storage n'existe que dans l'aperçu Artifacts de Claude.ai — sur un vrai
+  // navigateur (Chrome Android, Safari, etc.) il n'existe pas, ce qui provoquait un plantage au
+  // démarrage. On utilise donc localStorage, disponible partout.
+  function loadDatabase(){
     try{
-      const res = await window.storage.get(STORAGE_KEY, false);
-      database = res && res.value ? JSON.parse(res.value) : [];
+      const raw = localStorage.getItem(STORAGE_KEY);
+      database = raw ? JSON.parse(raw) : [];
     }catch(e){
       database = [];
     }
     render();
   }
 
-  async function saveDatabase(){
+  function saveDatabase(){
     try{
-      await window.storage.set(STORAGE_KEY, JSON.stringify(database), false);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(database));
     }catch(e){
       logLine('Erreur lors de la sauvegarde de la base de données.', true);
     }

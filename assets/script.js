@@ -308,10 +308,34 @@
     return rec;
   }
 
+  // Clé unique d'une commande : la combinaison N° Commande + Commande Amazon (il faut que les
+  // deux correspondent pour considérer qu'il s'agit de la même commande). Num Suivi n'entre pas
+  // dans la clé : c'est un champ de référence, il est simplement mis à jour comme les autres.
+  function buildOrderKey(rec){
+    const numCommande = String(rec.numCommande || '').trim().toLowerCase();
+    const commandeAmazon = String(rec.commandeAmazon || '').trim().toLowerCase();
+    if(!numCommande || !commandeAmazon) return null;
+    return numCommande + '||' + commandeAmazon;
+  }
+
+  // Recherche des enregistrements déjà en base par clé unique (N° Commande + Commande Amazon),
+  // pour éviter les doublons à l'import : si une commande avec la même clé existe déjà, on met à
+  // jour ses champs (dont Num Suivi, à titre de référence) au lieu d'ajouter une nouvelle ligne.
+  function buildOrderKeyIndex(){
+    const idx = new Map();
+    database.forEach((r, i)=>{
+      const key = buildOrderKey(r);
+      if(key) idx.set(key, i);
+    });
+    return idx;
+  }
+
   els.importBtn.addEventListener('click', async ()=>{
     if(selectedFiles.length === 0) return;
     els.importBtn.disabled = true;
     let totalAdded = 0;
+    let totalUpdated = 0;
+    const orderKeyIndex = buildOrderKeyIndex();
 
     for(const file of selectedFiles){
       let text;
@@ -352,21 +376,37 @@
       const maxColNeeded = Math.max(...COLS.filter(c=>c.col !== null).map(c=>c.col));
 
       let added = 0;
+      let updated = 0;
       let shortRows = 0;
       rows.forEach(row=>{
         if(!row || row.every(c => c === '' || c === undefined)) return;
         if(row.length < maxColNeeded) shortRows++;
-        database.push(rowToRecord(row));
-        added++;
+
+        const rec = rowToRecord(row);
+        const key = buildOrderKey(rec);
+        const existingIndex = key ? orderKeyIndex.get(key) : undefined;
+
+        if(existingIndex !== undefined){
+          database[existingIndex] = { ...database[existingIndex], ...rec };
+          updated++;
+        }else{
+          database.push(rec);
+          if(key) orderKeyIndex.set(key, database.length - 1);
+          added++;
+        }
       });
 
-      if(added === 0){
+      if(added === 0 && updated === 0){
         logLine(`${file.name} — 0 ligne ajoutée (toutes les lignes lues étaient vides).`, true);
         continue;
       }
 
       totalAdded += added;
-      logLine(`${file.name} — ${added} ligne(s) ajoutée(s).`);
+      totalUpdated += updated;
+      const parts = [];
+      if(added > 0) parts.push(`${added} ajoutée(s)`);
+      if(updated > 0) parts.push(`${updated} mise(s) à jour`);
+      logLine(`${file.name} — ${parts.join(', ')}.`);
       if(shortRows > 0){
         logLine(`${file.name} — attention : ${shortRows} ligne(s) ont moins de ${maxColNeeded} colonnes, certains champs ont été laissés vides.`, true);
       }
@@ -379,7 +419,10 @@
     els.fileInput.value = '';
     renderFileList();
     els.importBtn.disabled = false;
-    logLine(`Import terminé — ${totalAdded} commande(s) ajoutée(s) au total.`);
+    const summaryParts = [];
+    if(totalAdded > 0) summaryParts.push(`${totalAdded} ajoutée(s)`);
+    if(totalUpdated > 0) summaryParts.push(`${totalUpdated} mise(s) à jour`);
+    logLine(`Import terminé — ${summaryParts.join(', ') || '0 commande'} au total.`);
   });
 
   // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------
@@ -1059,20 +1102,32 @@
 
     const keys = COLS.map(c=>c.key);
     let added = 0;
+    let updated = 0;
     let skipped = 0;
+    const orderKeyIndexJson = buildOrderKeyIndex();
     parsed.forEach(item=>{
       if(item && typeof item === 'object' && !Array.isArray(item)){
         const rec = {};
         keys.forEach(k => rec[k] = item[k] !== undefined && item[k] !== null ? String(item[k]) : '');
         rec.numSuivi = cleanNumSuivi(rec.numSuivi);
-        database.push(rec);
-        added++;
+
+        const key = buildOrderKey(rec);
+        const existingIndex = key ? orderKeyIndexJson.get(key) : undefined;
+
+        if(existingIndex !== undefined){
+          database[existingIndex] = { ...database[existingIndex], ...rec };
+          updated++;
+        }else{
+          database.push(rec);
+          if(key) orderKeyIndexJson.set(key, database.length - 1);
+          added++;
+        }
       }else{
         skipped++;
       }
     });
 
-    if(added === 0){
+    if(added === 0 && updated === 0){
       setDbLog(`${file.name} — aucune entrée valide trouvée dans le tableau JSON (${skipped} élément(s) ignoré(s), format inattendu).`, true);
       e.target.value = '';
       return;
@@ -1081,7 +1136,10 @@
     await saveDatabase();
     render();
     e.target.value = '';
-    setDbLog(`${file.name} — ${added} commande(s) importée(s) avec succès.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
+    const jsonSummary = [];
+    if(added > 0) jsonSummary.push(`${added} ajoutée(s)`);
+    if(updated > 0) jsonSummary.push(`${updated} mise(s) à jour`);
+    setDbLog(`${file.name} — ${jsonSummary.join(', ')}.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
   });
 
   els.clearBtn.addEventListener('click', async ()=>{
@@ -1094,4 +1152,15 @@
   });
 
   loadDatabase();
+
+  // Enregistrement du service worker (mode PWA installable). On ne le fait que si le contexte
+  // le permet (HTTPS ou localhost) : sur file:// ou http simple, l'API n'existe pas et ce bloc
+  // ne fait rien, sans jamais faire planter le reste de l'application.
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => {
+        // Échec silencieux : l'app continue de fonctionner normalement sans mode hors-ligne.
+      });
+    });
+  }
 })();

@@ -1,0 +1,49 @@
+// Service worker minimal : nécessaire pour que Chrome propose une vraie installation PWA
+// (WebAPK) plutôt qu'un simple raccourci. Stratégie "cache d'abord" sur les fichiers de l'app.
+const CACHE_NAME = 'aia-app-v1';
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './assets/styles.css',
+  './assets/script.js',
+  './assets/favicon.png',
+  './assets/apple-touch-icon.png',
+  './assets/logo-aia.png',
+  './assets/icon-192.png',
+  './assets/icon-512.png',
+  './assets/icon-512-maskable.png',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(CORE_ASSETS))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  if(event.request.method !== 'GET') return;
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if(cached) return cached;
+      return fetch(event.request).then((response) => {
+        // On met aussi en cache les scripts externes (qrcode) chargés depuis un CDN
+        if(response && response.ok){
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => cached);
+    })
+  );
+});

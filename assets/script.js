@@ -34,6 +34,11 @@
     carrierSection: document.getElementById('carrierSection'),
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
+    carrierMappingBtn: document.getElementById('carrierMappingBtn'),
+    carrierMappingModalBg: document.getElementById('carrierMappingModalBg'),
+    carrierMappingList: document.getElementById('carrierMappingList'),
+    carrierMappingSaveBtn: document.getElementById('carrierMappingSaveBtn'),
+    carrierMappingCancelBtn: document.getElementById('carrierMappingCancelBtn'),
     scrapeAllBtn: document.getElementById('scrapeAllBtn'),
     scrapeAllLog: document.getElementById('scrapeAllLog'),
     scrapeAllProgressWrap: document.getElementById('scrapeAllProgressWrap'),
@@ -1021,6 +1026,40 @@
     return String(v || '').trim().toUpperCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
+  // ---------- association manuelle valeur brute de transporteur -> transporteur connu ----------
+  // Par défaut, une commande est rattachée à un transporteur connu (CARRIERS) si sa valeur brute de
+  // colonne "transporteur" correspond exactement (après normalisation) à l'une des entrées de
+  // c.match. Cette association manuelle permet de forcer le rattachement pour des valeurs brutes qui
+  // ne correspondent à aucune entrée exacte (variantes d'orthographe, etc.), sans toucher au code.
+  const CARRIER_MAPPING_KEY = 'commandes-carrier-mapping';
+
+  function loadCarrierMapping(){
+    try{
+      const raw = localStorage.getItem(CARRIER_MAPPING_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      return {};
+    }
+  }
+
+  function saveCarrierMapping(mapping){
+    carrierMapping = mapping;
+    try{ localStorage.setItem(CARRIER_MAPPING_KEY, JSON.stringify(mapping)); }catch(e){ /* stockage indisponible */ }
+  }
+
+  let carrierMapping = loadCarrierMapping();
+
+  function resolveCarrierKeyForRow(r){
+    const raw = String(r.transporteur || '').trim();
+    if(!raw) return null;
+    const rawKey = raw.toUpperCase();
+    if(carrierMapping[rawKey]) return carrierMapping[rawKey];
+
+    const normalized = normCarrierName(raw);
+    const found = CARRIERS.find(c => c.match.includes(normalized));
+    return found ? found.key : null;
+  }
+
   function chunkArray(arr, size){
     const out = [];
     for(let i=0; i<arr.length; i+=size) out.push(arr.slice(i, i+size));
@@ -1038,12 +1077,85 @@
   function computeCarrierGroups(){
     return CARRIERS.map(c=>{
       const nums = database
-        .filter(r => c.match.includes(normCarrierName(r.transporteur)))
+        .filter(r => resolveCarrierKeyForRow(r) === c.key)
         .map(r => cleanNumSuivi(r.numSuivi))
         .filter(v => v.length > 0);
       return { ...c, nums, chunks: chunkArray(nums, CHUNK_SIZE) };
     }).filter(g => g.nums.length > 0);
   }
+
+  // ---------- fenêtre d'association manuelle transporteur ----------
+  let draftCarrierMapping = {};
+
+  function renderCarrierMappingList(){
+    const rawValues = Array.from(new Set(database.map(r => String(r.transporteur || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b));
+
+    if(rawValues.length === 0){
+      els.carrierMappingList.innerHTML = '<p style="font-size:13px; color:var(--muted);">Aucune valeur de transporteur trouvée en base.</p>';
+      return;
+    }
+
+    els.carrierMappingList.innerHTML = rawValues.map(raw=>{
+      const rawKey = raw.toUpperCase();
+      const count = database.filter(r => String(r.transporteur || '').trim() === raw).length;
+      const currentKey = draftCarrierMapping[rawKey]
+        || (CARRIERS.find(c => c.match.includes(normCarrierName(raw))) || {}).key
+        || '';
+
+      const checkboxesHtml = CARRIERS.map(c=>
+        `<label style="font-size:12px; display:flex; align-items:center; gap:4px; white-space:nowrap;">
+          <input type="checkbox" class="carrierMapCheckbox" data-raw="${escapeHtmlAttr(rawKey)}" data-carrier="${c.key}" ${currentKey === c.key ? 'checked' : ''}>
+          ${c.label}
+        </label>`
+      ).join('');
+
+      return `<div class="row carrierMapRow" style="display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
+        <span style="flex:1; min-width:160px; font-size:13px;">${raw} <span style="color:var(--muted);">(${count})</span></span>
+        <span style="display:flex; gap:10px; flex-wrap:wrap;">${checkboxesHtml}</span>
+      </div>`;
+    }).join('');
+
+    els.carrierMappingList.querySelectorAll('.carrierMapCheckbox').forEach(cb=>{
+      cb.addEventListener('change', ()=>{
+        const rawKey = cb.dataset.raw;
+        const carrierKey = cb.dataset.carrier;
+        if(cb.checked){
+          draftCarrierMapping[rawKey] = carrierKey;
+          cb.closest('.carrierMapRow').querySelectorAll('.carrierMapCheckbox').forEach(other=>{
+            if(other !== cb) other.checked = false;
+          });
+        }else{
+          delete draftCarrierMapping[rawKey];
+        }
+      });
+    });
+  }
+
+  function escapeHtmlAttr(v){
+    return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function openCarrierMappingModal(){
+    draftCarrierMapping = { ...carrierMapping };
+    renderCarrierMappingList();
+    els.carrierMappingModalBg.style.display = 'block';
+  }
+
+  function closeCarrierMappingModal(){
+    els.carrierMappingModalBg.style.display = 'none';
+  }
+
+  els.carrierMappingBtn.addEventListener('click', openCarrierMappingModal);
+  els.carrierMappingCancelBtn.addEventListener('click', closeCarrierMappingModal);
+  els.carrierMappingModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.carrierMappingModalBg) closeCarrierMappingModal();
+  });
+  els.carrierMappingSaveBtn.addEventListener('click', ()=>{
+    saveCarrierMapping({ ...draftCarrierMapping });
+    updateCarrierTracking();
+    closeCarrierMappingModal();
+  });
 
   function getActiveGroup(){
     return carrierGroups.find(g => g.key === activeCarrierKey) || carrierGroups[0] || null;

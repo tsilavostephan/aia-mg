@@ -50,7 +50,10 @@
 <fieldset id="carrierSection" style="display:none;">
   <h2 class="section-title">
     <span>2. Détection du LastMile Tracking Number</span>
-    <button type="button" id="scrapeAllBtn" class="secondary">Tout récupérer</button>
+    <span style="display:flex; gap:8px;">
+      <button type="button" id="carrierMappingBtn" class="secondary" title="Associer manuellement les valeurs de transporteur">⚙ Transporteurs</button>
+      <button type="button" id="scrapeAllBtn" class="secondary">Tout récupérer</button>
+    </span>
   </h2>
   <div id="scrapeAllProgressWrap" style="display:none; margin:6px 0;">
     <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
@@ -121,6 +124,22 @@
     <div id="packageQrCode" class="package-qr"></div>
     <div class="actions" style="margin-top:16px;">
       <button id="closePackageModalBtn" class="secondary">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div id="carrierMappingModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box modal-box-wide">
+    <h2 class="modal-title">Options des transporteurs</h2>
+    <p class="modal-subtext">
+      Liste des valeurs de transporteur trouvées dans la base de données. Cochez le transporteur
+      connu auquel associer chaque valeur (utile quand l'orthographe exacte dans vos CSV ne
+      correspond pas automatiquement à un transporteur pris en charge).
+    </p>
+    <div id="carrierMappingList"></div>
+    <div class="actions">
+      <button id="carrierMappingSaveBtn">Sauvegarder</button>
+      <button id="carrierMappingCancelBtn" class="secondary">Annuler</button>
     </div>
   </div>
 </div>

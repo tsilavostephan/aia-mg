@@ -197,9 +197,12 @@
       id: 'laposte', label: 'La Poste', enabled: true,
       rules: [
         // Code-barres de 32 caractères encadré par % ... ^ (ex. "%000000088000234424817600250A18^").
-        // Découpage en 2 étapes : on garde les 21 premiers caractères, puis dans ce résultat on
-        // garde à partir de la position 9 (13 caractères au final).
-        { length: 32, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'twoStepCut', cut1: 21, cut2: 9 }
+        // Certains scans ajoutent des caractères après le "^" de fin (ex.
+        // "%000000087001431047100601250A10^26646bc") — runSearchAlgorithm() tronque automatiquement
+        // à la première occurrence de endsWith avant d'appliquer les règles ci-dessous.
+        // Découpage en 2 étapes : on garde les 22 premiers caractères, puis dans ce résultat on
+        // garde à partir de la position 9 (14 caractères au final).
+        { length: 32, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'twoStepCut', cut1: 22, cut2: 9 }
       ]
     },
     {
@@ -290,8 +293,16 @@
     if(!algo.enabled) return null;
     const clean = String(raw || '').replace(/\s+/g, '');
     for(const rule of (algo.rules || [])){
-      if(!ruleConditionsMatch(clean, rule)) continue;
-      const result = applyExtraction(clean, rule);
+      // Certains scans ajoutent des caractères parasites après le marqueur de fin attendu (ex. La
+      // Poste : "...250A10^26646bc" au lieu de "...250A10^") — si la règle précise un endsWith, on
+      // tronque d'abord à sa première occurrence avant de vérifier la longueur/le contenu.
+      let candidate = clean;
+      if(rule.endsWith){
+        const idx = candidate.indexOf(rule.endsWith);
+        if(idx !== -1) candidate = candidate.slice(0, idx + rule.endsWith.length);
+      }
+      if(!ruleConditionsMatch(candidate, rule)) continue;
+      const result = applyExtraction(candidate, rule);
       if(result) return result;
     }
     return null;

@@ -1033,6 +1033,17 @@
   // ne correspondent à aucune entrée exacte (variantes d'orthographe, etc.), sans toucher au code.
   const CARRIER_MAPPING_KEY = 'commandes-carrier-mapping';
 
+  // Valeurs brutes de transporteur à rattacher à GOFO par défaut (tant que l'utilisateur n'a pas
+  // explicitement choisi une autre association pour cette valeur via la fenêtre "⚙ Transporteurs") —
+  // ces transporteurs "dernier kilométrique" sont en réalité tous gérés via GOFO.
+  const DEFAULT_CARRIER_MAPPING = Object.fromEntries([
+    'Yun Express','Asendia','China Post','SF Express','Shanghai Shouwu','BRT','Spring','Seur','YDH',
+    'JS Express','WanbExpress','SFC','Evri','LANDMARK','Topyou','Whistl','ATPOST','ShipGlobal',
+    'The Delivery Group','CNE','Exapaq','GlobalPost','TNT','Raben Group','APC Postal Logistics','MHI',
+    'Self Delivery','Standard delivery','Std FR Dom_2','Deutsche Post Brief','Standard','Briefpost',
+    'Sendcloud','17FEIA','CTT','GOFO','Correos','Sunyou','Cainiao',
+  ].map(v => [v.toUpperCase(), 'gofo']));
+
   function loadCarrierMapping(){
     try{
       const raw = localStorage.getItem(CARRIER_MAPPING_KEY);
@@ -1054,6 +1065,7 @@
     if(!raw) return null;
     const rawKey = raw.toUpperCase();
     if(carrierMapping[rawKey]) return carrierMapping[rawKey];
+    if(DEFAULT_CARRIER_MAPPING[rawKey]) return DEFAULT_CARRIER_MAPPING[rawKey];
 
     const normalized = normCarrierName(raw);
     const found = CARRIERS.find(c => c.match.includes(normalized));
@@ -1100,6 +1112,7 @@
       const rawKey = raw.toUpperCase();
       const count = database.filter(r => String(r.transporteur || '').trim() === raw).length;
       const currentKey = draftCarrierMapping[rawKey]
+        || DEFAULT_CARRIER_MAPPING[rawKey]
         || (CARRIERS.find(c => c.match.includes(normCarrierName(raw))) || {}).key
         || '';
 

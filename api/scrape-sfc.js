@@ -134,12 +134,35 @@ module.exports = async function handler(req, res) {
           })).asElement();
         }
         clickDebug.latestStatusBtnFound = !!latestStatusHandle;
+        clickDebug.copyBtnHTML = copyBtnHandle
+          ? await copyBtnHandle.evaluate(el => el.outerHTML).then(h => h.slice(0, 500)).catch(() => null)
+          : null;
+        clickDebug.latestStatusHTML = latestStatusHandle
+          ? await latestStatusHandle.evaluate(el => el.outerHTML).then(h => h.slice(0, 500)).catch(() => null)
+          : null;
+        clickDebug.latestStatusParentHTML = latestStatusHandle
+          ? await latestStatusHandle.evaluate(el => el.parentElement ? el.parentElement.outerHTML : null).then(h => h ? h.slice(0, 1000) : null).catch(() => null)
+          : null;
 
         if (latestStatusHandle) {
+          // Vérifie qu'aucun autre élément (bannière, overlay) ne recouvre le bouton aux
+          // coordonnées où Puppeteer va cliquer (cf. le même souci rencontré sur Yun Express).
+          clickDebug.latestStatusObscuringElement = await latestStatusHandle.evaluate(el => {
+            const rect = el.getBoundingClientRect();
+            const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            if (!top) return null;
+            if (top === el || el.contains(top)) return null;
+            return { tag: top.tagName, className: typeof top.className === 'string' ? top.className : '' };
+          }).catch(() => null);
+
           const clickAndRead = async () => {
             await latestStatusHandle.hover().catch(() => {});
             await new Promise(r => setTimeout(r, clickWaitMs));
             await latestStatusHandle.click().catch(() => {});
+            await new Promise(r => setTimeout(r, clickWaitMs));
+            // Repli : déclenche aussi un clic natif direct (bypass des coordonnées CDP) au cas où
+            // un élément recouvrant intercepterait le clic réel.
+            await latestStatusHandle.evaluate(el => el.click()).catch(() => {});
             await new Promise(r => setTimeout(r, clickWaitMs));
             return page.evaluate(() =>
               navigator.clipboard.readText().then(t => ({ ok: true, value: t })).catch(e => ({ ok: false, error: e && e.message }))

@@ -110,28 +110,29 @@ module.exports = async function handler(req, res) {
         await copyBtnHandle.click().catch(() => {});
         await new Promise(r => setTimeout(r, clickWaitMs));
 
-        let latestStatusHandle = (await page.evaluateHandle(() => {
+        // ⚠️ Un match par texte sur de larges conteneurs (div, li, ...) remonte aussi le textContent
+        // de TOUS leurs descendants — un grand <div class="page-right"> englobant contient forcément
+        // le texte "Copy the Latest Status" quelque part et matchait avant d'atteindre le vrai <span>.
+        // On cible donc l'attribut onclick exact d'abord, et en dernier recours seulement les
+        // éléments "feuilles" (sans enfant élément) pour le match par texte.
+        const findLatestStatus = () => page.evaluateHandle(() => {
+          const byOnclick = document.querySelector('[onclick*="copyOperate(\'newest\')"]');
+          if (byOnclick) return byOnclick;
+          const byClass = document.querySelector('span.newest-button.copy-button');
+          if (byClass) return byClass;
           const norm = (t) => (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          const candidates = Array.from(document.querySelectorAll('span, div, a, li'));
-          return candidates.find(el => el.offsetParent !== null && (
-            /copy the latest status/i.test(norm(el.textContent)) ||
-            (el.getAttribute('onclick') || '').includes("copyOperate('newest')")
-          )) || null;
-        })).asElement();
+          const leaves = Array.from(document.querySelectorAll('span, div, a, li')).filter(el => el.children.length === 0);
+          return leaves.find(el => el.offsetParent !== null && /copy the latest status/i.test(norm(el.textContent))) || null;
+        }).then(h => h.asElement());
+
+        let latestStatusHandle = await findLatestStatus();
 
         if (!latestStatusHandle) {
           // Repli : le menu peut nécessiter un vrai clic natif plutôt qu'un clic via coordonnées
           // (cf. le même problème rencontré sur le dropdown Yun Express).
           await copyBtnHandle.evaluate(el => el.click()).catch(() => {});
           await new Promise(r => setTimeout(r, clickWaitMs));
-          latestStatusHandle = (await page.evaluateHandle(() => {
-            const norm = (t) => (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            const candidates = Array.from(document.querySelectorAll('span, div, a, li'));
-            return candidates.find(el => el.offsetParent !== null && (
-              /copy the latest status/i.test(norm(el.textContent)) ||
-              (el.getAttribute('onclick') || '').includes("copyOperate('newest')")
-            )) || null;
-          })).asElement();
+          latestStatusHandle = await findLatestStatus();
         }
         clickDebug.latestStatusBtnFound = !!latestStatusHandle;
         clickDebug.copyBtnHTML = copyBtnHandle

@@ -1005,6 +1005,8 @@
     { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
+    { key:'gofo',       label:'GOFO',       match:['GOFO'],                    baseUrl:'https://www.gofo.com/fr/tracking-results/?id=',      kmColIndex:1, mode:'url', numsSeparator:' ', urlEncodeNums:true,
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.' },
   ];
   const CHUNK_SIZE = 99;
 

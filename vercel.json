@@ -20,9 +20,8 @@
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"
     },
-    "api/scrape-sfexpress.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
+    "api/track-17track.js": {
+      "maxDuration": 30
     }
   }
 }

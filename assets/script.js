@@ -1006,7 +1006,7 @@
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
     { key:'sfexpress',  label:'SF Express', match:['SF EXPRESS','SFEXPRESS'],  baseUrl:'https://t.17track.net/fr#nums=',                      kmColIndex:1, mode:'url',
-      scrapeEndpoint: '/api/scrape-sfexpress', disableManualImport:true },
+      scrapeEndpoint: '/api/track-17track', scrapeButtonLabel: 'Récupérer via API 17track', disableManualImport:true },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1447,7 +1447,7 @@
       ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
           <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique par scraping automatique</label>
           <div class="actions">
-            <button id="carrierScrapeBtn" type="button" ${scrapeProgress ? 'disabled' : ''}>${scrapeProgress ? 'Scraping en cours…' : 'Scrapping (Vercel)'}</button>
+            <button id="carrierScrapeBtn" type="button" ${scrapeProgress ? 'disabled' : ''}>${scrapeProgress ? 'Récupération en cours…' : (g.scrapeButtonLabel || 'Scrapping (Vercel)')}</button>
             <button id="carrierScrapeConfigBtn" type="button" class="secondary" ${scrapeProgress ? 'disabled' : ''}>⚙ Config Scraping</button>
           </div>
           ${scrapeProgressHtml}

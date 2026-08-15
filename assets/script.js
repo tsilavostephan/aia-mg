@@ -1123,8 +1123,7 @@
   let carrierIncludeUnresolved = loadCarrierIncludeUnresolved();
 
   function carrierIncludesUnresolved(key){
-    if(Object.prototype.hasOwnProperty.call(carrierIncludeUnresolved, key)) return !!carrierIncludeUnresolved[key];
-    return key === 'gofo'; // activé par défaut uniquement pour GOFO tant que l'utilisateur ne choisit pas autrement
+    return !!carrierIncludeUnresolved[key]; // décoché par défaut pour tous les transporteurs, y compris GOFO
   }
 
   // Prédicat unique décidant si une commande appartient au groupe d'un transporteur donné —

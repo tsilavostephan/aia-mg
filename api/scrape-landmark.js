@@ -69,8 +69,16 @@ module.exports = async function handler(req, res) {
       return out;
     });
 
+    // La page affiche le numéro LTN "de base" (ex. "LTN473434883"), sans le suffixe que la base de
+    // données conserve (ex. "LTN473434883N1") — on retrouve donc le numéro d'origine tel qu'envoyé
+    // en entrée (celui qui correspond réellement à la commande en base) plutôt que la version
+    // tronquée affichée par le site.
     const results = rawResults
-      .map(r => ({ trackingNumber: cleanNumSuivi(r.trackingNumber), lastKm: cleanNumSuivi(r.lastKm) }))
+      .map(r => {
+        const scraped = cleanNumSuivi(r.trackingNumber);
+        const original = trackingNumbers.find(n => cleanNumSuivi(n).startsWith(scraped)) || scraped;
+        return { trackingNumber: cleanNumSuivi(original), lastKm: cleanNumSuivi(r.lastKm) };
+      })
       .filter(r => r.trackingNumber);
 
     const debug = {};

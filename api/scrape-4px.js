@@ -132,7 +132,7 @@ module.exports = async function handler(req, res) {
       // avec des noms de classe générés (CSS Modules, ex. "MailNoList--iconWrapper--3jldZ43") dont
       // le suffixe haché peut changer d'un déploiement à l'autre — on cible donc le préfixe stable
       // via [class*=...] et l'attribut aria-haspopup, plus stable que le nom de classe.
-      const iconSelector = '[aria-haspopup="true"][class*="MailNoList"], [class*="MailNoList--iconWrapper"], [class*="copySingle"], [class*="CopyOverview"], [class*="copyOverview"]';
+      const iconSelector = '[aria-haspopup="true"][class*="MailNoList"], [class*="MailNoList--iconWrapper"], [class*="copySingle"], [class*="CopyOverview"], [class*="copyOverview"], [class*="copyWrapper"] [aria-haspopup], [class*="copyWrapper"] span, [class*="copyWrapper"]';
       await page.waitForSelector(iconSelector, { timeout: 15000 }).catch(() => {});
 
       const iconHandle = await page.$(iconSelector);
@@ -210,6 +210,11 @@ module.exports = async function handler(req, res) {
           .slice(0, 40)
           .map(describe);
 
+        // Dump complet (non tronqué) du conteneur "copyWrapper" situé juste après "Selected：38" —
+        // c'est probablement là que se trouve le vrai bouton "Copy Overview" du premier repérage.
+        const copyWrapperEl = document.querySelector('[class*="copyWrapper"]');
+        const copyWrapperHTML = copyWrapperEl ? copyWrapperEl.outerHTML : null;
+
         return {
           pageTitle: document.title,
           bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1000),
@@ -217,6 +222,7 @@ module.exports = async function handler(req, res) {
           rowCount: document.querySelectorAll('table tr').length,
           haspopupElements,
           candidateElements: candidates,
+          copyWrapperHTML,
         };
       });
     }

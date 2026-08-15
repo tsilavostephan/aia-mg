@@ -129,19 +129,26 @@ module.exports = async function handler(req, res) {
       const context = browser.defaultBrowserContext();
       await context.overridePermissions('https://track.cainiao.com', ['clipboard-read', 'clipboard-write']);
 
-      // L'icône "Copy Overview" confirmée est <span class="... MailNoList--copySingle--xxx"
-      // aria-haspopup="true">. Le conteneur "copyWrapper" contient deux icônes similaires : on cible
-      // donc précisément "copySingle" en priorité (celle confirmée), avec un repli plus large
-      // uniquement si elle n'est pas trouvée.
-      const iconSelector = '[class*="copySingle"], [class*="CopyOverview"], [class*="copyOverview"], [class*="copyWrapper"] [aria-haspopup="true"], [class*="copyWrapper"] span';
-      await page.waitForSelector(iconSelector, { timeout: 15000 }).catch(() => {});
+      // Le conteneur "copyWrapper" contient DEUX icônes identiques en apparence
+      // (span.MailNoList--iconWrapper--xxx, aria-haspopup="true") :
+      //   1) la première (sans autre classe) = "Copy Overview" (tous les colis) — celle qu'il nous faut
+      //   2) la seconde (avec en plus la classe "copySingle") = copie un seul colis (celle qu'on
+      //      ciblait par erreur auparavant, d'où un résultat à une seule ligne au lieu du tableau complet)
+      // On prend donc explicitement la première <span aria-haspopup="true"> du wrapper qui N'A PAS
+      // la classe "copySingle", plutôt qu'un sélecteur CSS ambigu entre les deux icônes.
+      await page.waitForSelector('[class*="copyWrapper"] span[aria-haspopup="true"]', { timeout: 15000 }).catch(() => {});
 
       // Vercel/headless Chrome : la page doit être au premier plan et avoir le focus pour que
       // l'API Clipboard fonctionne (navigator.clipboard.readText() échoue silencieusement sinon).
       await page.bringToFront();
       await page.evaluate(() => window.focus());
 
-      const iconHandle = await page.$(iconSelector);
+      const iconHandle = (await page.evaluateHandle(() => {
+        const wrapper = document.querySelector('[class*="copyWrapper"]');
+        if (!wrapper) return null;
+        const spans = Array.from(wrapper.querySelectorAll('span[aria-haspopup="true"]'));
+        return spans.find(s => !/copySingle/i.test(s.className)) || spans[0] || null;
+      })).asElement();
       clickDebug.iconFound = !!iconHandle;
       if (iconHandle) {
         // Beaucoup de composants d'icône React n'affichent leur action qu'au survol réel

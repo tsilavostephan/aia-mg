@@ -56,6 +56,9 @@
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok) {
+        // Gardé uniquement en sessionStorage (jamais envoyé ailleurs, jamais persisté) : sert de
+        // code pour déchiffrer la base de commandes côté application, voir assets/script.js.
+        try { sessionStorage.setItem('aia_passphrase', code); } catch (err) { /* stockage indisponible */ }
         window.location.href = '/';
         return;
       }

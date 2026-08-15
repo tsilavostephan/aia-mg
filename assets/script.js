@@ -88,6 +88,72 @@
   let selectedFiles = [];
   let database = []; // { numCommande, commandeAmazon, qteCommande, numSuivi, qteExpedie, nom, transporteur, numDernierKm }
 
+  // ---------- chiffrement de la base de commandes (protection en cas de vol du stockage local) ----------
+  // La base est chiffrée en AES-256-GCM avant d'être écrite dans localStorage. La clé est dérivée
+  // (PBKDF2) d'un code saisi une fois par session (gardé uniquement en sessionStorage, jamais
+  // persisté ni envoyé au serveur) — après une fermeture complète du navigateur, ce code doit être
+  // ressaisi pour déchiffrer les données ; un simple rechargement de page ne redemande rien tant que
+  // l'onglet reste ouvert. Ainsi, même avec le cookie de connexion (valable 30 jours) encore actif
+  // sur un appareil, les données de commandes restent illisibles sans ce code.
+  const DB_SALT_KEY = 'commandes-db-salt';
+  const PASSPHRASE_SESSION_KEY = 'aia_passphrase';
+  let dbUnlocked = false; // false tant que la base n'a pas été déchiffrée/initialisée avec succès
+
+  function bytesToB64(bytes){
+    let bin = '';
+    bytes.forEach(b => { bin += String.fromCharCode(b); });
+    return btoa(bin);
+  }
+  function b64ToBytes(b64){
+    return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  }
+
+  function getOrCreateSalt(){
+    let saltB64 = localStorage.getItem(DB_SALT_KEY);
+    if(!saltB64){
+      saltB64 = bytesToB64(crypto.getRandomValues(new Uint8Array(16)));
+      localStorage.setItem(DB_SALT_KEY, saltB64);
+    }
+    return b64ToBytes(saltB64);
+  }
+
+  async function deriveDbKey(passphrase){
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name:'PBKDF2', salt: getOrCreateSalt(), iterations: 100000, hash:'SHA-256' },
+      baseKey,
+      { name:'AES-GCM', length:256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async function encryptWithKey(key, plainText){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cipherBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, new TextEncoder().encode(plainText));
+    return { iv: bytesToB64(iv), data: bytesToB64(new Uint8Array(cipherBuf)) };
+  }
+
+  async function decryptWithKey(key, payload){
+    const plainBuf = await crypto.subtle.decrypt(
+      { name:'AES-GCM', iv: b64ToBytes(payload.iv) },
+      key,
+      b64ToBytes(payload.data)
+    );
+    return new TextDecoder().decode(plainBuf);
+  }
+
+  // Demande le code une seule fois par session (sessionStorage) ; sinon l'invite via une simple
+  // boîte de dialogue native (pas besoin d'une interface dédiée pour ce garde-fou).
+  async function getDbPassphrase(promptMessage){
+    let pass = sessionStorage.getItem(PASSPHRASE_SESSION_KEY);
+    if(pass) return pass;
+    pass = window.prompt(promptMessage || "Entrez le code d'accès pour déverrouiller les données de l'application :");
+    if(pass) sessionStorage.setItem(PASSPHRASE_SESSION_KEY, pass);
+    return pass || '';
+  }
+
   // ---------- parseur CSV maison (aucune librairie externe) ----------
   function parseCSV(text){
     const rows = [];
@@ -666,19 +732,71 @@
   // Remarque : window.storage n'existe que dans l'aperçu Artifacts de Claude.ai — sur un vrai
   // navigateur (Chrome Android, Safari, etc.) il n'existe pas, ce qui provoquait un plantage au
   // démarrage. On utilise donc localStorage, disponible partout.
-  function loadDatabase(){
+  async function loadDatabase(){
     try{
       const raw = localStorage.getItem(STORAGE_KEY);
-      database = raw ? JSON.parse(raw) : [];
+      if(!raw){
+        database = [];
+        dbUnlocked = true;
+        render();
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+
+      if(Array.isArray(parsed)){
+        // Ancienne base non chiffrée (avant l'ajout du chiffrement) : on la charge telle quelle,
+        // puis on la migre silencieusement vers le format chiffré dès qu'un code est disponible.
+        database = parsed;
+        dbUnlocked = true;
+        render();
+        await saveDatabase();
+        return;
+      }
+
+      // Format chiffré { iv, data } : jusqu'à 3 tentatives, le code faisant l'objet d'un mauvais
+      // saisie ne doit surtout pas écraser la base existante (voir garde dbUnlocked dans saveDatabase).
+      for(let attempt = 1; attempt <= 3; attempt++){
+        const passphrase = await getDbPassphrase(
+          attempt === 1
+            ? "Entrez le code d'accès pour déverrouiller les données de l'application :"
+            : `Code incorrect (tentative ${attempt}/3). Réessayez :`
+        );
+        if(!passphrase){ break; }
+        try{
+          const key = await deriveDbKey(passphrase);
+          const json = await decryptWithKey(key, parsed);
+          database = JSON.parse(json);
+          dbUnlocked = true;
+          break;
+        }catch(e){
+          sessionStorage.removeItem(PASSPHRASE_SESSION_KEY); // le code saisi était faux, on ne le garde pas en cache
+        }
+      }
+
+      if(!dbUnlocked){
+        logLine('Base de données verrouillée : code incorrect ou saisie annulée. Rechargez la page pour réessayer.', true);
+        database = [];
+      }
     }catch(e){
       database = [];
+      logLine('Erreur lors de la lecture de la base de données.', true);
     }
     render();
   }
 
-  function saveDatabase(){
+  async function saveDatabase(){
+    if(!dbUnlocked){
+      // La base n'a pas été déchiffrée avec succès (code incorrect/annulé) : on refuse d'écrire pour
+      // ne jamais écraser les données existantes avec une base vide ou mal déchiffrée.
+      logLine('Sauvegarde ignorée : la base de données est verrouillée.', true);
+      return;
+    }
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(database));
+      const passphrase = await getDbPassphrase();
+      const key = await deriveDbKey(passphrase);
+      const payload = await encryptWithKey(key, JSON.stringify(database));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     }catch(e){
       logLine('Erreur lors de la sauvegarde de la base de données.', true);
     }
@@ -2116,6 +2234,11 @@
     els.focusDbBtn.textContent = active ? '✕' : '⛶';
     els.focusDbBtn.title = active ? 'Quitter le mode plein écran' : 'Afficher uniquement cette section';
   });
+
+  // Oublie le code de déchiffrement en mémoire de session à la déconnexion explicite — il faudra le
+  // ressaisir à la prochaine connexion, même si le navigateur reste ouvert.
+  const logoutBtnEl = document.getElementById('logoutBtn');
+  if(logoutBtnEl) logoutBtnEl.addEventListener('click', ()=>{ sessionStorage.removeItem(PASSPHRASE_SESSION_KEY); });
 
   // ---------- export / import JSON ----------
   let dbLogTimer = null;

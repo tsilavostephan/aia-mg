@@ -63,16 +63,24 @@ module.exports = async function handler(req, res) {
       })).asElement();
       clickDebug.dropdownBtnFound = !!dropdownBtnHandle;
 
+      const findVisibleMenuItem = async () => (await page.evaluateHandle(() => {
+        const norm = (t) => (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const candidates = Array.from(document.querySelectorAll('li, .el-dropdown-menu__item, [role="menuitem"]'));
+        return candidates.find(el => el.offsetParent !== null && /copy\s*summary/i.test(norm(el.textContent))) || null;
+      })).asElement();
+
       if (dropdownBtnHandle) {
-        // Le menu déroulant element-ui s'ouvre au survol réel (pas au clic synthétique).
+        // Confirmé par capture DevTools + diagnostic : malgré son apparence de menu element-ui,
+        // ce dropdown "el-dropdown-selfdefine" ne s'ouvre pas au simple survol — il faut un vrai clic.
         await dropdownBtnHandle.hover().catch(() => {});
         await new Promise(r => setTimeout(r, clickWaitMs));
+        let menuItemHandle = await findVisibleMenuItem();
 
-        const menuItemHandle = (await page.evaluateHandle(() => {
-          const norm = (t) => (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          const candidates = Array.from(document.querySelectorAll('li, .el-dropdown-menu__item, [role="menuitem"]'));
-          return candidates.find(el => el.offsetParent !== null && /copy\s*summary/i.test(norm(el.textContent))) || null;
-        })).asElement();
+        if (!menuItemHandle) {
+          await dropdownBtnHandle.click().catch(() => {});
+          await new Promise(r => setTimeout(r, clickWaitMs));
+          menuItemHandle = await findVisibleMenuItem();
+        }
         clickDebug.menuItemFound = !!menuItemHandle;
 
         if (menuItemHandle) {

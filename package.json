@@ -1,8 +1,14 @@
 {
   "name": "aia-e",
   "private": true,
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs"
+  },
   "dependencies": {
-    "@sparticuz/chromium": "^123.0.1",
+    "@sparticuz/chromium-min": "^123.0.1",
     "puppeteer-core": "^22.8.2"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^123.0.1"
   }
 }

@@ -14,9 +14,33 @@
 // ⚠️ Non vérifié en conditions réelles (pas de navigateur disponible pour tester dans cet
 // environnement) : le nom du bouton, le délai de rendu et le repli DOM ci-dessous sont une
 // estimation raisonnable à ajuster une fois testés sur un vrai déploiement Vercel.
-
-const chromium = require('@sparticuz/chromium');
+//
+// Chromium : on utilise @sparticuz/chromium-min, qui télécharge le binaire Chromium à l'exécution
+// depuis une URL plutôt que de l'embarquer dans la fonction. Ce binaire (chromium-pack.tar) est
+// construit pendant le build Vercel lui-même par scripts/postinstall.mjs (à partir de la
+// devDependency @sparticuz/chromium) et servi en statique depuis /assets/chromium-pack.tar — cette
+// approche (recommandée par le guide officiel Vercel pour Puppeteer) évite les incompatibilités de
+// bibliothèques partagées du type "libnss3.so: cannot open shared object file" qu'on peut
+// rencontrer en embarquant directement le binaire de @sparticuz/chromium dans la fonction.
 const puppeteer = require('puppeteer-core');
+
+let cachedExecutablePath = null;
+let downloadPromise = null;
+
+// Télécharge (une seule fois par instance de fonction, puis mis en cache) l'exécutable Chromium
+// depuis le tar hébergé sur le même déploiement que cette fonction.
+async function getChromiumExecutablePath(packUrl) {
+  if (cachedExecutablePath) return cachedExecutablePath;
+  if (!downloadPromise) {
+    downloadPromise = (async () => {
+      const chromium = (await import('@sparticuz/chromium-min')).default;
+      const execPath = await chromium.executablePath(packUrl);
+      cachedExecutablePath = execPath;
+      return execPath;
+    })().catch((e) => { downloadPromise = null; throw e; });
+  }
+  return downloadPromise;
+}
 
 // Nettoie une valeur comme cleanNumSuivi() dans assets/script.js (retire =, ", ', \, trim)
 function cleanNumSuivi(v) {
@@ -75,13 +99,21 @@ module.exports = async function handler(req, res) {
 
   const url = `https://track.cainiao.com/orderTrack?mailNoList=${encodeURIComponent(trackingNumbers.join(','))}`;
 
+  // URL du binaire Chromium empaqueté, hébergé sur ce même déploiement (voir scripts/postinstall.mjs)
+  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
+  const forwardedProto = req.headers['x-forwarded-proto'] || 'https';
+  const packUrl = `${forwardedProto}://${forwardedHost}/assets/chromium-pack.tar`;
+
   let browser;
   try {
+    const chromium = (await import('@sparticuz/chromium-min')).default;
+    const executablePath = await getChromiumExecutablePath(packUrl);
+
     browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      executablePath,
+      headless: true,
     });
 
     const page = await browser.newPage();
@@ -156,6 +188,10 @@ module.exports = async function handler(req, res) {
     res.status(200).json({ results, usedOverviewButton: !!overviewText });
   } catch (e) {
     if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
-    res.status(502).json({ error: e && e.message ? e.message : 'échec du scraping 4PX' });
+    const message = e && e.message ? e.message : 'échec du scraping 4PX';
+    res.status(502).json({
+      error: message,
+      chromiumPackUrl: packUrl, // utile pour vérifier manuellement que le tar est bien accessible
+    });
   }
 };

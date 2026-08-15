@@ -122,27 +122,34 @@ module.exports = async function handler(req, res) {
     await new Promise(r => setTimeout(r, 4000));
 
     let overviewText = null;
+    const clickDebug = { iconFound: false, clipboardResult: null };
     try {
       // Autorise la lecture/écriture du presse-papier headless avant d'interagir (nécessaire pour
       // que navigator.clipboard.readText() fonctionne une fois le bouton actionné).
       const context = browser.defaultBrowserContext();
       await context.overridePermissions('https://track.cainiao.com', ['clipboard-read', 'clipboard-write']);
 
-      // L'icône "Copy Overview" est un <span aria-haspopup="true"> sans texte (juste une image),
-      // avec des noms de classe générés (CSS Modules, ex. "MailNoList--iconWrapper--3jldZ43") dont
-      // le suffixe haché peut changer d'un déploiement à l'autre — on cible donc le préfixe stable
-      // via [class*=...] et l'attribut aria-haspopup, plus stable que le nom de classe.
-      const iconSelector = '[aria-haspopup="true"][class*="MailNoList"], [class*="MailNoList--iconWrapper"], [class*="copySingle"], [class*="CopyOverview"], [class*="copyOverview"], [class*="copyWrapper"] [aria-haspopup], [class*="copyWrapper"] span, [class*="copyWrapper"]';
+      // L'icône "Copy Overview" confirmée est <span class="... MailNoList--copySingle--xxx"
+      // aria-haspopup="true">. Le conteneur "copyWrapper" contient deux icônes similaires : on cible
+      // donc précisément "copySingle" en priorité (celle confirmée), avec un repli plus large
+      // uniquement si elle n'est pas trouvée.
+      const iconSelector = '[class*="copySingle"], [class*="CopyOverview"], [class*="copyOverview"], [class*="copyWrapper"] [aria-haspopup="true"], [class*="copyWrapper"] span';
       await page.waitForSelector(iconSelector, { timeout: 15000 }).catch(() => {});
 
+      // Vercel/headless Chrome : la page doit être au premier plan et avoir le focus pour que
+      // l'API Clipboard fonctionne (navigator.clipboard.readText() échoue silencieusement sinon).
+      await page.bringToFront();
+      await page.evaluate(() => window.focus());
+
       const iconHandle = await page.$(iconSelector);
+      clickDebug.iconFound = !!iconHandle;
       if (iconHandle) {
         // Beaucoup de composants d'icône React n'affichent leur action qu'au survol réel
         // (onMouseEnter) — on simule donc un vrai survol souris avant de cliquer, plutôt qu'un
         // .click() synthétique via page.evaluate qui ne déclenche pas ces gestionnaires.
-        await page.hover(iconSelector).catch(() => {});
+        await iconHandle.hover().catch(() => {});
         await new Promise(r => setTimeout(r, 400));
-        await page.click(iconSelector).catch(() => {});
+        await iconHandle.click().catch(() => {});
         await new Promise(r => setTimeout(r, 600));
 
         // Si un menu/popup contenant un libellé "Copy Overview" est apparu, on le clique aussi ;
@@ -154,11 +161,14 @@ module.exports = async function handler(req, res) {
         });
         await new Promise(r => setTimeout(r, 500));
 
-        overviewText = await page.evaluate(() =>
-          navigator.clipboard.readText().catch(() => null)
+        const rawClipboard = await page.evaluate(() =>
+          navigator.clipboard.readText().then(t => ({ ok: true, value: t })).catch(e => ({ ok: false, error: e && e.message }))
         );
+        clickDebug.clipboardResult = rawClipboard;
+        overviewText = rawClipboard.ok ? rawClipboard.value : null;
       }
     } catch (e) {
+      clickDebug.error = e && e.message;
       overviewText = null;
     }
 
@@ -225,6 +235,7 @@ module.exports = async function handler(req, res) {
           copyWrapperHTML,
         };
       });
+      debug.clickDebug = clickDebug;
     }
 
     await browser.close();

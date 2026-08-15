@@ -45,13 +45,47 @@ module.exports = async function handler(req, res) {
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
     await new Promise(r => setTimeout(r, pageLoadWaitMs));
 
-    // La page affichée pré-remplit un champ avec les numéros collés dans l'URL ; on appuie sur
-    // Entrée pour lancer la recherche, ce qui charge la page de résultats.
-    await page.keyboard.press('Enter').catch(() => {});
-    await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 25000 }).catch(() => {
-      // Certaines recherches se font en Ajax sans navigation complète : on continue quand même,
-      // simplement en laissant un peu de temps supplémentaire au rendu ci-dessous.
-    });
+    // La page affichée pré-remplit un champ avec les numéros collés dans l'URL ; il faut appuyer
+    // sur Entrée pour lancer la recherche, ce qui charge la page de résultats. Mais une touche
+    // Entrée simulée n'a aucun effet si aucun élément n'a le focus — on clique donc d'abord dans le
+    // champ de saisie pré-rempli pour lui donner le focus.
+    const submitDebug = { inputFound: false, navigated: false };
+    try {
+      const inputHandle = (await page.evaluateHandle(() => {
+        const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"], input:not([type])'));
+        return candidates.find(el => el.offsetParent !== null) || candidates[0] || null;
+      })).asElement();
+      submitDebug.inputFound = !!inputHandle;
+
+      if (inputHandle) {
+        await inputHandle.click({ clickCount: 3 }).catch(() => {});
+        await new Promise(r => setTimeout(r, 200));
+      }
+      await page.keyboard.press('Enter').catch(() => {});
+
+      submitDebug.navigated = await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 })
+        .then(() => true)
+        .catch(() => false);
+
+      // Si aucune navigation n'a été détectée, on tente en repli de cliquer un bouton/icône de
+      // recherche visible (ex. la flèche bleue à droite du champ) au cas où Entrée seule ne suffise pas.
+      if (!submitDebug.navigated) {
+        submitDebug.searchBtnClicked = await page.evaluate(() => {
+          const btn = Array.from(document.querySelectorAll('button, a, svg, [role="button"]'))
+            .find(el => el.offsetParent !== null && (
+              el.tagName === 'BUTTON' || el.tagName === 'SVG' || /search|submit|arrow|query/i.test(el.className || '')
+            ));
+          if (btn) { btn.click(); return true; }
+          return false;
+        });
+        if (submitDebug.searchBtnClicked) {
+          await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {});
+        }
+      }
+    } catch (e) {
+      submitDebug.error = e && e.message;
+    }
+
     await new Promise(r => setTimeout(r, pageLoadWaitMs));
 
     let overviewText = null;
@@ -88,8 +122,9 @@ module.exports = async function handler(req, res) {
 
     const results = overviewText ? parseOverviewText(overviewText) : [];
 
-    // Diagnostic : toujours inclus, pour voir précisément ce que le clic a réellement copié.
-    const debug = { clickDebug, overviewTextPreview: overviewText ? overviewText.slice(0, 500) : null };
+    // Diagnostic : toujours inclus, pour voir précisément ce qui s'est passé (soumission de la
+    // recherche puis clic de copie).
+    const debug = { submitDebug, clickDebug, overviewTextPreview: overviewText ? overviewText.slice(0, 500) : null };
 
     if (!results || results.length === 0) {
       const domDebug = await page.evaluate(() => {

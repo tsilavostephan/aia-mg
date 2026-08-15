@@ -65,13 +65,21 @@ module.exports = async function handler(req, res) {
         submitDebug.navigated = await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 })
           .then(() => true)
           .catch(() => false);
+
+        // La recherche se fait en AJAX (pas de vraie navigation) : on attend que le réseau se
+        // stabilise (résultats chargés) plutôt qu'un simple délai fixe, qui s'est révélé trop court
+        // (le premier essai a copié un résultat vide car le tableau n'était pas encore rempli).
+        if (!submitDebug.navigated) {
+          submitDebug.networkIdleAfterSubmit = await page.waitForNetworkIdle({ idleTime: 800, timeout: 20000 })
+            .then(() => true)
+            .catch(() => false);
+        }
       }
     } catch (e) {
       submitDebug.error = e && e.message;
     }
 
-    // Que ce soit une vraie navigation ou une mise à jour AJAX de la même page, on laisse le temps
-    // aux résultats de se charger avant de continuer.
+    // Marge supplémentaire pour laisser le tableau de résultats finir de se rendre côté JS.
     await new Promise(r => setTimeout(r, pageLoadWaitMs));
 
     let overviewText = null;
@@ -128,17 +136,28 @@ module.exports = async function handler(req, res) {
         clickDebug.latestStatusBtnFound = !!latestStatusHandle;
 
         if (latestStatusHandle) {
-          await latestStatusHandle.hover().catch(() => {});
-          await new Promise(r => setTimeout(r, clickWaitMs));
-          await latestStatusHandle.click().catch(() => {});
-          await new Promise(r => setTimeout(r, clickWaitMs));
+          const clickAndRead = async () => {
+            await latestStatusHandle.hover().catch(() => {});
+            await new Promise(r => setTimeout(r, clickWaitMs));
+            await latestStatusHandle.click().catch(() => {});
+            await new Promise(r => setTimeout(r, clickWaitMs));
+            return page.evaluate(() =>
+              navigator.clipboard.readText().then(t => ({ ok: true, value: t })).catch(e => ({ ok: false, error: e && e.message }))
+            );
+          };
 
-          const rawClipboard = await page.evaluate(() =>
-            navigator.clipboard.readText().then(t => ({ ok: true, value: t })).catch(e => ({ ok: false, error: e && e.message }))
-          );
+          let rawClipboard = await clickAndRead();
+          // Le premier essai peut copier un résultat vide si le tableau n'a pas fini de se remplir
+          // au moment du clic : on réessaie une fois après un délai supplémentaire.
+          if (rawClipboard.ok && !rawClipboard.value.trim()) {
+            clickDebug.emptyOnFirstTry = true;
+            await new Promise(r => setTimeout(r, Math.max(pageLoadWaitMs, 3000)));
+            rawClipboard = await clickAndRead();
+          }
+
           clickDebug.clipboardResult = rawClipboard;
           clickDebug.clipboardUnchangedFromSentinel = rawClipboard.ok && rawClipboard.value === sentinel;
-          overviewText = rawClipboard.ok ? rawClipboard.value : null;
+          overviewText = (rawClipboard.ok && rawClipboard.value.trim()) ? rawClipboard.value : null;
         }
       }
     } catch (e) {

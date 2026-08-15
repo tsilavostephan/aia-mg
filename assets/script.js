@@ -1000,6 +1000,7 @@
   let activeCarrierKey = null;
   let pastedTextByCarrier = {};   // key -> texte collé (conservé lors du changement d'onglet)
   let importLogByCarrier = {};    // key -> { text, err }
+  let scrapeProgressByCarrier = {}; // key -> { done, total } pendant un scraping 4PX en cours, sinon absent
   let modalOpenUrl = '';          // URL à ouvrir via le bouton "Ouvrir" de la fenêtre modale
 
   function normCarrierName(v){
@@ -1252,6 +1253,7 @@
     const scrapeEndpoint = config.scrapeEndpoint || '/api/scrape-4px';
     const chunks = (g.chunks && g.chunks.length > 0) ? g.chunks : [g.nums];
 
+    scrapeProgressByCarrier[g.key] = { done: 0, total: chunks.length };
     importLogByCarrier[g.key] = {
       text: `Scraping 4PX (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités en parallèle` : '') + ` (peut prendre jusqu'à 30-60 secondes)…`,
       err: false
@@ -1259,23 +1261,34 @@
     renderCarrierPanel();
 
     const chunkOutcomes = await Promise.allSettled(chunks.map(async (chunk) => {
-      const res = await fetch(scrapeEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trackingNumbers: chunk,
-          pageLoadWaitMs: config.pageLoadWaitMs || 4000,
-          clickWaitMs: config.clickWaitMs || 600,
-        }),
-      });
-      const json = await res.json();
-      if(!res.ok) throw new Error(json && json.error ? json.error : `réponse HTTP ${res.status}`);
-      if(!Array.isArray(json.results) || json.results.length === 0){
-        const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
-        throw new Error(`aucun résultat exploitable (${debugText})`);
+      try{
+        const res = await fetch(scrapeEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trackingNumbers: chunk,
+            pageLoadWaitMs: config.pageLoadWaitMs || 4000,
+            clickWaitMs: config.clickWaitMs || 600,
+          }),
+        });
+        const json = await res.json();
+        if(!res.ok) throw new Error(json && json.error ? json.error : `réponse HTTP ${res.status}`);
+        if(!Array.isArray(json.results) || json.results.length === 0){
+          const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
+          throw new Error(`aucun résultat exploitable (${debugText})`);
+        }
+        return json.results;
+      }finally{
+        // Un lot vient de se terminer (succès ou échec) : on avance la barre de progression.
+        const progress = scrapeProgressByCarrier[g.key];
+        if(progress){
+          progress.done++;
+          renderCarrierPanel();
+        }
       }
-      return json.results;
     }));
+
+    scrapeProgressByCarrier[g.key] = null;
 
     const allResults = [];
     const chunkErrors = [];
@@ -1360,13 +1373,24 @@
       ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">${g.pasteHint}</p>`
       : '';
 
+    const scrapeProgress = g.key === '4px' ? scrapeProgressByCarrier[g.key] : null;
+    const scrapeProgressHtml = scrapeProgress
+      ? `<div style="margin-top:10px;">
+          <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
+            <div style="height:100%; width:${Math.round((scrapeProgress.done / scrapeProgress.total) * 100)}%; background:var(--primary); transition:width .3s ease;"></div>
+          </div>
+          <div style="font-size:12px; color:var(--muted); margin-top:4px;">${scrapeProgress.done} / ${scrapeProgress.total} lien(s) traité(s)</div>
+        </div>`
+      : '';
+
     const fourPxApiHtml = g.key === '4px'
       ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
           <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique par scraping automatique</label>
           <div class="actions">
-            <button id="fourPxScrapeBtn" type="button">Scrapping (Vercel)</button>
-            <button id="fourPxApiConfigBtn" type="button" class="secondary">⚙ Config Scraping 4PX</button>
+            <button id="fourPxScrapeBtn" type="button" ${scrapeProgress ? 'disabled' : ''}>${scrapeProgress ? 'Scraping en cours…' : 'Scrapping (Vercel)'}</button>
+            <button id="fourPxApiConfigBtn" type="button" class="secondary" ${scrapeProgress ? 'disabled' : ''}>⚙ Config Scraping 4PX</button>
           </div>
+          ${scrapeProgressHtml}
         </div>`
       : '';
 

@@ -993,7 +993,9 @@
     { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », appuyez sur Entrée puis cliquez sur le bouton de copie des résultats, et collez le texte copié ci-dessous.',
       scrapeEndpoint: '/api/scrape-yanwen' },
-    { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2, mode:'url' },
+    { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2, mode:'url',
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », survolez le bouton « Copy & Export » puis cliquez sur « Copy Summary » dans le menu, et collez le texte copié ci-dessous.',
+      scrapeEndpoint: '/api/scrape-yunexpress' },
     { key:'sfc',        label:'SFC',        match:['SFC'],                     baseUrl:'https://www.sendfromchina.com/track',                kmColIndex:2, mode:'clipboard', pasteHasHeader:true, matchColIndex:1 },
   ];
   const CHUNK_SIZE = 99;

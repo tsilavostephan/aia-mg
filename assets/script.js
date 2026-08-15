@@ -1127,14 +1127,21 @@
     return key === 'gofo'; // activé par défaut uniquement pour GOFO tant que l'utilisateur ne choisit pas autrement
   }
 
+  // Prédicat unique décidant si une commande appartient au groupe d'un transporteur donné —
+  // partagé entre le calcul des groupes (computeCarrierGroups) et le rattachement des résultats
+  // scrapés/collés (applyScrapedResultsToDb / handleImportPaste), pour rester cohérent : sinon les
+  // colis "non résolus" inclus dans un groupe (ex. GOFO) ne seraient jamais retrouvés au moment
+  // d'enregistrer le résultat du scraping.
+  function rowBelongsToCarrierGroup(r, c){
+    if(resolveCarrierKeysForRow(r).includes(c.key)) return true;
+    if(carrierIncludesUnresolved(c.key) && !String(r.numDernierKm || '').trim()) return true;
+    return false;
+  }
+
   function computeCarrierGroups(){
     return CARRIERS.map(c=>{
-      const matched = database.filter(r => resolveCarrierKeysForRow(r).includes(c.key));
-      const extra = carrierIncludesUnresolved(c.key)
-        ? database.filter(r => !resolveCarrierKeysForRow(r).includes(c.key) && !String(r.numDernierKm || '').trim())
-        : [];
       const nums = Array.from(new Set(
-        matched.concat(extra).map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
+        database.filter(r => rowBelongsToCarrierGroup(r, c)).map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
       ));
       return { ...c, nums, chunks: chunkArray(nums, CHUNK_SIZE) };
     }).filter(g => g.nums.length > 0);
@@ -1305,7 +1312,7 @@
 
     let matched = 0;
     database.forEach(r=>{
-      if(!g.match.includes(normCarrierName(r.transporteur))) return;
+      if(!rowBelongsToCarrierGroup(r, g)) return;
       const key = cleanNumSuivi(r.numSuivi);
       if(updateMap.has(key)){
         r.numDernierKm = updateMap.get(key);
@@ -1400,7 +1407,7 @@
 
     let matched = 0;
     database.forEach(r=>{
-      if(!g.match.includes(normCarrierName(r.transporteur))) return;
+      if(!rowBelongsToCarrierGroup(r, g)) return;
       const key = cleanNumSuivi(r.numSuivi);
       if(updateMap.has(key)){
         r.numDernierKm = updateMap.get(key);
@@ -1418,7 +1425,7 @@
       // espace insécable/zero-width venant du presse-papier) pour repérer un décalage d'encodage.
       const scrapedKeys = Array.from(updateMap.keys()).slice(0, 3).map(k => JSON.stringify(k));
       const dbKeys = database
-        .filter(r => g.match.includes(normCarrierName(r.transporteur)))
+        .filter(r => rowBelongsToCarrierGroup(r, g))
         .slice(0, 3)
         .map(r => JSON.stringify(cleanNumSuivi(r.numSuivi)));
       mismatchSample = ` Échantillon scrapé : ${scrapedKeys.join(', ')} — Échantillon base : ${dbKeys.join(', ')}`;

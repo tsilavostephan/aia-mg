@@ -1311,8 +1311,9 @@
     }
 
     if(!Array.isArray(json.results) || json.results.length === 0){
+      const debugText = json.debug ? JSON.stringify(json.debug, null, 2) : '(pas de diagnostic disponible)';
       importLogByCarrier[g.key] = {
-        text: `Le scraping n'a renvoyé aucun résultat exploitable (bouton "Copy Overview" non trouvé/cliqué ou presse-papier headless inaccessible). Aperçu brut : ${JSON.stringify(json).slice(0, 500)}`,
+        text: `Le scraping n'a renvoyé aucun résultat exploitable (bouton "Copy Overview" non trouvé/cliqué ou presse-papier headless inaccessible). Diagnostic : ${debugText}`,
         err: true
       };
       renderCarrierPanel();

@@ -183,8 +183,37 @@ module.exports = async function handler(req, res) {
         .filter(r => r.trackingNumber);
     }
 
+    // Diagnostic : si aucun résultat n'a été extrait, on renvoie des indices sur ce qui a réellement
+    // été rendu par la page (titre, texte visible, éléments dont la classe/le texte évoque "copy" ou
+    // "mailno") — utile pour ajuster les sélecteurs sans avoir besoin d'inspecter la page nous-mêmes.
+    let debug;
+    if (!results || results.length === 0) {
+      debug = await page.evaluate(() => {
+        const candidates = Array.from(document.querySelectorAll('*'))
+          .filter(el => {
+            const cls = typeof el.className === 'string' ? el.className : '';
+            return /copy|mailno|overview/i.test(cls) || /copy overview/i.test(el.textContent || '');
+          })
+          .slice(0, 25)
+          .map(el => ({
+            tag: el.tagName,
+            className: typeof el.className === 'string' ? el.className : '',
+            text: (el.textContent || '').trim().slice(0, 80),
+            outerHTML: (el.outerHTML || '').slice(0, 250),
+          }));
+
+        return {
+          pageTitle: document.title,
+          bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1500),
+          tableCount: document.querySelectorAll('table').length,
+          rowCount: document.querySelectorAll('table tr').length,
+          candidateElements: candidates,
+        };
+      });
+    }
+
     await browser.close();
-    res.status(200).json({ results, usedOverviewButton: !!overviewText });
+    res.status(200).json({ results, usedOverviewButton: !!overviewText, debug });
   } catch (e) {
     if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
     const message = e && e.message ? e.message : 'échec du scraping 4PX';

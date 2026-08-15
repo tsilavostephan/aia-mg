@@ -9,7 +9,7 @@
 // contient jamais le code d'accès lui-même, seulement la preuve qu'il a été saisi correctement une
 // fois (voir api/auth.js pour la vérification du code et la pose du cookie).
 export const config = {
-  matcher: ['/((?!api/auth|api/logout|login\\.html|manifest\\.json|assets/(logo-aia|favicon|apple-touch-icon|icon-192|icon-512|icon-512-maskable)\\.png).*)'],
+  matcher: ['/((?!api/auth|api/logout|login\\.html|manifest\\.json|assets/(?:logo-aia|favicon|apple-touch-icon|icon-192|icon-512|icon-512-maskable)\\.png).*)'],
 };
 
 async function computeExpectedToken(secret) {

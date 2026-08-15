@@ -143,18 +143,16 @@
 
 <div id="fourPxApiConfigModalBg" class="modal-bg" style="display:none;">
   <div class="modal-box">
-    <h2 class="modal-title">Configuration du scraping 4PX</h2>
+    <h2 class="modal-title">Configuration du scraping</h2>
     <p class="modal-subtext">
-      Paramètres du scraping automatique (bouton "Scrapping (Vercel)") : il ouvre la page de suivi
-      Cainiao dans un navigateur headless, clique sur "Copy Overview" et lit le résultat.
+      Paramètres partagés par le scraping automatique (bouton "Scrapping (Vercel)") de tous les
+      transporteurs pris en charge (4PX, YANWEN, ...) : la fonction backend ouvre la page de suivi
+      dans un navigateur headless, clique sur le bouton de copie des résultats et lit le résultat.
     </p>
-    <div class="row"><label>URL de la fonction de scraping (backend Vercel)<br>
-      <input type="text" id="fourPxScrapeEndpoint" placeholder="/api/scrape-4px" style="width:100%;"></label>
-    </div>
     <div class="row"><label>Délai d'attente après chargement de la page (ms)<br>
       <input type="number" id="fourPxPageLoadWaitMs" min="0" step="500" placeholder="4000" style="width:100%;"></label>
     </div>
-    <div class="row"><label>Délai d'attente après clic sur "Copy Overview" (ms)<br>
+    <div class="row"><label>Délai d'attente après clic sur le bouton de copie (ms)<br>
       <input type="number" id="fourPxClickWaitMs" min="0" step="100" placeholder="600" style="width:100%;"></label>
     </div>
     <div class="actions">

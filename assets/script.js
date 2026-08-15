@@ -35,7 +35,6 @@
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
     fourPxApiConfigModalBg: document.getElementById('fourPxApiConfigModalBg'),
-    fourPxScrapeEndpoint: document.getElementById('fourPxScrapeEndpoint'),
     fourPxPageLoadWaitMs: document.getElementById('fourPxPageLoadWaitMs'),
     fourPxClickWaitMs: document.getElementById('fourPxClickWaitMs'),
     fourPxApiConfigSaveBtn: document.getElementById('fourPxApiConfigSaveBtn'),
@@ -989,8 +988,11 @@
   // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------
   const CARRIERS = [
     { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url',
-      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur le bouton « Copy Overview » puis collez le texte copié ci-dessous.' },
-    { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url' },
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur le bouton « Copy Overview » puis collez le texte copié ci-dessous.',
+      scrapeEndpoint: '/api/scrape-4px' },
+    { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url',
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », appuyez sur Entrée puis cliquez sur le bouton de copie des résultats, et collez le texte copié ci-dessous.',
+      scrapeEndpoint: '/api/scrape-yanwen' },
     { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2, mode:'url' },
     { key:'sfc',        label:'SFC',        match:['SFC'],                     baseUrl:'https://www.sendfromchina.com/track',                kmColIndex:2, mode:'clipboard', pasteHasHeader:true, matchColIndex:1 },
   ];
@@ -1124,28 +1126,24 @@
   }
 
   // ---------- import du numéro dernier kilométrique via l'API 4PX ----------
-  // NOTE : l'API officielle 4PX (plateforme "open.4px.com") nécessite un compte marchand /
-  // partenaire logiciel et des identifiants (App Key / App Secret) qui ne sont pas publics — voir
-  // https://open.4px.com/apiInfo/introduce. Tant que ces identifiants et le format exact de
-  // l'endpoint ne sont pas connus, cet appel est fourni en best-effort : il envoie une requête
-  // POST JSON générique et lit la réponse selon le mapping de champs configuré ci-dessous. Il est
-  // probable qu'il faille l'ajuster (voire passer par un backend, l'API 4PX n'autorisant sans
-  // doute pas les appels directs depuis un navigateur pour des raisons de CORS et de signature de
-  // requête) une fois les identifiants et la doc réelle obtenus auprès de 4PX.
-  const FOURPX_API_CONFIG_KEY = 'fourpx-api-config';
+  // Réglages de scraping partagés par tous les transporteurs pris en charge (4PX, YANWEN, ...) :
+  // seuls les délais d'attente sont configurables ici — l'URL de la fonction de scraping est fixe
+  // par transporteur (champ "scrapeEndpoint" dans CARRIERS), une fonction backend étant dédiée à
+  // chacun (logique de clic différente selon le site de suivi).
+  const SCRAPE_CONFIG_KEY = 'scrape-config';
 
-  function loadFourPxApiConfig(){
+  function loadScrapeConfig(){
     try{
-      const raw = localStorage.getItem(FOURPX_API_CONFIG_KEY);
+      const raw = localStorage.getItem(SCRAPE_CONFIG_KEY);
       return raw ? JSON.parse(raw) : {};
     }catch(e){
       return {};
     }
   }
 
-  function saveFourPxApiConfig(config){
+  function saveScrapeConfig(config){
     try{
-      localStorage.setItem(FOURPX_API_CONFIG_KEY, JSON.stringify(config));
+      localStorage.setItem(SCRAPE_CONFIG_KEY, JSON.stringify(config));
     }catch(e){ /* stockage indisponible, la config ne sera pas persistée */ }
   }
 
@@ -1155,34 +1153,33 @@
     return path.split('.').reduce((acc, key) => (acc && acc[key] !== undefined) ? acc[key] : undefined, obj);
   }
 
-  function openFourPxApiConfigModal(){
-    const config = loadFourPxApiConfig();
-    els.fourPxScrapeEndpoint.value = config.scrapeEndpoint || '/api/scrape-4px';
+  function openScrapeConfigModal(){
+    const config = loadScrapeConfig();
     els.fourPxPageLoadWaitMs.value = config.pageLoadWaitMs || 4000;
     els.fourPxClickWaitMs.value = config.clickWaitMs || 600;
     els.fourPxApiConfigModalBg.style.display = 'block';
   }
 
-  function closeFourPxApiConfigModal(){
+  function closeScrapeConfigModal(){
     els.fourPxApiConfigModalBg.style.display = 'none';
   }
 
-  els.fourPxApiConfigCancelBtn.addEventListener('click', closeFourPxApiConfigModal);
+  els.fourPxApiConfigCancelBtn.addEventListener('click', closeScrapeConfigModal);
   els.fourPxApiConfigModalBg.addEventListener('click', (e)=>{
-    if(e.target === els.fourPxApiConfigModalBg) closeFourPxApiConfigModal();
+    if(e.target === els.fourPxApiConfigModalBg) closeScrapeConfigModal();
   });
   els.fourPxApiConfigSaveBtn.addEventListener('click', ()=>{
-    saveFourPxApiConfig({
-      scrapeEndpoint: els.fourPxScrapeEndpoint.value.trim() || '/api/scrape-4px',
+    saveScrapeConfig({
       pageLoadWaitMs: parseInt(els.fourPxPageLoadWaitMs.value, 10) || 4000,
       clickWaitMs: parseInt(els.fourPxClickWaitMs.value, 10) || 600,
     });
-    closeFourPxApiConfigModal();
+    closeScrapeConfigModal();
   });
 
   // Extrait le tableau de résultats d'une réponse JSON (selon le mapping configuré), met à jour
-  // numDernierKm pour les commandes 4PX correspondantes, sauvegarde et journalise le résultat.
-  async function applyFourPxResultsToDb(g, json, config, sourceLabel){
+  // numDernierKm pour les commandes du transporteur correspondant, sauvegarde et journalise le
+  // résultat. Partagé par tous les transporteurs pris en charge pour le scraping (4PX, YANWEN, ...).
+  async function applyScrapedResultsToDb(g, json, config, sourceLabel){
     const items = readByPath(json, config.respArrayField);
     if(!Array.isArray(items)){
       const preview = JSON.stringify(json).slice(0, 500);
@@ -1237,25 +1234,25 @@
     render();
   }
 
-  // ---------- scraping 4PX via une fonction backend Vercel ----------
-  // La fonction serverless /api/scrape-4px.js (voir ce fichier) ouvre réellement la page de suivi
-  // Cainiao dans un navigateur headless, attend son chargement, clique sur le bouton "Copy Overview"
-  // puis lit le texte copié dans le presse-papier du navigateur headless. Elle renvoie un format
-  // fixe et déjà découpé selon la même règle que l'import manuel :
-  // { results: [{ trackingNumber, lastKm }, ...] }.
+  // ---------- scraping via une fonction backend Vercel (4PX, YANWEN, ...) ----------
+  // Chaque transporteur pris en charge pour le scraping a sa propre fonction serverless (voir
+  // g.scrapeEndpoint dans CARRIERS, ex. api/scrape-4px.js / api/scrape-yanwen.js) qui ouvre
+  // réellement sa page de suivi dans un navigateur headless, clique sur le bon bouton de copie et
+  // lit le texte copié dans le presse-papier du navigateur headless. Toutes renvoient le même
+  // format, déjà découpé selon la règle de l'import manuel : { results: [{ trackingNumber, lastKm }, ...] }.
   //
   // Comme pour les liens "Ouvrir" (voir g.chunks / CHUNK_SIZE), on scrape par lots de 99 colis
-  // maximum plutôt qu'un seul très gros lot : Cainiao peut limiter/tronquer le nombre de numéros
-  // pris en compte par requête, et une URL avec des centaines de numéros peut poser problème. Les
-  // lots sont scrapés en parallèle (un appel de fonction Vercel par lien), puis fusionnés.
-  async function scrapeFourPxViaVercel(g){
-    const config = loadFourPxApiConfig();
-    const scrapeEndpoint = config.scrapeEndpoint || '/api/scrape-4px';
+  // maximum plutôt qu'un seul très gros lot : le site de suivi peut limiter/tronquer le nombre de
+  // numéros pris en compte par requête, et une URL avec des centaines de numéros peut poser
+  // problème. Les lots sont scrapés en parallèle (un appel de fonction Vercel par lien), puis fusionnés.
+  async function scrapeCarrierViaVercel(g){
+    const config = loadScrapeConfig();
+    const scrapeEndpoint = g.scrapeEndpoint;
     const chunks = (g.chunks && g.chunks.length > 0) ? g.chunks : [g.nums];
 
     scrapeProgressByCarrier[g.key] = { done: 0, total: chunks.length };
     importLogByCarrier[g.key] = {
-      text: `Scraping 4PX (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités en parallèle` : '') + ` (peut prendre jusqu'à 30-60 secondes)…`,
+      text: `Scraping ${g.label} (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités en parallèle` : '') + ` (peut prendre jusqu'à 30-60 secondes)…`,
       err: false
     };
     renderCarrierPanel();
@@ -1310,7 +1307,7 @@
       return;
     }
 
-    await applyFourPxResultsToDb(
+    await applyScrapedResultsToDb(
       g,
       { results: allResults },
       { respArrayField: 'results', respTrackingField: 'trackingNumber', respLastMileField: 'lastKm' },
@@ -1373,7 +1370,7 @@
       ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">${g.pasteHint}</p>`
       : '';
 
-    const scrapeProgress = g.key === '4px' ? scrapeProgressByCarrier[g.key] : null;
+    const scrapeProgress = g.scrapeEndpoint ? scrapeProgressByCarrier[g.key] : null;
     const scrapeProgressHtml = scrapeProgress
       ? `<div style="margin-top:10px;">
           <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
@@ -1383,12 +1380,12 @@
         </div>`
       : '';
 
-    const fourPxApiHtml = g.key === '4px'
+    const scrapeSectionHtml = g.scrapeEndpoint
       ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
           <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique par scraping automatique</label>
           <div class="actions">
-            <button id="fourPxScrapeBtn" type="button" ${scrapeProgress ? 'disabled' : ''}>${scrapeProgress ? 'Scraping en cours…' : 'Scrapping (Vercel)'}</button>
-            <button id="fourPxApiConfigBtn" type="button" class="secondary" ${scrapeProgress ? 'disabled' : ''}>⚙ Config Scraping 4PX</button>
+            <button id="carrierScrapeBtn" type="button" ${scrapeProgress ? 'disabled' : ''}>${scrapeProgress ? 'Scraping en cours…' : 'Scrapping (Vercel)'}</button>
+            <button id="carrierScrapeConfigBtn" type="button" class="secondary" ${scrapeProgress ? 'disabled' : ''}>⚙ Config Scraping</button>
           </div>
           ${scrapeProgressHtml}
         </div>`
@@ -1408,7 +1405,7 @@
         </div>
         <div class="actions"><button id="importPasteBtn">Importer</button></div>
       </div>
-      ${fourPxApiHtml}
+      ${scrapeSectionHtml}
       ${logHtml}
     `;
 
@@ -1453,9 +1450,9 @@
 
     document.getElementById('importPasteBtn').addEventListener('click', ()=> handleImportPaste(g));
 
-    if(g.key === '4px'){
-      document.getElementById('fourPxScrapeBtn').addEventListener('click', ()=> scrapeFourPxViaVercel(g));
-      document.getElementById('fourPxApiConfigBtn').addEventListener('click', openFourPxApiConfigModal);
+    if(g.scrapeEndpoint){
+      document.getElementById('carrierScrapeBtn').addEventListener('click', ()=> scrapeCarrierViaVercel(g));
+      document.getElementById('carrierScrapeConfigBtn').addEventListener('click', openScrapeConfigModal);
     }
   }
 
@@ -1505,7 +1502,7 @@
     }else if(els.searchOptionsModalBg.style.display === 'block'){
       closeSearchOptionsModal();
     }else if(els.fourPxApiConfigModalBg.style.display === 'block'){
-      closeFourPxApiConfigModal();
+      closeScrapeConfigModal();
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){

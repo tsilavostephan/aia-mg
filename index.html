@@ -41,9 +41,9 @@
     <label><input type="checkbox" id="hasHeader" checked> La première ligne de chaque fichier est un en-tête</label>
   </div>
   <div class="actions">
-    <button id="importBtn" disabled>Ajouter à la base de données</button>
-    <button id="resetSelection" class="secondary">Vider la sélection</button>
-    <button id="csvOptionsBtn" type="button" class="secondary">Options</button>
+    <button id="importBtn" disabled>➕ Ajouter à la base de données</button>
+    <button id="resetSelection" class="secondary">🗑️ Vider la sélection</button>
+    <button id="csvOptionsBtn" type="button" class="secondary">⚙️ Options</button>
   </div>
   <div id="log"></div>
 </fieldset>
@@ -52,8 +52,8 @@
   <h2 class="section-title">
     <span>2. Détection du LastMile Tracking Number</span>
     <span class="section-title-actions">
-      <button type="button" id="carrierMappingBtn" class="secondary" title="Associer manuellement les valeurs de transporteur">⚙ Transporteurs</button>
-      <button type="button" id="scrapeAllBtn" class="secondary">Tout récupérer</button>
+      <button type="button" id="carrierMappingBtn" class="secondary" title="Associer manuellement les valeurs de transporteur">⚙️ Transporteurs</button>
+      <button type="button" id="scrapeAllBtn" class="secondary">🔄 Tout récupérer</button>
     </span>
   </h2>
   <div id="scrapeAllProgressWrap" style="display:none; margin:6px 0;">
@@ -72,10 +72,10 @@
     <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Afficher uniquement cette section">⛶</button>
   </h2>
   <div class="actions">
-    <button id="exportJsonBtn" class="secondary">Exporter en JSON</button>
-    <label class="file-btn" for="jsonFileInput">Importer un JSON</label>
+    <button id="exportJsonBtn" class="secondary">📤 Exporter en JSON</button>
+    <label class="file-btn" for="jsonFileInput">📥 Importer un JSON</label>
     <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;">
-    <button id="clearBtn" class="danger">Effacer la base de données</button>
+    <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
   </div>
   <div class="row search-row">
     <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)">
@@ -108,9 +108,9 @@
       <button id="modalCopyIconBtn" class="copy-icon-box" type="button" title="Copier">⧉</button>
     </div>
     <div class="actions">
-      <button id="copyUrlBtn">Copier</button>
-      <button id="openUrlBtn" class="secondary">Ouvrir dans un nouvel onglet</button>
-      <button id="closeModalBtn" class="secondary">Fermer</button>
+      <button id="copyUrlBtn">📋 Copier</button>
+      <button id="openUrlBtn" class="secondary">🔗 Ouvrir dans un nouvel onglet</button>
+      <button id="closeModalBtn" class="secondary">✕ Fermer</button>
     </div>
     <p class="modal-footnote">
       Le contenu de la page de suivi ne peut pas être lu automatiquement depuis cette application (restrictions de sécurité des navigateurs). Ouvrez le lien pour consulter les résultats.
@@ -124,7 +124,7 @@
     <div id="packageModalBody"></div>
     <div id="packageQrCode" class="package-qr"></div>
     <div class="actions" style="margin-top:16px;">
-      <button id="closePackageModalBtn" class="secondary">Fermer</button>
+      <button id="closePackageModalBtn" class="secondary">✕ Fermer</button>
     </div>
   </div>
 </div>
@@ -139,8 +139,8 @@
     </p>
     <div id="carrierMappingList"></div>
     <div class="actions">
-      <button id="carrierMappingSaveBtn">Sauvegarder</button>
-      <button id="carrierMappingCancelBtn" class="secondary">Annuler</button>
+      <button id="carrierMappingSaveBtn">💾 Sauvegarder</button>
+      <button id="carrierMappingCancelBtn" class="secondary">✕ Annuler</button>
     </div>
   </div>
 </div>
@@ -154,16 +154,16 @@
     </p>
     <div id="searchAlgoList"></div>
     <div class="actions">
-      <button type="button" id="searchAlgoAddBtn" class="secondary">+ Ajouter un algorithme</button>
+      <button type="button" id="searchAlgoAddBtn" class="secondary">➕ Ajouter un algorithme</button>
     </div>
     <div class="actions">
-      <button id="searchOptionsSaveBtn">Enregistrer</button>
-      <button id="searchOptionsResetBtn" class="secondary">Réinitialiser par défaut</button>
-      <button id="searchOptionsCancelBtn" class="secondary">Annuler</button>
+      <button id="searchOptionsSaveBtn">💾 Enregistrer</button>
+      <button id="searchOptionsResetBtn" class="secondary">♻️ Réinitialiser par défaut</button>
+      <button id="searchOptionsCancelBtn" class="secondary">✕ Annuler</button>
     </div>
     <div class="actions">
-      <button type="button" id="searchAlgoExportXmlBtn" class="secondary">Exporter en XML</button>
-      <label for="searchAlgoImportInput" class="file-btn">Importer en XML</label>
+      <button type="button" id="searchAlgoExportXmlBtn" class="secondary">📤 Exporter en XML</button>
+      <label for="searchAlgoImportInput" class="file-btn">📥 Importer en XML</label>
       <input type="file" id="searchAlgoImportInput" accept=".xml,text/xml,application/xml" style="display:none;">
     </div>
     <div id="searchAlgoImportLog" style="font-size:12px; margin-top:6px;"></div>
@@ -185,8 +185,8 @@
       <input type="number" id="fourPxClickWaitMs" min="0" step="100" placeholder="600" style="width:100%;"></label>
     </div>
     <div class="actions">
-      <button id="fourPxApiConfigSaveBtn">Enregistrer</button>
-      <button id="fourPxApiConfigCancelBtn" class="secondary">Annuler</button>
+      <button id="fourPxApiConfigSaveBtn">💾 Enregistrer</button>
+      <button id="fourPxApiConfigCancelBtn" class="secondary">✕ Annuler</button>
     </div>
   </div>
 </div>
@@ -197,8 +197,8 @@
     <p id="csvOptionsSubtext" class="modal-subtext"></p>
     <div id="csvOptionsBody"></div>
     <div class="actions">
-      <button id="csvOptionsSaveBtn">Enregistrer</button>
-      <button id="csvOptionsCancelBtn" class="secondary">Annuler</button>
+      <button id="csvOptionsSaveBtn">💾 Enregistrer</button>
+      <button id="csvOptionsCancelBtn" class="secondary">✕ Annuler</button>
     </div>
   </div>
 </div>
@@ -210,7 +210,7 @@
     <div id="scannerError" class="scanner-error" style="display:none;"></div>
     <p class="scanner-hint">Pointez la caméra vers le code-barres ou le QR code du colis. La fenêtre se ferme automatiquement dès qu'une valeur est détectée.</p>
     <div class="actions">
-      <button id="closeScannerBtn" class="secondary">Annuler</button>
+      <button id="closeScannerBtn" class="secondary">✕ Annuler</button>
     </div>
   </div>
 </div>

@@ -387,7 +387,7 @@
       const removeAlgoBtn = document.createElement('button');
       removeAlgoBtn.type = 'button';
       removeAlgoBtn.className = 'danger search-algo-remove';
-      removeAlgoBtn.textContent = 'Supprimer l\'algorithme';
+      removeAlgoBtn.textContent = '🗑️ Supprimer l\'algorithme';
       removeAlgoBtn.addEventListener('click', ()=>{
         draftSearchAlgorithms.splice(algoIdx, 1);
         renderSearchAlgoList();
@@ -403,7 +403,7 @@
       const addRuleBtn = document.createElement('button');
       addRuleBtn.type = 'button';
       addRuleBtn.className = 'secondary';
-      addRuleBtn.textContent = '+ Ajouter une condition';
+      addRuleBtn.textContent = '➕ Ajouter une condition';
       addRuleBtn.addEventListener('click', ()=>{
         algo.rules.push(newBlankRule());
         renderSearchAlgoList();
@@ -1246,11 +1246,15 @@
     return carrierGroups.find(g => g.key === activeCarrierKey) || carrierGroups[0] || null;
   }
 
+  const CARRIER_TAB_ICONS = {
+    '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁',
+  };
+
   function renderCarrierTabs(){
     els.carrierTabs.innerHTML = '';
     carrierGroups.forEach(g=>{
       const btn = document.createElement('button');
-      btn.textContent = `${g.label} (${g.nums.length})`;
+      btn.textContent = `${CARRIER_TAB_ICONS[g.key] || '📦'} ${g.label} (${g.nums.length})`;
       if(g.key === activeCarrierKey) btn.classList.add('active');
       btn.addEventListener('click', ()=>{
         activeCarrierKey = g.key;
@@ -1610,12 +1614,12 @@
     if(!g){ els.carrierPanel.innerHTML = ''; return; }
     activeCarrierKey = g.key;
 
-    const openLabel = g.mode === 'clipboard' ? 'Copier + Ouvrir' : 'Ouvrir';
+    const openLabel = g.mode === 'clipboard' ? '📋🔗 Copier + Ouvrir' : '🔗 Ouvrir';
     const linksHtml = g.chunks.map((chunk, idx)=>
       `<div class="carrier-link-row">
         <span class="carrier-link-label">Lien ${idx+1} — ${chunk.length} colis</span>
         <button class="linkOpenBtn" data-idx="${idx}">${openLabel}</button>
-        <button class="linkShowBtn" data-idx="${idx}">Afficher</button>
+        <button class="linkShowBtn" data-idx="${idx}">👁️ Afficher</button>
       </div>`
     ).join('');
 
@@ -1644,8 +1648,8 @@
       ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
           <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique par scraping automatique</label>
           <div class="actions">
-            <button id="carrierScrapeBtn" type="button" ${scrapeProgress ? 'disabled' : ''}>${scrapeProgress ? 'Récupération en cours…' : (g.scrapeButtonLabel || 'Scrapping (Vercel)')}</button>
-            <button id="carrierScrapeConfigBtn" type="button" class="secondary" ${scrapeProgress ? 'disabled' : ''}>⚙ Config Scraping</button>
+            <button id="carrierScrapeBtn" type="button" ${scrapeProgress ? 'disabled' : ''}>${scrapeProgress ? '⏳ Récupération en cours…' : '🤖 ' + (g.scrapeButtonLabel || 'Scrapping (Vercel)')}</button>
+            <button id="carrierScrapeConfigBtn" type="button" class="secondary" ${scrapeProgress ? 'disabled' : ''}>⚙️ Config Scraping</button>
           </div>
           ${scrapeProgressHtml}
         </div>`
@@ -1658,7 +1662,7 @@
         <div class="row">
           <textarea id="pasteArea" maxlength="10000" rows="5" style="width:100%; font-size:12px; padding:8px;" placeholder="Collez ici les données copiées depuis la page de suivi ${g.label}…"></textarea>
         </div>
-        <div class="actions"><button id="importPasteBtn">Importer</button></div>
+        <div class="actions"><button id="importPasteBtn">📋 Importer</button></div>
       </div>`;
 
     const includeUnresolvedHtml = `
@@ -1840,6 +1844,8 @@
     'YANWEN': { bg:'#e8f3ff', fg:'#1d4ed8' },
     'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
     'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },
+    'LANDMARK': { bg:'#eef2ff', fg:'#4338ca' },
+    'GOFO': { bg:'#fff7e6', fg:'#b45309' },
   };
   function badgeColorsFor(transporteur){
     const norm = normCarrierName(transporteur);

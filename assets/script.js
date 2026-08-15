@@ -1006,7 +1006,7 @@
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
     { key:'sfexpress',  label:'SF Express', match:['SF EXPRESS','SFEXPRESS'],  baseUrl:'https://t.17track.net/fr#nums=',                      kmColIndex:1, mode:'url',
-      scrapeEndpoint: '/api/track-17track', scrapeButtonLabel: 'Récupérer via API 17track', disableManualImport:true },
+      scrapeEndpoint: '/api/track-17track', scrapeButtonLabel: 'Récupérer via API 17track', sourceLabel: "l'API 17track", disableManualImport:true },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1340,7 +1340,7 @@
       g,
       { results: allResults },
       { respArrayField: 'results', respTrackingField: 'trackingNumber', respLastMileField: 'lastKm' },
-      `le scraping Vercel${chunks.length > 1 ? ` (${chunks.length} liens)` : ''}`
+      `${g.sourceLabel || 'le scraping Vercel'}${chunks.length > 1 ? ` (${chunks.length} liens)` : ''}`
     );
 
     if(chunkErrors.length > 0){

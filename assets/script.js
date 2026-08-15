@@ -1006,8 +1006,7 @@
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
     { key:'sfexpress',  label:'SF Express', match:['SF EXPRESS','SFEXPRESS'],  baseUrl:'https://t.17track.net/fr#nums=',                      kmColIndex:1, mode:'url',
-      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », dépliez chaque colis et copiez le numéro « Last-mile Tracking Number », puis collez ci-dessous au format « numéro de suivi<TAB>numéro dernier kilométrique », une ligne par colis.',
-      scrapeEndpoint: '/api/scrape-sfexpress' },
+      scrapeEndpoint: '/api/scrape-sfexpress', disableManualImport:true },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1455,12 +1454,11 @@
         </div>`
       : '';
 
-    els.carrierPanel.innerHTML = `
-      <p style="font-size:13px; color:var(--muted);">
-        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
-      </p>
-      ${linksHtml}
-      ${noteHtml}
+    // SF Express (17track.net) bloque le navigateur headless via une vérification anti-bot
+    // Cloudflare que nous ne contournerons pas — seul le scraping (quand il fonctionnera) ou une
+    // future API officielle a du sens ici ; la zone de collage manuel est donc masquée pour ce
+    // transporteur.
+    const manualImportHtml = g.disableManualImport ? '' : `
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
         <label style="font-size:13px;">Coller les données de suivi ${g.label} (max 10000 caractères) puis cliquer sur Importer</label>
         ${pasteHintHtml}
@@ -1468,14 +1466,24 @@
           <textarea id="pasteArea" maxlength="10000" rows="5" style="width:100%; font-size:12px; padding:8px;" placeholder="Collez ici les données copiées depuis la page de suivi ${g.label}…"></textarea>
         </div>
         <div class="actions"><button id="importPasteBtn">Importer</button></div>
-      </div>
+      </div>`;
+
+    els.carrierPanel.innerHTML = `
+      <p style="font-size:13px; color:var(--muted);">
+        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
+      </p>
+      ${linksHtml}
+      ${noteHtml}
+      ${manualImportHtml}
       ${scrapeSectionHtml}
       ${logHtml}
     `;
 
     const pasteArea = document.getElementById('pasteArea');
-    pasteArea.value = pastedTextByCarrier[g.key] || '';
-    pasteArea.addEventListener('input', ()=>{ pastedTextByCarrier[g.key] = pasteArea.value; });
+    if(pasteArea){
+      pasteArea.value = pastedTextByCarrier[g.key] || '';
+      pasteArea.addEventListener('input', ()=>{ pastedTextByCarrier[g.key] = pasteArea.value; });
+    }
 
     els.carrierPanel.querySelectorAll('.linkOpenBtn').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
@@ -1512,7 +1520,8 @@
       });
     });
 
-    document.getElementById('importPasteBtn').addEventListener('click', ()=> handleImportPaste(g));
+    const importPasteBtn = document.getElementById('importPasteBtn');
+    if(importPasteBtn) importPasteBtn.addEventListener('click', ()=> handleImportPaste(g));
 
     if(g.scrapeEndpoint){
       document.getElementById('carrierScrapeBtn').addEventListener('click', ()=> scrapeCarrierViaVercel(g));

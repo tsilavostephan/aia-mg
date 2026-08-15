@@ -15,6 +15,10 @@
     "api/scrape-sfc.js": {
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"
+    },
+    "api/scrape-landmark.js": {
+      "maxDuration": 60,
+      "includeFiles": "api/chromium-bin/**"
     }
   }
 }

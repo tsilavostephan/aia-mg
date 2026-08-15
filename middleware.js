@@ -1,12 +1,13 @@
 // Vercel Edge Middleware : protège l'ensemble du site (pages + API) derrière un code d'accès.
 //
-// Fonctionnement : /login.html et /api/auth (+ /api/logout) restent accessibles sans être
-// authentifié — tout le reste redirige vers /login.html si le cookie "aia_auth" n'est pas présent ou
-// ne correspond pas au jeton attendu. Ce jeton est un HMAC-SHA256 signé avec APP_AUTH_SECRET (variable
-// d'environnement Vercel) — il ne contient jamais le code d'accès lui-même, seulement la preuve qu'il
-// a été saisi correctement une fois (voir api/auth.js pour la vérification du code et la pose du cookie).
+// Fonctionnement : /login.html, /api/auth (+ /api/logout) et le logo (affiché sur la page de
+// connexion) restent accessibles sans être authentifié — tout le reste redirige vers /login.html
+// si le cookie "aia_auth" n'est pas présent ou ne correspond pas au jeton attendu. Ce jeton est un
+// HMAC-SHA256 signé avec APP_AUTH_SECRET (variable d'environnement Vercel) — il ne contient jamais
+// le code d'accès lui-même, seulement la preuve qu'il a été saisi correctement une fois (voir
+// api/auth.js pour la vérification du code et la pose du cookie).
 export const config = {
-  matcher: ['/((?!api/auth|api/logout|login\\.html).*)'],
+  matcher: ['/((?!api/auth|api/logout|login\\.html|assets/logo-aia\\.png).*)'],
 };
 
 async function computeExpectedToken(secret) {

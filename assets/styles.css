@@ -50,6 +50,17 @@
   .app-header-text{ min-width: 0; }
   .app-version{ color: var(--muted); margin: 0; font-size: 12px; }
 
+  .logout-btn{
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: auto; flex-shrink: 0;
+    padding: 8px 14px;
+    font-size: 13px; font-weight: 600;
+    color: var(--text); text-decoration: none;
+    background: #fff; border: 1px solid var(--border); border-radius: 999px;
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  .logout-btn:hover{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+
   fieldset{
     background: var(--card);
     border: 1px solid var(--border);

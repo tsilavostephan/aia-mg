@@ -33,6 +33,24 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if(event.request.method !== 'GET') return;
+
+  // Les pages HTML (navigation) passent toujours par le réseau en premier : le middleware Vercel
+  // qui vérifie le code d'accès ne s'exécute que sur une vraie requête réseau — servir index.html
+  // depuis le cache en premier permettrait de contourner cette vérification sur les visites
+  // suivantes. Le cache ne sert ici que de repli si l'appareil est hors-ligne.
+  if(event.request.mode === 'navigate'){
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if(response && response.ok){
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if(cached) return cached;

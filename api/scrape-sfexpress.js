@@ -35,6 +35,22 @@ module.exports = async function handler(req, res) {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
 
+    // 17track passe parfois par une vérification anti-bot Cloudflare ("Just a moment...") avant
+    // d'afficher la page réelle. Ce n'est pas un CAPTCHA interactif : sur un navigateur qui exécute
+    // le JS normalement, la page se débloque toute seule après quelques secondes — on attend donc
+    // que le titre change avant de continuer, plutôt qu'un simple délai fixe qui risque d'être trop
+    // court.
+    let challengeCleared = true;
+    if ((await page.title()).toLowerCase().includes('just a moment')) {
+      challengeCleared = await page.waitForFunction(
+        () => !document.title.toLowerCase().includes('just a moment'),
+        { timeout: 20000 }
+      ).then(() => true).catch(() => false);
+      if (challengeCleared) {
+        await page.waitForNetworkIdle({ idleTime: 500, timeout: 15000 }).catch(() => {});
+      }
+    }
+
     const cardsFound = await page.waitForSelector('.bg-card', { timeout: 20000 }).then(() => true).catch(() => false);
     await new Promise(r => setTimeout(r, pageLoadWaitMs));
 
@@ -73,7 +89,7 @@ module.exports = async function handler(req, res) {
       .map((r) => ({ trackingNumber: cleanNumSuivi(r.trackingNumber), lastKm: cleanNumSuivi(r.lastKm) }))
       .filter((r) => r.trackingNumber);
 
-    const debug = { cardsFound };
+    const debug = { challengeCleared, cardsFound };
     if (results.length === 0) {
       const domDebug = await page.evaluate(() => ({
         pageTitle: document.title,

@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/scrape-4px.js": {
+      "maxDuration": 60
+    }
+  }
+}

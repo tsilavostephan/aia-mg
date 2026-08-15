@@ -993,7 +993,8 @@
 
   // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------
   const CARRIERS = [
-    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url' },
+    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url',
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur le bouton « Copy Overview » puis collez le texte copié ci-dessous.' },
     { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url' },
     { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2, mode:'url' },
     { key:'sfc',        label:'SFC',        match:['SFC'],                     baseUrl:'https://www.sendfromchina.com/track',                kmColIndex:2, mode:'clipboard', pasteHasHeader:true, matchColIndex:1 },
@@ -1275,17 +1276,19 @@
   }
 
   // ---------- scraping 4PX via une fonction backend Vercel ----------
-  // L'endpoint interne utilisé par la page de suivi Cainiao (https://global.cainiao.com/global/detail.json)
-  // ne renvoie aucun header CORS, un appel direct depuis le navigateur est donc bloqué. La fonction
-  // serverless /api/scrape-4px.js (voir ce fichier) fait ce fetch côté serveur et renvoie la réponse
-  // brute de Cainiao avec les en-têtes CORS nécessaires. Le format exact de cette réponse n'étant pas
-  // documenté publiquement, ajustez le mapping des champs dans la fenêtre de config une fois qu'une
-  // réponse réelle aura été inspectée (l'aperçu brut est affiché ci-dessous en cas d'échec du mapping).
+  // La fonction serverless /api/scrape-4px.js (voir ce fichier) ouvre réellement la page de suivi
+  // Cainiao dans un navigateur headless, attend son chargement, clique sur le bouton "Copy Overview"
+  // (celui que l'on utilise déjà manuellement pour l'import par collage) puis lit le texte copié
+  // dans le presse-papier du navigateur headless. Elle renvoie un format fixe et déjà découpé selon
+  // la même règle que l'import manuel : { results: [{ trackingNumber, lastKm }, ...] } — pas besoin
+  // du mapping de champs configurable (celui-ci ne sert que pour l'API officielle 4PX, au schéma
+  // inconnu). ⚠️ Scraping non vérifié en conditions réelles : le clic sur "Copy Overview" et le
+  // délai de rendu dans /api/scrape-4px.js sont une estimation à ajuster si besoin.
   async function scrapeFourPxViaVercel(g){
     const config = loadFourPxApiConfig();
     const scrapeEndpoint = config.scrapeEndpoint || '/api/scrape-4px';
 
-    importLogByCarrier[g.key] = { text: 'Scraping 4PX (via Vercel) en cours…', err: false };
+    importLogByCarrier[g.key] = { text: 'Scraping 4PX (via Vercel) en cours… (ouverture de la page + lecture de "Copy Overview", peut prendre jusqu\'à 30-60 secondes)', err: false };
     renderCarrierPanel();
 
     let json;
@@ -1307,7 +1310,16 @@
       return;
     }
 
-    await applyFourPxResultsToDb(g, json, config, 'le scraping Vercel');
+    if(!Array.isArray(json.results) || json.results.length === 0){
+      importLogByCarrier[g.key] = {
+        text: `Le scraping n'a renvoyé aucun résultat exploitable (bouton "Copy Overview" non trouvé/cliqué ou presse-papier headless inaccessible). Aperçu brut : ${JSON.stringify(json).slice(0, 500)}`,
+        err: true
+      };
+      renderCarrierPanel();
+      return;
+    }
+
+    await applyFourPxResultsToDb(g, json, { respArrayField: 'results', respTrackingField: 'trackingNumber', respLastMileField: 'lastKm' }, 'le scraping Vercel');
   }
 
   async function copyTextToClipboard(text){
@@ -1352,6 +1364,10 @@
       ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">Le bouton « ${openLabel} » copie les numéros de colis dans le presse-papier puis ouvre la page de suivi ${g.label} — collez-les directement sur le site.</p>`
       : '';
 
+    const pasteHintHtml = g.pasteHint
+      ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">${g.pasteHint}</p>`
+      : '';
+
     const fourPxApiHtml = g.key === '4px'
       ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
           <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique via l'API 4PX ou par scraping</label>
@@ -1371,6 +1387,7 @@
       ${noteHtml}
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
         <label style="font-size:13px;">Coller les données de suivi ${g.label} (max 10000 caractères) puis cliquer sur Importer</label>
+        ${pasteHintHtml}
         <div class="row">
           <textarea id="pasteArea" maxlength="10000" rows="5" style="width:100%; font-size:12px; padding:8px;" placeholder="Collez ici les données copiées depuis la page de suivi ${g.label}…"></textarea>
         </div>

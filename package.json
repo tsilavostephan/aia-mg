@@ -1,0 +1,8 @@
+{
+  "name": "aia-e",
+  "private": true,
+  "dependencies": {
+    "@sparticuz/chromium": "^123.0.1",
+    "puppeteer-core": "^22.8.2"
+  }
+}

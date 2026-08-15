@@ -1612,8 +1612,8 @@
 
     const openLabel = g.mode === 'clipboard' ? 'Copier + Ouvrir' : 'Ouvrir';
     const linksHtml = g.chunks.map((chunk, idx)=>
-      `<div class="row" style="display:flex; gap:8px; align-items:center; margin:6px 0;">
-        <span style="font-size:13px; min-width:150px;">Lien ${idx+1} — ${chunk.length} colis</span>
+      `<div class="carrier-link-row">
+        <span class="carrier-link-label">Lien ${idx+1} — ${chunk.length} colis</span>
         <button class="linkOpenBtn" data-idx="${idx}">${openLabel}</button>
         <button class="linkShowBtn" data-idx="${idx}">Afficher</button>
       </div>`

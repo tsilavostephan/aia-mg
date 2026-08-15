@@ -22,12 +22,18 @@
     padding: 0 20px 60px;
     line-height: 1.5;
   }
+
+  /* Grands écrans : profite un peu plus de la largeur disponible sans devenir trop étiré */
+  @media (min-width: 1400px){
+    body{ max-width: 1180px; }
+  }
   h1{ font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
   h2{ font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--primary); margin: 0 0 16px; }
   #scrapeAllBtn.scrape-all-success{ background: var(--success); color:#fff; border-color: var(--success); }
   #scrapeAllBtn.scrape-all-error{ background: var(--danger); color:#fff; border-color: var(--danger); }
 
-  .section-title{ display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .section-title{ display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .section-title-actions{ display: flex; gap: 8px; flex-wrap: wrap; }
   .focus-toggle-btn{
     flex-shrink: 0;
     width: 30px; height: 30px;
@@ -244,6 +250,9 @@
 
   .actions{ margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 0; }
 
+  .carrier-link-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  .carrier-link-label{ font-size:13px; min-width:150px; flex:1 1 auto; }
+
   .tabs{ display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
   .tabs button{
     padding: 6px 14px;
@@ -438,9 +447,11 @@
   @media (max-width: 720px){
     body{ margin: 0; padding: 14px 14px 48px; }
 
-    .app-header{ gap: 14px; margin-bottom: 20px; }
+    .app-header{ gap: 10px 14px; margin-bottom: 20px; }
     .app-logo{ height: 42px; }
     h1{ font-size: 22px; }
+    p.desc{ display: none; } /* superflu sur petit écran, laisse la place à l'essentiel */
+    .logout-btn{ margin-left: 0; }
 
     fieldset{ padding: 16px 14px; margin-bottom: 16px; }
 
@@ -468,6 +479,12 @@
 
     .tabs{ gap: 6px; }
     .tabs button{ flex: 1 1 auto; width: auto; min-height: 40px; }
+
+    /* Ligne "Lien X — N colis / Ouvrir / Afficher" : le libellé passe sur sa propre ligne, les deux
+       boutons se partagent la largeur au lieu de s'empiler en pleine largeur (trop de place perdue
+       quand il y a plusieurs liens). */
+    .carrier-link-label{ width: 100%; }
+    .carrier-link-row button{ width: auto; flex: 1 1 0; min-width: 0; min-height: 40px; }
 
     .list-scroll{ max-height: 60vh; }
 

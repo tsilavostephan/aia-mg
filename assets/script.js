@@ -1230,8 +1230,21 @@
     const notFound = Math.max(0, items.length - matched);
     await saveDatabase();
 
+    let mismatchSample = '';
+    if(matched === 0 && items.length > 0){
+      // Aucune correspondance alors que la commande existe visiblement en base : on affiche un
+      // échantillon des deux côtés en JSON.stringify (qui révèle les caractères invisibles, ex.
+      // espace insécable/zero-width venant du presse-papier) pour repérer un décalage d'encodage.
+      const scrapedKeys = Array.from(updateMap.keys()).slice(0, 3).map(k => JSON.stringify(k));
+      const dbKeys = database
+        .filter(r => g.match.includes(normCarrierName(r.transporteur)))
+        .slice(0, 3)
+        .map(r => JSON.stringify(cleanNumSuivi(r.numSuivi)));
+      mismatchSample = ` Échantillon scrapé : ${scrapedKeys.join(', ')} — Échantillon base : ${dbKeys.join(', ')}`;
+    }
+
     importLogByCarrier[g.key] = {
-      text: `${matched} commande(s) mise(s) à jour via ${sourceLabel}.` + (notFound > 0 ? ` ${notFound} résultat(s) sans correspondance dans la base.` : ''),
+      text: `${matched} commande(s) mise(s) à jour via ${sourceLabel}.` + (notFound > 0 ? ` ${notFound} résultat(s) sans correspondance dans la base.` : '') + mismatchSample,
       err: false
     };
     render();

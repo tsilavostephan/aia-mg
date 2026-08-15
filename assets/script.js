@@ -36,6 +36,8 @@
     carrierPanel: document.getElementById('carrierPanel'),
     scrapeAllBtn: document.getElementById('scrapeAllBtn'),
     scrapeAllLog: document.getElementById('scrapeAllLog'),
+    scrapeAllProgressWrap: document.getElementById('scrapeAllProgressWrap'),
+    scrapeAllProgressBar: document.getElementById('scrapeAllProgressBar'),
     fourPxApiConfigModalBg: document.getElementById('fourPxApiConfigModalBg'),
     fourPxPageLoadWaitMs: document.getElementById('fourPxPageLoadWaitMs'),
     fourPxClickWaitMs: document.getElementById('fourPxClickWaitMs'),
@@ -1000,6 +1002,9 @@
       scrapeEndpoint: '/api/scrape-yunexpress' },
     { key:'sfc',        label:'SFC',        match:['SFC'],                     baseUrl:'https://www.sendfromchina.com/track',                kmColIndex:2, mode:'clipboard', pasteHasHeader:true, matchColIndex:1,
       scrapeEndpoint: '/api/scrape-sfc' },
+    { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
+      scrapeEndpoint: '/api/scrape-landmark' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1018,6 +1023,14 @@
     const out = [];
     for(let i=0; i<arr.length; i+=size) out.push(arr.slice(i, i+size));
     return out;
+  }
+
+  // Construit l'URL de suivi groupé pour un transporteur en mode 'url'. Par défaut les numéros sont
+  // simplement joints par une virgule (4PX/YANWEN/Yun Express). LANDMARK attend en revanche
+  // "numéro1, numéro2" encodé en URL (%2C+) — voir g.numsSeparator / g.urlEncodeNums dans CARRIERS.
+  function buildCarrierTrackingUrl(g, nums){
+    const joined = nums.join(g.numsSeparator || ',');
+    return g.baseUrl + (g.urlEncodeNums ? encodeURIComponent(joined) : joined);
   }
 
   function computeCarrierGroups(){
@@ -1350,11 +1363,22 @@
     }
 
     els.scrapeAllBtn.disabled = true;
+    els.scrapeAllBtn.classList.remove('scrape-all-success', 'scrape-all-error');
+    els.scrapeAllProgressWrap.style.display = 'block';
+    els.scrapeAllProgressBar.style.width = '0%';
     els.scrapeAllLog.textContent = `Scraping en cours pour ${eligible.length} transporteur(s) : ${eligible.map(g => g.label).join(', ')}…`;
 
-    await Promise.allSettled(eligible.map(g => scrapeCarrierViaVercel(g)));
+    let done = 0;
+    const outcomes = await Promise.allSettled(eligible.map(async g => {
+      await scrapeCarrierViaVercel(g);
+      done++;
+      els.scrapeAllProgressBar.style.width = `${Math.round((done / eligible.length) * 100)}%`;
+    }));
 
     els.scrapeAllBtn.disabled = false;
+    const anyFailure = outcomes.some(o => o.status === 'rejected')
+      || eligible.some(g => importLogByCarrier[g.key] && importLogByCarrier[g.key].err);
+    els.scrapeAllBtn.classList.add(anyFailure ? 'scrape-all-error' : 'scrape-all-success');
     els.scrapeAllLog.textContent = `Scraping terminé pour : ${eligible.map(g => g.label).join(', ')}. Voir le détail dans l'onglet de chaque transporteur.`;
     renderCarrierPanel();
   }
@@ -1459,7 +1483,7 @@
           window.open(g.baseUrl, '_blank');
           setTimeout(()=>{ btn.textContent = openLabel; }, 1500);
         }else{
-          window.open(g.baseUrl + g.chunks[idx].join(','), '_blank');
+          window.open(buildCarrierTrackingUrl(g, g.chunks[idx]), '_blank');
         }
       });
     });
@@ -1477,7 +1501,7 @@
         }else{
           els.trackingBoxLabel.textContent = 'URL de suivi';
           els.trackingCount.textContent = `${g.chunks[idx].length} numéro(s) de suivi groupé(s) dans ce lien.`;
-          const url = g.baseUrl + g.chunks[idx].join(',');
+          const url = buildCarrierTrackingUrl(g, g.chunks[idx]);
           els.trackingUrlBox.value = url;
           modalOpenUrl = url;
         }

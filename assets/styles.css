@@ -24,6 +24,8 @@
   }
   h1{ font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
   h2{ font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--primary); margin: 0 0 16px; }
+  #scrapeAllBtn.scrape-all-success{ background: var(--success); color:#fff; border-color: var(--success); }
+  #scrapeAllBtn.scrape-all-error{ background: var(--danger); color:#fff; border-color: var(--danger); }
 
   .section-title{ display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .focus-toggle-btn{

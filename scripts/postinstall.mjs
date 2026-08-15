@@ -14,19 +14,44 @@
 
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { existsSync, mkdirSync, cpSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, cpSync, rmSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(__dirname);
 
+// require.resolve('@sparticuz/chromium/package.json') échoue : ce package restreint ses sous-chemins
+// via son champ "exports" (qui n'autorise que son point d'entrée principal). On résout donc le point
+// d'entrée (autorisé) puis on remonte les dossiers parents à la recherche du package.json du module
+// (lu directement via fs, ce qui contourne la restriction "exports" — celle-ci ne s'applique qu'à la
+// résolution de modules, pas à une simple lecture de fichier).
+function findChromiumPackageDir() {
+  let dir = dirname(require.resolve('@sparticuz/chromium'));
+  for (let i = 0; i < 8; i++) {
+    const pkgPath = join(dir, 'package.json');
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+        if (pkg.name === '@sparticuz/chromium') return dir;
+      } catch (_e) { /* package.json illisible à ce niveau, on continue de remonter */ }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break; // racine du système de fichiers atteinte
+    dir = parent;
+  }
+  return null;
+}
+
 function main() {
   try {
     console.log('[postinstall] Copie des fichiers Chromium vers api/chromium-bin…');
 
-    const chromiumPkgJsonPath = require.resolve('@sparticuz/chromium/package.json');
-    const chromiumDir = dirname(chromiumPkgJsonPath);
+    const chromiumDir = findChromiumPackageDir();
+    if (!chromiumDir) {
+      console.log('[postinstall] Dossier du package @sparticuz/chromium introuvable — étape ignorée.');
+      return;
+    }
     const binDir = join(chromiumDir, 'bin');
 
     if (!existsSync(binDir)) {

@@ -32,8 +32,27 @@ module.exports = async function handler(req, res) {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
 
-    const rowsFound = await page.waitForSelector('.div-table-row', { timeout: 20000 }).then(() => true).catch(() => false);
+    let rowsFound = await page.waitForSelector('.div-table-row', { timeout: 20000 }).then(() => true).catch(() => false);
     await new Promise((r) => setTimeout(r, pageLoadWaitMs));
+
+    // Quand le lot contient des numéros de plusieurs "sites"/transporteurs différents, GOFO affiche
+    // un avertissement ("Il y a XX colis provenant de sites différents...") au lieu de lancer la
+    // recherche automatiquement — ce n'est pas une erreur (confirmé par l'utilisateur), il suffit de
+    // cliquer sur le bouton de recherche pour continuer quand même.
+    let searchBtnClicked = false;
+    if (!rowsFound) {
+      searchBtnClicked = await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button, a, div[role="button"]'))
+          .find((el) => el.offsetParent !== null && /rechercher|search/i.test((el.textContent || '').trim()));
+        if (btn) { btn.click(); return true; }
+        return false;
+      });
+      if (searchBtnClicked) {
+        await page.waitForNetworkIdle({ idleTime: 500, timeout: 15000 }).catch(() => {});
+        rowsFound = await page.waitForSelector('.div-table-row', { timeout: 15000 }).then(() => true).catch(() => false);
+        await new Promise((r) => setTimeout(r, pageLoadWaitMs));
+      }
+    }
 
     const rawResults = await page.evaluate(() =>
       Array.from(document.querySelectorAll('.div-table-row')).map((row) =>
@@ -46,7 +65,7 @@ module.exports = async function handler(req, res) {
       .map((cols) => ({ trackingNumber: cleanNumSuivi(cols[0]), lastKm: cleanNumSuivi(cols[1]) }))
       .filter((r) => r.trackingNumber && r.lastKm && r.lastKm !== r.trackingNumber);
 
-    const debug = { rowsFound };
+    const debug = { rowsFound, searchBtnClicked };
     if (results.length === 0) {
       const domDebug = await page.evaluate(() => ({
         pageTitle: document.title,

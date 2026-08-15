@@ -11,6 +11,7 @@
     { key:'numDernierKm',  label:'Num dernier kilométrique',  col:null } // toujours vide
   ];
   const STORAGE_KEY = 'commandes-db';
+  const COLS_STORAGE_KEY = 'commandes-cols-config';
 
   const els = {
     dropzone: document.getElementById('dropzone'),
@@ -33,6 +34,17 @@
     carrierSection: document.getElementById('carrierSection'),
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
+    fourPxApiConfigModalBg: document.getElementById('fourPxApiConfigModalBg'),
+    fourPxEndpoint: document.getElementById('fourPxEndpoint'),
+    fourPxAppKey: document.getElementById('fourPxAppKey'),
+    fourPxAppSecret: document.getElementById('fourPxAppSecret'),
+    fourPxScrapeEndpoint: document.getElementById('fourPxScrapeEndpoint'),
+    fourPxReqField: document.getElementById('fourPxReqField'),
+    fourPxRespArrayField: document.getElementById('fourPxRespArrayField'),
+    fourPxRespTrackingField: document.getElementById('fourPxRespTrackingField'),
+    fourPxRespLastMileField: document.getElementById('fourPxRespLastMileField'),
+    fourPxApiConfigSaveBtn: document.getElementById('fourPxApiConfigSaveBtn'),
+    fourPxApiConfigCancelBtn: document.getElementById('fourPxApiConfigCancelBtn'),
     trackingModalBg: document.getElementById('trackingModalBg'),
     trackingModalTitle: document.getElementById('trackingModalTitle'),
     trackingCount: document.getElementById('trackingCount'),
@@ -46,7 +58,23 @@
     packageModalBody: document.getElementById('packageModalBody'),
     packageQrCode: document.getElementById('packageQrCode'),
     closePackageModalBtn: document.getElementById('closePackageModalBtn'),
+    csvOptionsBtn: document.getElementById('csvOptionsBtn'),
+    csvOptionsModalBg: document.getElementById('csvOptionsModalBg'),
+    csvOptionsSubtext: document.getElementById('csvOptionsSubtext'),
+    csvOptionsBody: document.getElementById('csvOptionsBody'),
+    csvOptionsSaveBtn: document.getElementById('csvOptionsSaveBtn'),
+    csvOptionsCancelBtn: document.getElementById('csvOptionsCancelBtn'),
     scanBtn: document.getElementById('scanBtn'),
+    searchOptionsBtn: document.getElementById('searchOptionsBtn'),
+    searchOptionsModalBg: document.getElementById('searchOptionsModalBg'),
+    searchAlgoList: document.getElementById('searchAlgoList'),
+    searchAlgoAddBtn: document.getElementById('searchAlgoAddBtn'),
+    searchAlgoExportXmlBtn: document.getElementById('searchAlgoExportXmlBtn'),
+    searchAlgoImportInput: document.getElementById('searchAlgoImportInput'),
+    searchAlgoImportLog: document.getElementById('searchAlgoImportLog'),
+    searchOptionsSaveBtn: document.getElementById('searchOptionsSaveBtn'),
+    searchOptionsResetBtn: document.getElementById('searchOptionsResetBtn'),
+    searchOptionsCancelBtn: document.getElementById('searchOptionsCancelBtn'),
     scannerModalBg: document.getElementById('scannerModalBg'),
     scannerReaderContainer: document.getElementById('scannerReaderContainer'),
     scannerError: document.getElementById('scannerError'),
@@ -103,6 +131,30 @@
     });
   }
 
+  // ---------- configuration des numéros de colonne (personnalisable via "Options") ----------
+  function loadColsConfig(){
+    try{
+      const raw = localStorage.getItem(COLS_STORAGE_KEY);
+      if(!raw) return;
+      const saved = JSON.parse(raw);
+      COLS.forEach(c=>{
+        if(c.col !== null && saved && typeof saved[c.key] === 'number' && saved[c.key] > 0){
+          c.col = saved[c.key];
+        }
+      });
+    }catch(e){ /* config invalide, on garde les colonnes par défaut */ }
+  }
+
+  function saveColsConfig(){
+    const toSave = {};
+    COLS.forEach(c=>{ if(c.col !== null) toSave[c.key] = c.col; });
+    try{
+      localStorage.setItem(COLS_STORAGE_KEY, JSON.stringify(toSave));
+    }catch(e){ /* stockage indisponible, la config ne sera pas persistée */ }
+  }
+
+  loadColsConfig();
+
   // Nettoie la colonne Num Suivi : retire =, ", ', et les antislash d'échappement
   function cleanNumSuivi(v){
     return String(v ?? '').replace(/[="'\\]/g, '').trim();
@@ -116,53 +168,12 @@
     return m ? m[1].trim() : '';
   }
 
-  // Retire les caractères qui ne sont pas des chiffres, uniquement au tout début et à la toute fin
-  // de la chaîne scannée (ex. lettre de service/pays parfois présente en fin de code Colissimo/DPD),
-  // sans toucher aux caractères internes (lettres du préfixe Colissimo, etc.).
-  function trimNonDigitEdges(str){
-    return String(str || '').replace(/^[^0-9]+/, '').replace(/[^0-9]+$/, '');
-  }
+  // ---------- reconnaissance du numéro de suivi collé / scanné ----------
 
-  // Calcul du numéro de recherche Colissimo / DPD : plus de calcul de clé de contrôle.
-  // On retire d'abord les caractères non numériques en tout début et toute fin du scan, on exige
-  // qu'il reste exactement 27 caractères utiles, puis on extrait directement les caractères de la
-  // 10ème à la 20ème position (incluses) : ce fragment est collé tel quel dans le champ de recherche.
-  function computeColissimoDpdTracking(raw){
-    const clean = trimNonDigitEdges(String(raw || '').replace(/\s+/g, ''));
-    if(clean.length !== 27) return null;
-
-    return clean.slice(9, 20); // positions 10 à 20 (1-indexées) = 11 caractères
-  }
-
-  // Calcul du numéro de recherche La Poste, à partir d'un code-barres scanné de 32 caractères
-  // encadré par % ... ^ (ex. "%000000088000232558316600250A18^"). Plus de calcul de clé de
-  // contrôle : découpage en 2 étapes uniquement. On coupe la chaîne à la position 21 et on garde
-  // la première partie, puis on coupe cette première partie à la position 9 et on garde la
-  // deuxième partie : le résultat (13 caractères) est utilisé tel quel comme numéro à rechercher.
-  function computeLaPosteTracking(raw){
-    const clean = String(raw || '').replace(/\s+/g, '');
-    if(clean.length !== 32) return null;
-    if(clean[0] !== '%' || clean[clean.length - 1] !== '^') return null;
-
-    const firstPart = clean.slice(0, 21);  // 1ère partie : tout ce qui précède la position 21
-    const core = firstPart.slice(8);       // 2ème partie : à partir de la position 9 (13 caractères)
-    if(!/^[A-Za-z0-9]{13}$/.test(core)) return null;
-
-    return core;
-  }
-
-  // Calcul du numéro de recherche Chronopost : on retire le caractère % ou ^ s'il est en toute
-  // première position du scan, puis on extrait directement les caractères de la 8ème à la 18ème
-  // position (incluses), toujours sans calcul de clé de contrôle : le résultat est collé tel quel
-  // dans le champ de recherche.
-  function computeChronopostTracking(raw){
-    let clean = String(raw || '').replace(/\s+/g, '');
-    if(clean[0] === '%' || clean[0] === '^'){
-      clean = clean.slice(1);
-    }
-    if(clean.length < 18) return null;
-
-    return clean.slice(7, 18); // positions 8 à 18 (1-indexées) = 11 caractères
+  // Retire les caractères spéciaux (non alphanumériques) uniquement en tout début et toute fin de
+  // la chaîne scannée/collée, sans toucher aux caractères internes.
+  function stripSpecialCharsEdges(str){
+    return String(str || '').replace(/^[^0-9A-Za-z]+/, '').replace(/[^0-9A-Za-z]+$/, '');
   }
 
   // Un numéro de suivi calculé correspond-il à une commande déjà présente en base ?
@@ -172,26 +183,138 @@
     return database.some(r => cleanNumSuivi(r.numSuivi).toLowerCase() === v);
   }
 
-  // Détermine le meilleur numéro de suivi à partir d'une valeur scannée/collée : on essaie
-  // Colissimo/DPD, La Poste, puis Chronopost (extractions directes, sans aucun calcul de clé), et
-  // on retient le premier résultat qui correspond à une commande déjà présente en base. Si aucun
-  // ne correspond, on garde le comportement historique (Colissimo/DPD par défaut si calculable,
-  // sinon La Poste, sinon Chronopost).
-  function computeBestTracking(raw){
-    const colissimoDpd = computeColissimoDpdTracking(raw);
-    const laposte = computeLaPosteTracking(raw);
-    const chronopost = computeChronopostTracking(raw);
+  // ---------- moteur générique d'algorithmes de recherche (configurable via "Options") ----------
+  // Chaque algorithme (La Poste, Colissimo, GLS, ou un algorithme ajouté par l'utilisateur) est
+  // une liste de règles testées dans l'ordre. La première règle dont les conditions correspondent
+  // ET dont l'extraction produit un résultat non vide est retenue pour cet algorithme.
+  const SEARCH_ALGOS_STORAGE_KEY = 'commandes-search-algos';
 
-    if(colissimoDpd && trackingExistsInDb(colissimoDpd)) return colissimoDpd;
-    if(laposte && trackingExistsInDb(laposte)) return laposte;
-    if(chronopost && trackingExistsInDb(chronopost)) return chronopost;
+  const DEFAULT_SEARCH_ALGORITHMS = [
+    {
+      id: 'laposte', label: 'La Poste', enabled: true,
+      rules: [
+        // Code-barres de 32 caractères encadré par % ... ^ (ex. "%000000088000234424817600250A18^").
+        // Découpage en 2 étapes : on garde les 21 premiers caractères, puis dans ce résultat on
+        // garde à partir de la position 9 (13 caractères au final).
+        { length: 32, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'twoStepCut', cut1: 21, cut2: 9 }
+      ]
+    },
+    {
+      id: 'colissimo', label: 'Colissimo / Chronopost / DPD', enabled: true,
+      rules: [
+        // Code de 28 caractères débutant par % (ex. "%0094150116C2111186098802250" -> "6C2111186").
+        // Extraction directe des positions 11 à 19 (incluses).
+        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 19 }
+      ]
+    },
+    {
+      id: 'gls', label: 'GLS', enabled: true,
+      rules: [
+        // Code entièrement numérique : on garde la valeur mais on retire les 2 derniers caractères.
+        { length: null, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'removeLast', count: 2 },
+        // Code alphanumérique (ex. "GL00L5UAZM" -> "00L5UAZM") : on retire les 2 premiers caractères.
+        { length: null, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'removeFirst', count: 2 }
+      ]
+    }
+  ];
 
-    return colissimoDpd || laposte || chronopost || null;
+  let SEARCH_ALGORITHMS = DEFAULT_SEARCH_ALGORITHMS.map(a => ({ ...a, rules: a.rules.map(r => ({ ...r })) }));
+
+  function loadSearchAlgorithms(){
+    try{
+      const raw = localStorage.getItem(SEARCH_ALGOS_STORAGE_KEY);
+      if(!raw) return;
+      const saved = JSON.parse(raw);
+      if(Array.isArray(saved) && saved.length > 0){
+        SEARCH_ALGORITHMS = saved;
+      }
+    }catch(e){ /* config invalide, on garde les algorithmes par défaut */ }
   }
 
-  // Applique la transformation (Colissimo/DPD ou La Poste selon ce qui correspond en base)
-  // sur le champ de recherche
-  function applyColissimoTransformIfNeeded(){
+  function saveSearchAlgorithms(){
+    try{
+      localStorage.setItem(SEARCH_ALGOS_STORAGE_KEY, JSON.stringify(SEARCH_ALGORITHMS));
+    }catch(e){ /* stockage indisponible, la config ne sera pas persistée */ }
+  }
+
+  loadSearchAlgorithms();
+
+  function contentTypeMatches(str, type){
+    if(type === 'digits') return /^[0-9]+$/.test(str);
+    if(type === 'alnum') return /^[A-Za-z0-9]+$/.test(str);
+    return true; // 'any'
+  }
+
+  function ruleConditionsMatch(clean, rule){
+    if(rule.length && clean.length !== Number(rule.length)) return false;
+    if(rule.startsWith && !clean.startsWith(rule.startsWith)) return false;
+    if(rule.endsWith && !clean.endsWith(rule.endsWith)) return false;
+    if(rule.contentType && !contentTypeMatches(clean, rule.contentType)) return false;
+    return true;
+  }
+
+  function applyExtraction(clean, rule){
+    switch(rule.extractType){
+      case 'slice': {
+        const start = Number(rule.start), end = Number(rule.end);
+        if(!start || !end || end < start || clean.length < end) return null;
+        return clean.slice(start - 1, end);
+      }
+      case 'removeFirst': {
+        const n = Number(rule.count) || 0;
+        if(n <= 0 || clean.length <= n) return null;
+        return clean.slice(n);
+      }
+      case 'removeLast': {
+        const n = Number(rule.count) || 0;
+        if(n <= 0 || clean.length <= n) return null;
+        return clean.slice(0, clean.length - n);
+      }
+      case 'twoStepCut': {
+        const cut1 = Number(rule.cut1), cut2 = Number(rule.cut2);
+        if(!cut1 || !cut2 || clean.length < cut1) return null;
+        const firstPart = clean.slice(0, cut1);
+        if(firstPart.length < cut2) return null;
+        return firstPart.slice(cut2 - 1);
+      }
+      default: return null;
+    }
+  }
+
+  // Exécute un algorithme (liste de règles) sur une valeur brute et renvoie le premier résultat
+  // exploitable, ou null si aucune règle ne s'applique / n'aboutit.
+  function runSearchAlgorithm(algo, raw){
+    if(!algo.enabled) return null;
+    const clean = String(raw || '').replace(/\s+/g, '');
+    for(const rule of (algo.rules || [])){
+      if(!ruleConditionsMatch(clean, rule)) continue;
+      const result = applyExtraction(clean, rule);
+      if(result) return result;
+    }
+    return null;
+  }
+
+  // Détermine le meilleur numéro de suivi à partir d'une valeur scannée/collée : on commence par
+  // retirer les caractères spéciaux en tout début/fin et on vérifie si le résultat correspond déjà
+  // à une commande en base. Si non, on essaie chaque algorithme configuré (dans l'ordre) et on
+  // retient le premier résultat qui correspond à une commande en base. Si aucun ne correspond, on
+  // garde un ordre de repli par défaut (strip, puis premier algorithme calculable).
+  function computeBestTracking(raw){
+    const stripped = stripSpecialCharsEdges(raw);
+    if(stripped && trackingExistsInDb(stripped)) return stripped;
+
+    const results = SEARCH_ALGORITHMS
+      .map(algo => runSearchAlgorithm(algo, raw))
+      .filter(v => v);
+
+    const matched = results.find(v => trackingExistsInDb(v));
+    if(matched) return matched;
+
+    return stripped || results[0] || null;
+  }
+
+  // Applique la transformation ci-dessus sur le champ de recherche
+  function applyTrackingTransformIfNeeded(){
     const transformed = computeBestTracking(els.search.value);
     if(transformed){
       els.search.value = transformed;
@@ -200,6 +323,330 @@
     }
     return false;
   }
+
+  // ---------- fenêtre "Options" des algorithmes de recherche ----------
+  // Copie de travail modifiée librement pendant que la fenêtre est ouverte ; seul un clic sur
+  // "Enregistrer" applique les changements à SEARCH_ALGORITHMS et les persiste.
+  let draftSearchAlgorithms = [];
+
+  const EXTRACT_TYPE_LABELS = {
+    slice: 'Extraire une plage de positions',
+    removeFirst: 'Retirer les N premiers caractères',
+    removeLast: 'Retirer les N derniers caractères',
+    twoStepCut: 'Découpage en 2 étapes',
+  };
+
+  function cloneAlgorithms(list){
+    return list.map(a => ({ ...a, rules: a.rules.map(r => ({ ...r })) }));
+  }
+
+  function newBlankRule(){
+    return { length: null, startsWith: '', endsWith: '', contentType: 'any', extractType: 'slice', start: 1, end: 1 };
+  }
+
+  function renderSearchAlgoList(){
+    els.searchAlgoList.innerHTML = '';
+
+    draftSearchAlgorithms.forEach((algo, algoIdx)=>{
+      const card = document.createElement('div');
+      card.className = 'search-algo-card';
+
+      const header = document.createElement('div');
+      header.className = 'search-algo-header';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'search-algo-name';
+      nameInput.value = algo.label;
+      nameInput.addEventListener('input', ()=>{ algo.label = nameInput.value; });
+      header.appendChild(nameInput);
+
+      const enabledLabel = document.createElement('label');
+      const enabledCheckbox = document.createElement('input');
+      enabledCheckbox.type = 'checkbox';
+      enabledCheckbox.checked = algo.enabled;
+      enabledCheckbox.addEventListener('change', ()=>{ algo.enabled = enabledCheckbox.checked; });
+      enabledLabel.appendChild(enabledCheckbox);
+      enabledLabel.appendChild(document.createTextNode(' Actif'));
+      header.appendChild(enabledLabel);
+
+      const removeAlgoBtn = document.createElement('button');
+      removeAlgoBtn.type = 'button';
+      removeAlgoBtn.className = 'danger search-algo-remove';
+      removeAlgoBtn.textContent = 'Supprimer l\'algorithme';
+      removeAlgoBtn.addEventListener('click', ()=>{
+        draftSearchAlgorithms.splice(algoIdx, 1);
+        renderSearchAlgoList();
+      });
+      header.appendChild(removeAlgoBtn);
+
+      card.appendChild(header);
+
+      algo.rules.forEach((rule, ruleIdx)=>{
+        card.appendChild(buildRuleRow(algo, rule, ruleIdx));
+      });
+
+      const addRuleBtn = document.createElement('button');
+      addRuleBtn.type = 'button';
+      addRuleBtn.className = 'secondary';
+      addRuleBtn.textContent = '+ Ajouter une condition';
+      addRuleBtn.addEventListener('click', ()=>{
+        algo.rules.push(newBlankRule());
+        renderSearchAlgoList();
+      });
+      card.appendChild(addRuleBtn);
+
+      els.searchAlgoList.appendChild(card);
+    });
+  }
+
+  function buildRuleRow(algo, rule, ruleIdx){
+    const row = document.createElement('div');
+    row.className = 'search-rule-row';
+
+    function field(labelText, inputEl){
+      const wrap = document.createElement('div');
+      wrap.className = 'search-rule-field';
+      const label = document.createElement('label');
+      label.textContent = labelText;
+      wrap.appendChild(label);
+      wrap.appendChild(inputEl);
+      return wrap;
+    }
+
+    const lengthInput = document.createElement('input');
+    lengthInput.type = 'number';
+    lengthInput.min = '1';
+    lengthInput.placeholder = 'Peu importe';
+    lengthInput.value = rule.length || '';
+    lengthInput.addEventListener('input', ()=>{ rule.length = lengthInput.value ? parseInt(lengthInput.value, 10) : null; });
+    row.appendChild(field('Longueur exacte', lengthInput));
+
+    const startsWithInput = document.createElement('input');
+    startsWithInput.type = 'text';
+    startsWithInput.maxLength = 5;
+    startsWithInput.value = rule.startsWith || '';
+    startsWithInput.addEventListener('input', ()=>{ rule.startsWith = startsWithInput.value; });
+    row.appendChild(field('Commence par', startsWithInput));
+
+    const endsWithInput = document.createElement('input');
+    endsWithInput.type = 'text';
+    endsWithInput.maxLength = 5;
+    endsWithInput.value = rule.endsWith || '';
+    endsWithInput.addEventListener('input', ()=>{ rule.endsWith = endsWithInput.value; });
+    row.appendChild(field('Termine par', endsWithInput));
+
+    const contentSelect = document.createElement('select');
+    [['any','Peu importe'], ['digits','Chiffres uniquement'], ['alnum','Alphanumérique']].forEach(([val, txt])=>{
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = txt;
+      if(rule.contentType === val) opt.selected = true;
+      contentSelect.appendChild(opt);
+    });
+    contentSelect.addEventListener('change', ()=>{ rule.contentType = contentSelect.value; });
+    row.appendChild(field('Contenu', contentSelect));
+
+    const extractSelect = document.createElement('select');
+    Object.entries(EXTRACT_TYPE_LABELS).forEach(([val, txt])=>{
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = txt;
+      if(rule.extractType === val) opt.selected = true;
+      extractSelect.appendChild(opt);
+    });
+
+    const paramsWrap = document.createElement('div');
+    paramsWrap.className = 'search-rule-params';
+
+    function renderParams(){
+      paramsWrap.innerHTML = '';
+      if(rule.extractType === 'slice'){
+        const start = document.createElement('input');
+        start.type = 'number'; start.min = '1'; start.placeholder = 'Début'; start.value = rule.start || '';
+        start.addEventListener('input', ()=>{ rule.start = parseInt(start.value, 10) || null; });
+        const end = document.createElement('input');
+        end.type = 'number'; end.min = '1'; end.placeholder = 'Fin'; end.value = rule.end || '';
+        end.addEventListener('input', ()=>{ rule.end = parseInt(end.value, 10) || null; });
+        paramsWrap.appendChild(field('Début', start));
+        paramsWrap.appendChild(field('Fin', end));
+      }else if(rule.extractType === 'removeFirst' || rule.extractType === 'removeLast'){
+        const count = document.createElement('input');
+        count.type = 'number'; count.min = '1'; count.placeholder = 'N'; count.value = rule.count || '';
+        count.addEventListener('input', ()=>{ rule.count = parseInt(count.value, 10) || null; });
+        paramsWrap.appendChild(field('Nombre de caractères', count));
+      }else if(rule.extractType === 'twoStepCut'){
+        const cut1 = document.createElement('input');
+        cut1.type = 'number'; cut1.min = '1'; cut1.placeholder = 'Coupe 1'; cut1.value = rule.cut1 || '';
+        cut1.addEventListener('input', ()=>{ rule.cut1 = parseInt(cut1.value, 10) || null; });
+        const cut2 = document.createElement('input');
+        cut2.type = 'number'; cut2.min = '1'; cut2.placeholder = 'Coupe 2'; cut2.value = rule.cut2 || '';
+        cut2.addEventListener('input', ()=>{ rule.cut2 = parseInt(cut2.value, 10) || null; });
+        paramsWrap.appendChild(field('Position de coupe 1', cut1));
+        paramsWrap.appendChild(field('Position de coupe 2', cut2));
+      }
+    }
+    renderParams();
+    extractSelect.addEventListener('change', ()=>{ rule.extractType = extractSelect.value; renderParams(); });
+
+    row.appendChild(field('Extraction', extractSelect));
+    row.appendChild(paramsWrap);
+
+    const removeRuleBtn = document.createElement('button');
+    removeRuleBtn.type = 'button';
+    removeRuleBtn.className = 'secondary search-rule-remove';
+    removeRuleBtn.textContent = '✕';
+    removeRuleBtn.title = 'Supprimer cette condition';
+    removeRuleBtn.addEventListener('click', ()=>{
+      algo.rules.splice(ruleIdx, 1);
+      renderSearchAlgoList();
+    });
+    row.appendChild(removeRuleBtn);
+
+    return row;
+  }
+
+  function openSearchOptionsModal(){
+    draftSearchAlgorithms = cloneAlgorithms(SEARCH_ALGORITHMS);
+    renderSearchAlgoList();
+    els.searchAlgoImportLog.textContent = '';
+    els.searchOptionsModalBg.style.display = 'block';
+  }
+
+  function closeSearchOptionsModal(){
+    els.searchOptionsModalBg.style.display = 'none';
+  }
+
+  els.searchOptionsBtn.addEventListener('click', openSearchOptionsModal);
+  els.searchOptionsCancelBtn.addEventListener('click', closeSearchOptionsModal);
+  els.searchOptionsModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.searchOptionsModalBg) closeSearchOptionsModal();
+  });
+
+  // Échappe les caractères spéciaux pour une utilisation en attribut XML
+  function escapeXmlAttr(v){
+    return String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  // Construit un document XML représentant la configuration des algorithmes de recherche
+  function buildSearchAlgorithmsXml(algorithms){
+    const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<searchAlgorithms>'];
+    algorithms.forEach(algo=>{
+      lines.push(`  <algorithm id="${escapeXmlAttr(algo.id)}" label="${escapeXmlAttr(algo.label)}" enabled="${algo.enabled ? 'true' : 'false'}">`);
+      (algo.rules || []).forEach(rule=>{
+        const attrs = [
+          `length="${rule.length ?? ''}"`,
+          `startsWith="${escapeXmlAttr(rule.startsWith)}"`,
+          `endsWith="${escapeXmlAttr(rule.endsWith)}"`,
+          `contentType="${escapeXmlAttr(rule.contentType)}"`,
+          `extractType="${escapeXmlAttr(rule.extractType)}"`,
+          `start="${rule.start ?? ''}"`,
+          `end="${rule.end ?? ''}"`,
+          `count="${rule.count ?? ''}"`,
+          `cut1="${rule.cut1 ?? ''}"`,
+          `cut2="${rule.cut2 ?? ''}"`,
+        ].join(' ');
+        lines.push(`    <rule ${attrs} />`);
+      });
+      lines.push('  </algorithm>');
+    });
+    lines.push('</searchAlgorithms>');
+    return lines.join('\n');
+  }
+
+  function downloadTextFile(filename, content, mime){
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  els.searchAlgoExportXmlBtn.addEventListener('click', ()=>{
+    const xml = buildSearchAlgorithmsXml(draftSearchAlgorithms);
+    downloadTextFile('algorithmes-recherche-' + new Date().toISOString().slice(0, 10) + '.xml', xml, 'application/xml;charset=utf-8;');
+  });
+
+  // Lit un document XML (généré par "Exporter en XML") et reconstruit la liste d'algorithmes
+  function parseSearchAlgorithmsXml(text){
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if(doc.querySelector('parsererror')) throw new Error('le fichier XML est mal formé');
+
+    const algoEls = Array.from(doc.querySelectorAll('searchAlgorithms > algorithm'));
+    if(algoEls.length === 0) throw new Error('aucun algorithme trouvé dans le fichier');
+
+    return algoEls.map((algoEl, idx)=>{
+      const numAttr = (el, name)=>{
+        const v = el.getAttribute(name);
+        return (v !== null && v !== '') ? Number(v) : null;
+      };
+      const rules = Array.from(algoEl.querySelectorAll('rule')).map(ruleEl => ({
+        length: numAttr(ruleEl, 'length'),
+        startsWith: ruleEl.getAttribute('startsWith') || '',
+        endsWith: ruleEl.getAttribute('endsWith') || '',
+        contentType: ruleEl.getAttribute('contentType') || 'any',
+        extractType: ruleEl.getAttribute('extractType') || 'slice',
+        start: numAttr(ruleEl, 'start'),
+        end: numAttr(ruleEl, 'end'),
+        count: numAttr(ruleEl, 'count'),
+        cut1: numAttr(ruleEl, 'cut1'),
+        cut2: numAttr(ruleEl, 'cut2'),
+      }));
+      return {
+        id: algoEl.getAttribute('id') || ('algo-importe-' + idx),
+        label: algoEl.getAttribute('label') || 'Algorithme importé',
+        enabled: algoEl.getAttribute('enabled') !== 'false',
+        rules,
+      };
+    });
+  }
+
+  els.searchAlgoImportInput.addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+
+    els.searchAlgoImportLog.textContent = '';
+    try{
+      const text = await readFileAsText(file);
+      const imported = parseSearchAlgorithmsXml(text);
+      draftSearchAlgorithms = imported;
+      renderSearchAlgoList();
+      els.searchAlgoImportLog.style.color = 'var(--success)';
+      els.searchAlgoImportLog.textContent = `${file.name} — ${imported.length} algorithme(s) importé(s). Cliquez sur "Enregistrer" pour appliquer.`;
+    }catch(err){
+      els.searchAlgoImportLog.style.color = 'var(--danger)';
+      els.searchAlgoImportLog.textContent = `${file.name} — échec de l'import (${err && err.message ? err.message : 'fichier invalide'}).`;
+    }
+    e.target.value = '';
+  });
+
+  els.searchAlgoAddBtn.addEventListener('click', ()=>{
+    draftSearchAlgorithms.push({
+      id: 'algo-' + Date.now(),
+      label: 'Nouvel algorithme',
+      enabled: true,
+      rules: [newBlankRule()],
+    });
+    renderSearchAlgoList();
+  });
+
+  els.searchOptionsSaveBtn.addEventListener('click', ()=>{
+    SEARCH_ALGORITHMS = cloneAlgorithms(draftSearchAlgorithms);
+    saveSearchAlgorithms();
+    closeSearchOptionsModal();
+  });
+
+  els.searchOptionsResetBtn.addEventListener('click', ()=>{
+    draftSearchAlgorithms = cloneAlgorithms(DEFAULT_SEARCH_ALGORITHMS);
+    renderSearchAlgoList();
+  });
 
   // ---------- stockage persistant (localStorage du navigateur) ----------
   // Remarque : window.storage n'existe que dans l'aperçu Artifacts de Claude.ai — sur un vrai
@@ -329,6 +776,125 @@
     });
     return idx;
   }
+
+  // ---------- fenêtre "Options" : numéro de colonne + aperçu ----------
+  // L'aperçu est construit à partir des 100 premières lignes du fichier sélectionné le moins
+  // lourd (le plus rapide à lire), pour donner un aperçu représentatif sans ralentir l'ouverture
+  // de la fenêtre si plusieurs gros fichiers sont sélectionnés.
+  let csvPreviewRows = [];
+
+  function pickLightestSelectedFile(){
+    if(selectedFiles.length === 0) return null;
+    return selectedFiles.reduce((min, f) => (!min || f.size < min.size) ? f : min, null);
+  }
+
+  async function buildCsvPreview(){
+    const file = pickLightestSelectedFile();
+    if(!file) return null;
+
+    let text;
+    try{
+      text = await readFileAsText(file);
+    }catch(e){
+      return null;
+    }
+
+    const first100Lines = text.split(/\r\n|\r|\n/).slice(0, 100).join('\n');
+    let rows;
+    try{
+      rows = parseCSV(first100Lines);
+    }catch(e){
+      rows = [];
+    }
+    if(els.hasHeader.checked) rows = rows.slice(1);
+
+    return { file, rows };
+  }
+
+  function sampleValuesForCol(col){
+    if(!col || col < 1) return '—';
+    const values = csvPreviewRows
+      .map(r => r[col - 1])
+      .filter(v => v !== undefined && v !== null && String(v).trim() !== '')
+      .slice(0, 5);
+    return values.length > 0 ? values.join(' · ') : '—';
+  }
+
+  function renderCsvOptionsBody(){
+    els.csvOptionsBody.innerHTML = '';
+    COLS.forEach(c=>{
+      const row = document.createElement('div');
+      row.className = 'csv-option-row';
+
+      const label = document.createElement('span');
+      label.className = 'csv-option-label';
+      label.textContent = c.label;
+      row.appendChild(label);
+
+      if(c.col === null){
+        const fixed = document.createElement('span');
+        fixed.className = 'csv-option-fixed';
+        fixed.textContent = 'Champ toujours vide (non importé depuis le CSV)';
+        row.appendChild(fixed);
+      }else{
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '1';
+        input.className = 'csv-option-col-input';
+        input.value = c.col;
+        input.dataset.key = c.key;
+        row.appendChild(input);
+
+        const preview = document.createElement('span');
+        preview.className = 'csv-option-preview';
+        preview.textContent = sampleValuesForCol(c.col);
+        row.appendChild(preview);
+
+        input.addEventListener('input', ()=>{
+          const n = parseInt(input.value, 10);
+          preview.textContent = sampleValuesForCol(n);
+        });
+      }
+
+      els.csvOptionsBody.appendChild(row);
+    });
+  }
+
+  async function openCsvOptionsModal(){
+    els.csvOptionsModalBg.style.display = 'block';
+    els.csvOptionsSubtext.textContent = 'Chargement de l’aperçu…';
+    els.csvOptionsBody.innerHTML = '';
+
+    const preview = await buildCsvPreview();
+    csvPreviewRows = preview ? preview.rows : [];
+
+    els.csvOptionsSubtext.textContent = preview
+      ? `Aperçu basé sur les ${csvPreviewRows.length} première(s) ligne(s) de « ${preview.file.name} » (fichier sélectionné le moins lourd).`
+      : 'Sélectionnez au moins un fichier CSV ci-dessus pour afficher un aperçu des colonnes.';
+
+    renderCsvOptionsBody();
+  }
+
+  function closeCsvOptionsModal(){
+    els.csvOptionsModalBg.style.display = 'none';
+  }
+
+  els.csvOptionsBtn.addEventListener('click', openCsvOptionsModal);
+  els.csvOptionsCancelBtn.addEventListener('click', closeCsvOptionsModal);
+  els.csvOptionsModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.csvOptionsModalBg) closeCsvOptionsModal();
+  });
+  els.csvOptionsSaveBtn.addEventListener('click', ()=>{
+    els.csvOptionsBody.querySelectorAll('input[data-key]').forEach(input=>{
+      const n = parseInt(input.value, 10);
+      if(n > 0){
+        const c = COLS.find(col => col.key === input.dataset.key);
+        if(c) c.col = n;
+      }
+    });
+    saveColsConfig();
+    closeCsvOptionsModal();
+  });
 
   els.importBtn.addEventListener('click', async ()=>{
     if(selectedFiles.length === 0) return;
@@ -560,6 +1126,190 @@
     render();
   }
 
+  // ---------- import du numéro dernier kilométrique via l'API 4PX ----------
+  // NOTE : l'API officielle 4PX (plateforme "open.4px.com") nécessite un compte marchand /
+  // partenaire logiciel et des identifiants (App Key / App Secret) qui ne sont pas publics — voir
+  // https://open.4px.com/apiInfo/introduce. Tant que ces identifiants et le format exact de
+  // l'endpoint ne sont pas connus, cet appel est fourni en best-effort : il envoie une requête
+  // POST JSON générique et lit la réponse selon le mapping de champs configuré ci-dessous. Il est
+  // probable qu'il faille l'ajuster (voire passer par un backend, l'API 4PX n'autorisant sans
+  // doute pas les appels directs depuis un navigateur pour des raisons de CORS et de signature de
+  // requête) une fois les identifiants et la doc réelle obtenus auprès de 4PX.
+  const FOURPX_API_CONFIG_KEY = 'fourpx-api-config';
+
+  function loadFourPxApiConfig(){
+    try{
+      const raw = localStorage.getItem(FOURPX_API_CONFIG_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      return {};
+    }
+  }
+
+  function saveFourPxApiConfig(config){
+    try{
+      localStorage.setItem(FOURPX_API_CONFIG_KEY, JSON.stringify(config));
+    }catch(e){ /* stockage indisponible, la config ne sera pas persistée */ }
+  }
+
+  // Lit une valeur imbriquée dans un objet à partir d'un chemin "a.b.c" (chaîne vide = objet racine)
+  function readByPath(obj, path){
+    if(!path) return obj;
+    return path.split('.').reduce((acc, key) => (acc && acc[key] !== undefined) ? acc[key] : undefined, obj);
+  }
+
+  function openFourPxApiConfigModal(){
+    const config = loadFourPxApiConfig();
+    els.fourPxEndpoint.value = config.endpoint || '';
+    els.fourPxAppKey.value = config.appKey || '';
+    els.fourPxAppSecret.value = config.appSecret || '';
+    els.fourPxScrapeEndpoint.value = config.scrapeEndpoint || '/api/scrape-4px';
+    els.fourPxReqField.value = config.reqField || 'trackingNumbers';
+    els.fourPxRespArrayField.value = config.respArrayField || 'data';
+    els.fourPxRespTrackingField.value = config.respTrackingField || 'trackingNumber';
+    els.fourPxRespLastMileField.value = config.respLastMileField || 'lastMileTrackingNumber';
+    els.fourPxApiConfigModalBg.style.display = 'block';
+  }
+
+  function closeFourPxApiConfigModal(){
+    els.fourPxApiConfigModalBg.style.display = 'none';
+  }
+
+  els.fourPxApiConfigCancelBtn.addEventListener('click', closeFourPxApiConfigModal);
+  els.fourPxApiConfigModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.fourPxApiConfigModalBg) closeFourPxApiConfigModal();
+  });
+  els.fourPxApiConfigSaveBtn.addEventListener('click', ()=>{
+    saveFourPxApiConfig({
+      endpoint: els.fourPxEndpoint.value.trim(),
+      appKey: els.fourPxAppKey.value.trim(),
+      appSecret: els.fourPxAppSecret.value.trim(),
+      scrapeEndpoint: els.fourPxScrapeEndpoint.value.trim() || '/api/scrape-4px',
+      reqField: els.fourPxReqField.value.trim() || 'trackingNumbers',
+      respArrayField: els.fourPxRespArrayField.value.trim(),
+      respTrackingField: els.fourPxRespTrackingField.value.trim() || 'trackingNumber',
+      respLastMileField: els.fourPxRespLastMileField.value.trim() || 'lastMileTrackingNumber',
+    });
+    closeFourPxApiConfigModal();
+  });
+
+  // Extrait le tableau de résultats d'une réponse JSON (selon le mapping configuré), met à jour
+  // numDernierKm pour les commandes 4PX correspondantes, sauvegarde et journalise le résultat.
+  // Partagé par l'appel API officielle et par le scraping via la fonction Vercel : les deux
+  // renvoient un JSON dont la forme est décrite par le même mapping de champs.
+  async function applyFourPxResultsToDb(g, json, config, sourceLabel){
+    const items = readByPath(json, config.respArrayField);
+    if(!Array.isArray(items)){
+      const preview = JSON.stringify(json).slice(0, 500);
+      importLogByCarrier[g.key] = {
+        text: `Réponse de ${sourceLabel} reçue mais le champ « ${config.respArrayField || '(racine)'} » ne contient pas de tableau exploitable — ajustez le mapping des champs. Aperçu brut de la réponse : ${preview}`,
+        err: true
+      };
+      renderCarrierPanel();
+      return;
+    }
+
+    const updateMap = new Map();
+    items.forEach(item=>{
+      const trackingNumber = cleanNumSuivi(item[config.respTrackingField]);
+      const lastKm = String(item[config.respLastMileField] ?? '').trim();
+      if(trackingNumber) updateMap.set(trackingNumber, lastKm);
+    });
+
+    let matched = 0;
+    database.forEach(r=>{
+      if(!g.match.includes(normCarrierName(r.transporteur))) return;
+      const key = cleanNumSuivi(r.numSuivi);
+      if(updateMap.has(key)){
+        r.numDernierKm = updateMap.get(key);
+        matched++;
+      }
+    });
+
+    const notFound = Math.max(0, items.length - matched);
+    await saveDatabase();
+
+    importLogByCarrier[g.key] = {
+      text: `${matched} commande(s) mise(s) à jour via ${sourceLabel}.` + (notFound > 0 ? ` ${notFound} résultat(s) sans correspondance dans la base.` : ''),
+      err: false
+    };
+    render();
+  }
+
+  async function importFourPxViaApi(g){
+    const config = loadFourPxApiConfig();
+    if(!config.endpoint){
+      importLogByCarrier[g.key] = { text: "Configurez d'abord l'API 4PX (bouton « ⚙ Config API 4PX »).", err: true };
+      openFourPxApiConfigModal();
+      renderCarrierPanel();
+      return;
+    }
+
+    importLogByCarrier[g.key] = { text: "Appel de l'API 4PX en cours…", err: false };
+    renderCarrierPanel();
+
+    let json;
+    try{
+      const res = await fetch(config.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.appKey ? { 'X-App-Key': config.appKey } : {}),
+          ...(config.appSecret ? { 'X-App-Secret': config.appSecret } : {}),
+        },
+        body: JSON.stringify({ [config.reqField || 'trackingNumbers']: g.nums }),
+      });
+      if(!res.ok) throw new Error(`réponse HTTP ${res.status}`);
+      json = await res.json();
+    }catch(e){
+      importLogByCarrier[g.key] = {
+        text: `Échec de l'appel à l'API 4PX (${e && e.message ? e.message : 'erreur réseau'}). ` +
+              `Vérifiez l'endpoint/les identifiants, ou une restriction CORS empêche l'appel direct depuis le navigateur.`,
+        err: true
+      };
+      renderCarrierPanel();
+      return;
+    }
+
+    await applyFourPxResultsToDb(g, json, config, "l'API 4PX");
+  }
+
+  // ---------- scraping 4PX via une fonction backend Vercel ----------
+  // L'endpoint interne utilisé par la page de suivi Cainiao (https://global.cainiao.com/global/detail.json)
+  // ne renvoie aucun header CORS, un appel direct depuis le navigateur est donc bloqué. La fonction
+  // serverless /api/scrape-4px.js (voir ce fichier) fait ce fetch côté serveur et renvoie la réponse
+  // brute de Cainiao avec les en-têtes CORS nécessaires. Le format exact de cette réponse n'étant pas
+  // documenté publiquement, ajustez le mapping des champs dans la fenêtre de config une fois qu'une
+  // réponse réelle aura été inspectée (l'aperçu brut est affiché ci-dessous en cas d'échec du mapping).
+  async function scrapeFourPxViaVercel(g){
+    const config = loadFourPxApiConfig();
+    const scrapeEndpoint = config.scrapeEndpoint || '/api/scrape-4px';
+
+    importLogByCarrier[g.key] = { text: 'Scraping 4PX (via Vercel) en cours…', err: false };
+    renderCarrierPanel();
+
+    let json;
+    try{
+      const res = await fetch(scrapeEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingNumbers: g.nums }),
+      });
+      json = await res.json();
+      if(!res.ok) throw new Error(json && json.error ? json.error : `réponse HTTP ${res.status}`);
+    }catch(e){
+      importLogByCarrier[g.key] = {
+        text: `Échec du scraping (${e && e.message ? e.message : 'erreur réseau'}). ` +
+              `Vérifiez que le projet est bien déployé sur Vercel avec le dossier /api, et que l'URL « ${scrapeEndpoint} » est accessible.`,
+        err: true
+      };
+      renderCarrierPanel();
+      return;
+    }
+
+    await applyFourPxResultsToDb(g, json, config, 'le scraping Vercel');
+  }
+
   async function copyTextToClipboard(text){
     try{
       await navigator.clipboard.writeText(text);
@@ -602,6 +1352,17 @@
       ? `<p style="font-size:12px; color:var(--muted); margin-top:4px;">Le bouton « ${openLabel} » copie les numéros de colis dans le presse-papier puis ouvre la page de suivi ${g.label} — collez-les directement sur le site.</p>`
       : '';
 
+    const fourPxApiHtml = g.key === '4px'
+      ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
+          <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique via l'API 4PX ou par scraping</label>
+          <div class="actions">
+            <button id="fourPxApiImportBtn">4PX API — Importer</button>
+            <button id="fourPxScrapeBtn" type="button" class="secondary">Scrapping (Vercel)</button>
+            <button id="fourPxApiConfigBtn" type="button" class="secondary">⚙ Config API 4PX</button>
+          </div>
+        </div>`
+      : '';
+
     els.carrierPanel.innerHTML = `
       <p style="font-size:13px; color:var(--muted);">
         ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
@@ -614,8 +1375,9 @@
           <textarea id="pasteArea" maxlength="10000" rows="5" style="width:100%; font-size:12px; padding:8px;" placeholder="Collez ici les données copiées depuis la page de suivi ${g.label}…"></textarea>
         </div>
         <div class="actions"><button id="importPasteBtn">Importer</button></div>
-        ${logHtml}
       </div>
+      ${fourPxApiHtml}
+      ${logHtml}
     `;
 
     const pasteArea = document.getElementById('pasteArea');
@@ -658,6 +1420,12 @@
     });
 
     document.getElementById('importPasteBtn').addEventListener('click', ()=> handleImportPaste(g));
+
+    if(g.key === '4px'){
+      document.getElementById('fourPxApiImportBtn').addEventListener('click', ()=> importFourPxViaApi(g));
+      document.getElementById('fourPxScrapeBtn').addEventListener('click', ()=> scrapeFourPxViaVercel(g));
+      document.getElementById('fourPxApiConfigBtn').addEventListener('click', openFourPxApiConfigModal);
+    }
   }
 
   function updateCarrierTracking(){
@@ -701,6 +1469,12 @@
       closePackageModal();
     }else if(els.trackingModalBg.style.display === 'block'){
       els.trackingModalBg.style.display = 'none';
+    }else if(els.csvOptionsModalBg.style.display === 'block'){
+      closeCsvOptionsModal();
+    }else if(els.searchOptionsModalBg.style.display === 'block'){
+      closeSearchOptionsModal();
+    }else if(els.fourPxApiConfigModalBg.style.display === 'block'){
+      closeFourPxApiConfigModal();
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){
@@ -735,7 +1509,7 @@
     e.preventDefault();
     els.search.value = text;
     els.search.focus();
-    if(!applyColissimoTransformIfNeeded()) render();
+    if(!applyTrackingTransformIfNeeded()) render();
   });
 
   els.copyUrlBtn.addEventListener('click', async ()=>{
@@ -1011,15 +1785,15 @@
   els.search.addEventListener('input', render);
   els.displayLimit.addEventListener('change', render);
 
-  // Transformation Colissimo : au collage (Ctrl+V), à la touche Entrée (bipeur physique)
+  // Transformation du numéro de suivi : au collage (Ctrl+V), à la touche Entrée (bipeur physique)
   // ou en quittant le champ (change).
   els.search.addEventListener('paste', ()=>{
-    setTimeout(()=>{ if(!applyColissimoTransformIfNeeded()) render(); }, 0);
+    setTimeout(()=>{ if(!applyTrackingTransformIfNeeded()) render(); }, 0);
   });
   els.search.addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter') applyColissimoTransformIfNeeded();
+    if(e.key === 'Enter') applyTrackingTransformIfNeeded();
   });
-  els.search.addEventListener('change', applyColissimoTransformIfNeeded);
+  els.search.addEventListener('change', applyTrackingTransformIfNeeded);
 
   // ---------- mode plein écran de la section "2. Base de données" ----------
   // Le bouton en haut à droite de la section bascule l'affichage : seuls l'en-tête de l'app et

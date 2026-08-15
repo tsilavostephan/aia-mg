@@ -1,7 +1,7 @@
 {
-  "name": "AIA — Gestionnaire de commandes",
+  "name": "AIA ?!",
   "short_name": "AIA",
-  "description": "Gestion et suivi des commandes (Colissimo, DPD, La Poste, Chronopost).",
+  "description": "Gestion de suivi de colis.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

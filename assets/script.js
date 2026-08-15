@@ -1061,16 +1061,28 @@
 
   let carrierMapping = loadCarrierMapping();
 
-  function resolveCarrierKeyForRow(r){
+  // Une commande peut appartenir à PLUSIEURS transporteurs à la fois : par exemple une valeur brute
+  // "LANDMARK" est à la fois suivie par son propre transporteur dédié (correspondance automatique
+  // par nom) ET par GOFO (liste par défaut ci-dessus) — le colis est alors scrappé deux fois,
+  // volontairement, GOFO servant d'étape de vérification finale en plus du suivi spécifique.
+  // Une association manuelle enregistrée via la fenêtre "⚙ Transporteurs" remplace entièrement ce
+  // calcul automatique pour la valeur brute concernée (tableau vide = exclue de tout transporteur).
+  function resolveCarrierKeysForRow(r){
     const raw = String(r.transporteur || '').trim();
-    if(!raw) return null;
+    if(!raw) return [];
     const rawKey = raw.toUpperCase();
-    if(carrierMapping[rawKey]) return carrierMapping[rawKey];
-    if(DEFAULT_CARRIER_MAPPING[rawKey]) return DEFAULT_CARRIER_MAPPING[rawKey];
 
+    if(Object.prototype.hasOwnProperty.call(carrierMapping, rawKey)){
+      const v = carrierMapping[rawKey];
+      return Array.isArray(v) ? v : (v ? [v] : []);
+    }
+
+    const keys = new Set();
     const normalized = normCarrierName(raw);
     const found = CARRIERS.find(c => c.match.includes(normalized));
-    return found ? found.key : null;
+    if(found) keys.add(found.key);
+    if(DEFAULT_CARRIER_MAPPING[rawKey]) keys.add(DEFAULT_CARRIER_MAPPING[rawKey]);
+    return Array.from(keys);
   }
 
   function chunkArray(arr, size){
@@ -1117,9 +1129,9 @@
 
   function computeCarrierGroups(){
     return CARRIERS.map(c=>{
-      const matched = database.filter(r => resolveCarrierKeyForRow(r) === c.key);
+      const matched = database.filter(r => resolveCarrierKeysForRow(r).includes(c.key));
       const extra = carrierIncludesUnresolved(c.key)
-        ? database.filter(r => resolveCarrierKeyForRow(r) !== c.key && !String(r.numDernierKm || '').trim())
+        ? database.filter(r => !resolveCarrierKeysForRow(r).includes(c.key) && !String(r.numDernierKm || '').trim())
         : [];
       const nums = Array.from(new Set(
         matched.concat(extra).map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
@@ -1143,14 +1155,26 @@
     els.carrierMappingList.innerHTML = rawValues.map(raw=>{
       const rawKey = raw.toUpperCase();
       const count = database.filter(r => String(r.transporteur || '').trim() === raw).length;
-      const currentKey = draftCarrierMapping[rawKey]
-        || DEFAULT_CARRIER_MAPPING[rawKey]
-        || (CARRIERS.find(c => c.match.includes(normCarrierName(raw))) || {}).key
-        || '';
+
+      // Une valeur brute peut être cochée pour plusieurs transporteurs à la fois (ex. "LANDMARK" est
+      // suivi à la fois par son transporteur dédié ET par GOFO, volontairement) — reflète soit une
+      // association manuelle déjà enregistrée pour cette ligne, soit la détection automatique
+      // (correspondance de nom + éventuelle liste GOFO par défaut).
+      let currentKeys;
+      if(Object.prototype.hasOwnProperty.call(draftCarrierMapping, rawKey)){
+        const v = draftCarrierMapping[rawKey];
+        currentKeys = Array.isArray(v) ? v : (v ? [v] : []);
+      }else{
+        const keys = new Set();
+        const found = (CARRIERS.find(c => c.match.includes(normCarrierName(raw))) || {}).key;
+        if(found) keys.add(found);
+        if(DEFAULT_CARRIER_MAPPING[rawKey]) keys.add(DEFAULT_CARRIER_MAPPING[rawKey]);
+        currentKeys = Array.from(keys);
+      }
 
       const checkboxesHtml = CARRIERS.map(c=>
         `<label style="font-size:12px; display:flex; align-items:center; gap:4px; white-space:nowrap;">
-          <input type="checkbox" class="carrierMapCheckbox" data-raw="${escapeHtmlAttr(rawKey)}" data-carrier="${c.key}" ${currentKey === c.key ? 'checked' : ''}>
+          <input type="checkbox" class="carrierMapCheckbox" data-raw="${escapeHtmlAttr(rawKey)}" data-carrier="${c.key}" ${currentKeys.includes(c.key) ? 'checked' : ''}>
           ${c.label}
         </label>`
       ).join('');
@@ -1164,15 +1188,14 @@
     els.carrierMappingList.querySelectorAll('.carrierMapCheckbox').forEach(cb=>{
       cb.addEventListener('change', ()=>{
         const rawKey = cb.dataset.raw;
-        const carrierKey = cb.dataset.carrier;
-        if(cb.checked){
-          draftCarrierMapping[rawKey] = carrierKey;
-          cb.closest('.carrierMapRow').querySelectorAll('.carrierMapCheckbox').forEach(other=>{
-            if(other !== cb) other.checked = false;
-          });
-        }else{
-          delete draftCarrierMapping[rawKey];
-        }
+        // Cases indépendantes (pas un choix exclusif) : dès qu'on touche une case de la ligne, on
+        // enregistre explicitement la liste actuelle de cases cochées comme association manuelle
+        // pour cette valeur brute (un tableau vide = exclue de tout transporteur).
+        const row = cb.closest('.carrierMapRow');
+        const checkedKeys = Array.from(row.querySelectorAll('.carrierMapCheckbox'))
+          .filter(other => other.checked)
+          .map(other => other.dataset.carrier);
+        draftCarrierMapping[rawKey] = checkedKeys;
       });
     });
   }

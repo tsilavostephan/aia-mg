@@ -143,36 +143,19 @@
 
 <div id="fourPxApiConfigModalBg" class="modal-bg" style="display:none;">
   <div class="modal-box">
-    <h2 class="modal-title">Configuration API 4PX</h2>
+    <h2 class="modal-title">Configuration du scraping 4PX</h2>
     <p class="modal-subtext">
-      Renseignez ici les identifiants et l'URL fournis par votre compte marchand 4PX (plateforme
-      <em>open.4px.com</em>). Tant que vous ne les avez pas, l'import via API ne fonctionnera pas —
-      utilisez en attendant l'onglet "Coller les données" ci-dessus, ou le bouton "Scrapping (Vercel)".
+      Paramètres du scraping automatique (bouton "Scrapping (Vercel)") : il ouvre la page de suivi
+      Cainiao dans un navigateur headless, clique sur "Copy Overview" et lit le résultat.
     </p>
-    <div class="row"><label>URL de l'endpoint de tracking (API officielle 4PX)<br>
-      <input type="text" id="fourPxEndpoint" placeholder="https://open.4px.com/..." style="width:100%;"></label>
-    </div>
-    <div class="row"><label>App Key<br>
-      <input type="text" id="fourPxAppKey" style="width:100%;"></label>
-    </div>
-    <div class="row"><label>App Secret<br>
-      <input type="password" id="fourPxAppSecret" style="width:100%;"></label>
-    </div>
     <div class="row"><label>URL de la fonction de scraping (backend Vercel)<br>
       <input type="text" id="fourPxScrapeEndpoint" placeholder="/api/scrape-4px" style="width:100%;"></label>
     </div>
-    <p class="modal-subtext" style="margin-top:14px;">Correspondance des champs (à ajuster selon la réponse réelle — API 4PX ou scraping) :</p>
-    <div class="row"><label>Nom du champ envoyé pour la liste des numéros de suivi<br>
-      <input type="text" id="fourPxReqField" style="width:100%;" placeholder="trackingNumbers"></label>
+    <div class="row"><label>Délai d'attente après chargement de la page (ms)<br>
+      <input type="number" id="fourPxPageLoadWaitMs" min="0" step="500" placeholder="4000" style="width:100%;"></label>
     </div>
-    <div class="row"><label>Chemin du tableau de résultats dans la réponse JSON<br>
-      <input type="text" id="fourPxRespArrayField" style="width:100%;" placeholder="data"></label>
-    </div>
-    <div class="row"><label>Champ identifiant le numéro de suivi dans chaque résultat<br>
-      <input type="text" id="fourPxRespTrackingField" style="width:100%;" placeholder="trackingNumber"></label>
-    </div>
-    <div class="row"><label>Champ contenant le numéro dernier kilométrique dans chaque résultat<br>
-      <input type="text" id="fourPxRespLastMileField" style="width:100%;" placeholder="lastMileTrackingNumber"></label>
+    <div class="row"><label>Délai d'attente après clic sur "Copy Overview" (ms)<br>
+      <input type="number" id="fourPxClickWaitMs" min="0" step="100" placeholder="600" style="width:100%;"></label>
     </div>
     <div class="actions">
       <button id="fourPxApiConfigSaveBtn">Enregistrer</button>

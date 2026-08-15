@@ -101,6 +101,12 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  // Délais configurables depuis la fenêtre "⚙ Config Scraping 4PX" de l'app (avec valeurs par
+  // défaut raisonnables si non fournis).
+  const body = req.method === 'POST' ? (req.body || {}) : req.query;
+  const pageLoadWaitMs = Number(body.pageLoadWaitMs) || 4000;
+  const clickWaitMs = Number(body.clickWaitMs) || 600;
+
   const url = `https://track.cainiao.com/orderTrack?mailNoList=${encodeURIComponent(trackingNumbers.join(','))}`;
 
   let browser;
@@ -119,7 +125,7 @@ module.exports = async function handler(req, res) {
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
 
     // Laisse le temps au rendu JS de la page (chargement asynchrone des statuts de suivi) de finir.
-    await new Promise(r => setTimeout(r, 4000));
+    await new Promise(r => setTimeout(r, pageLoadWaitMs));
 
     let overviewText = null;
     const clickDebug = { iconFound: false, clipboardResult: null };
@@ -157,9 +163,9 @@ module.exports = async function handler(req, res) {
         // (onMouseEnter) — on simule donc un vrai survol souris avant de cliquer, plutôt qu'un
         // .click() synthétique via page.evaluate qui ne déclenche pas ces gestionnaires.
         await iconHandle.hover().catch(() => {});
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, clickWaitMs));
         await iconHandle.click().catch(() => {});
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, clickWaitMs));
 
         // Si un menu/popup contenant un libellé "Copy Overview" est apparu, on le clique aussi ;
         // sinon on suppose que le clic/survol précédent a déjà déclenché la copie directement.
@@ -168,7 +174,7 @@ module.exports = async function handler(req, res) {
             .find(e => /copy overview/i.test(e.textContent || '') && e.offsetParent !== null);
           if (el) el.click();
         });
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, clickWaitMs));
 
         const rawClipboard = await page.evaluate(() =>
           navigator.clipboard.readText().then(t => ({ ok: true, value: t })).catch(e => ({ ok: false, error: e && e.message }))

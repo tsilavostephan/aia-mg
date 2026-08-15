@@ -35,14 +35,9 @@
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
     fourPxApiConfigModalBg: document.getElementById('fourPxApiConfigModalBg'),
-    fourPxEndpoint: document.getElementById('fourPxEndpoint'),
-    fourPxAppKey: document.getElementById('fourPxAppKey'),
-    fourPxAppSecret: document.getElementById('fourPxAppSecret'),
     fourPxScrapeEndpoint: document.getElementById('fourPxScrapeEndpoint'),
-    fourPxReqField: document.getElementById('fourPxReqField'),
-    fourPxRespArrayField: document.getElementById('fourPxRespArrayField'),
-    fourPxRespTrackingField: document.getElementById('fourPxRespTrackingField'),
-    fourPxRespLastMileField: document.getElementById('fourPxRespLastMileField'),
+    fourPxPageLoadWaitMs: document.getElementById('fourPxPageLoadWaitMs'),
+    fourPxClickWaitMs: document.getElementById('fourPxClickWaitMs'),
     fourPxApiConfigSaveBtn: document.getElementById('fourPxApiConfigSaveBtn'),
     fourPxApiConfigCancelBtn: document.getElementById('fourPxApiConfigCancelBtn'),
     trackingModalBg: document.getElementById('trackingModalBg'),
@@ -1161,14 +1156,9 @@
 
   function openFourPxApiConfigModal(){
     const config = loadFourPxApiConfig();
-    els.fourPxEndpoint.value = config.endpoint || '';
-    els.fourPxAppKey.value = config.appKey || '';
-    els.fourPxAppSecret.value = config.appSecret || '';
     els.fourPxScrapeEndpoint.value = config.scrapeEndpoint || '/api/scrape-4px';
-    els.fourPxReqField.value = config.reqField || 'trackingNumbers';
-    els.fourPxRespArrayField.value = config.respArrayField || 'data';
-    els.fourPxRespTrackingField.value = config.respTrackingField || 'trackingNumber';
-    els.fourPxRespLastMileField.value = config.respLastMileField || 'lastMileTrackingNumber';
+    els.fourPxPageLoadWaitMs.value = config.pageLoadWaitMs || 4000;
+    els.fourPxClickWaitMs.value = config.clickWaitMs || 600;
     els.fourPxApiConfigModalBg.style.display = 'block';
   }
 
@@ -1182,22 +1172,15 @@
   });
   els.fourPxApiConfigSaveBtn.addEventListener('click', ()=>{
     saveFourPxApiConfig({
-      endpoint: els.fourPxEndpoint.value.trim(),
-      appKey: els.fourPxAppKey.value.trim(),
-      appSecret: els.fourPxAppSecret.value.trim(),
       scrapeEndpoint: els.fourPxScrapeEndpoint.value.trim() || '/api/scrape-4px',
-      reqField: els.fourPxReqField.value.trim() || 'trackingNumbers',
-      respArrayField: els.fourPxRespArrayField.value.trim(),
-      respTrackingField: els.fourPxRespTrackingField.value.trim() || 'trackingNumber',
-      respLastMileField: els.fourPxRespLastMileField.value.trim() || 'lastMileTrackingNumber',
+      pageLoadWaitMs: parseInt(els.fourPxPageLoadWaitMs.value, 10) || 4000,
+      clickWaitMs: parseInt(els.fourPxClickWaitMs.value, 10) || 600,
     });
     closeFourPxApiConfigModal();
   });
 
   // Extrait le tableau de résultats d'une réponse JSON (selon le mapping configuré), met à jour
   // numDernierKm pour les commandes 4PX correspondantes, sauvegarde et journalise le résultat.
-  // Partagé par l'appel API officielle et par le scraping via la fonction Vercel : les deux
-  // renvoient un JSON dont la forme est décrite par le même mapping de champs.
   async function applyFourPxResultsToDb(g, json, config, sourceLabel){
     const items = readByPath(json, config.respArrayField);
     if(!Array.isArray(items)){
@@ -1253,53 +1236,12 @@
     render();
   }
 
-  async function importFourPxViaApi(g){
-    const config = loadFourPxApiConfig();
-    if(!config.endpoint){
-      importLogByCarrier[g.key] = { text: "Configurez d'abord l'API 4PX (bouton « ⚙ Config API 4PX »).", err: true };
-      openFourPxApiConfigModal();
-      renderCarrierPanel();
-      return;
-    }
-
-    importLogByCarrier[g.key] = { text: "Appel de l'API 4PX en cours…", err: false };
-    renderCarrierPanel();
-
-    let json;
-    try{
-      const res = await fetch(config.endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(config.appKey ? { 'X-App-Key': config.appKey } : {}),
-          ...(config.appSecret ? { 'X-App-Secret': config.appSecret } : {}),
-        },
-        body: JSON.stringify({ [config.reqField || 'trackingNumbers']: g.nums }),
-      });
-      if(!res.ok) throw new Error(`réponse HTTP ${res.status}`);
-      json = await res.json();
-    }catch(e){
-      importLogByCarrier[g.key] = {
-        text: `Échec de l'appel à l'API 4PX (${e && e.message ? e.message : 'erreur réseau'}). ` +
-              `Vérifiez l'endpoint/les identifiants, ou une restriction CORS empêche l'appel direct depuis le navigateur.`,
-        err: true
-      };
-      renderCarrierPanel();
-      return;
-    }
-
-    await applyFourPxResultsToDb(g, json, config, "l'API 4PX");
-  }
-
   // ---------- scraping 4PX via une fonction backend Vercel ----------
   // La fonction serverless /api/scrape-4px.js (voir ce fichier) ouvre réellement la page de suivi
   // Cainiao dans un navigateur headless, attend son chargement, clique sur le bouton "Copy Overview"
-  // (celui que l'on utilise déjà manuellement pour l'import par collage) puis lit le texte copié
-  // dans le presse-papier du navigateur headless. Elle renvoie un format fixe et déjà découpé selon
-  // la même règle que l'import manuel : { results: [{ trackingNumber, lastKm }, ...] } — pas besoin
-  // du mapping de champs configurable (celui-ci ne sert que pour l'API officielle 4PX, au schéma
-  // inconnu). ⚠️ Scraping non vérifié en conditions réelles : le clic sur "Copy Overview" et le
-  // délai de rendu dans /api/scrape-4px.js sont une estimation à ajuster si besoin.
+  // puis lit le texte copié dans le presse-papier du navigateur headless. Elle renvoie un format
+  // fixe et déjà découpé selon la même règle que l'import manuel :
+  // { results: [{ trackingNumber, lastKm }, ...] }.
   async function scrapeFourPxViaVercel(g){
     const config = loadFourPxApiConfig();
     const scrapeEndpoint = config.scrapeEndpoint || '/api/scrape-4px';
@@ -1312,7 +1254,11 @@
       const res = await fetch(scrapeEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackingNumbers: g.nums }),
+        body: JSON.stringify({
+          trackingNumbers: g.nums,
+          pageLoadWaitMs: config.pageLoadWaitMs || 4000,
+          clickWaitMs: config.clickWaitMs || 600,
+        }),
       });
       json = await res.json();
       if(!res.ok) throw new Error(json && json.error ? json.error : `réponse HTTP ${res.status}`);
@@ -1387,11 +1333,10 @@
 
     const fourPxApiHtml = g.key === '4px'
       ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
-          <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique via l'API 4PX ou par scraping</label>
+          <label style="font-size:13px;">Ou importer directement le numéro dernier kilométrique par scraping automatique</label>
           <div class="actions">
-            <button id="fourPxApiImportBtn">4PX API — Importer</button>
-            <button id="fourPxScrapeBtn" type="button" class="secondary">Scrapping (Vercel)</button>
-            <button id="fourPxApiConfigBtn" type="button" class="secondary">⚙ Config API 4PX</button>
+            <button id="fourPxScrapeBtn" type="button">Scrapping (Vercel)</button>
+            <button id="fourPxApiConfigBtn" type="button" class="secondary">⚙ Config Scraping 4PX</button>
           </div>
         </div>`
       : '';
@@ -1456,7 +1401,6 @@
     document.getElementById('importPasteBtn').addEventListener('click', ()=> handleImportPaste(g));
 
     if(g.key === '4px'){
-      document.getElementById('fourPxApiImportBtn').addEventListener('click', ()=> importFourPxViaApi(g));
       document.getElementById('fourPxScrapeBtn').addEventListener('click', ()=> scrapeFourPxViaVercel(g));
       document.getElementById('fourPxApiConfigBtn').addEventListener('click', openFourPxApiConfigModal);
     }

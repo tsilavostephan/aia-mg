@@ -1005,6 +1005,9 @@
     { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
+    { key:'sfexpress',  label:'SF Express', match:['SF EXPRESS','SFEXPRESS'],  baseUrl:'https://t.17track.net/fr#nums=',                      kmColIndex:1, mode:'url',
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », dépliez chaque colis et copiez le numéro « Last-mile Tracking Number », puis collez ci-dessous au format « numéro de suivi<TAB>numéro dernier kilométrique », une ligne par colis.',
+      scrapeEndpoint: '/api/scrape-sfexpress' },
   ];
   const CHUNK_SIZE = 99;
 

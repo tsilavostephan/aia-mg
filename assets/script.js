@@ -1242,47 +1242,76 @@
   // puis lit le texte copié dans le presse-papier du navigateur headless. Elle renvoie un format
   // fixe et déjà découpé selon la même règle que l'import manuel :
   // { results: [{ trackingNumber, lastKm }, ...] }.
+  //
+  // Comme pour les liens "Ouvrir" (voir g.chunks / CHUNK_SIZE), on scrape par lots de 99 colis
+  // maximum plutôt qu'un seul très gros lot : Cainiao peut limiter/tronquer le nombre de numéros
+  // pris en compte par requête, et une URL avec des centaines de numéros peut poser problème. Les
+  // lots sont scrapés en parallèle (un appel de fonction Vercel par lien), puis fusionnés.
   async function scrapeFourPxViaVercel(g){
     const config = loadFourPxApiConfig();
     const scrapeEndpoint = config.scrapeEndpoint || '/api/scrape-4px';
+    const chunks = (g.chunks && g.chunks.length > 0) ? g.chunks : [g.nums];
 
-    importLogByCarrier[g.key] = { text: 'Scraping 4PX (via Vercel) en cours… (ouverture de la page + lecture de "Copy Overview", peut prendre jusqu\'à 30-60 secondes)', err: false };
+    importLogByCarrier[g.key] = {
+      text: `Scraping 4PX (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités en parallèle` : '') + ` (peut prendre jusqu'à 30-60 secondes)…`,
+      err: false
+    };
     renderCarrierPanel();
 
-    let json;
-    try{
+    const chunkOutcomes = await Promise.allSettled(chunks.map(async (chunk) => {
       const res = await fetch(scrapeEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          trackingNumbers: g.nums,
+          trackingNumbers: chunk,
           pageLoadWaitMs: config.pageLoadWaitMs || 4000,
           clickWaitMs: config.clickWaitMs || 600,
         }),
       });
-      json = await res.json();
+      const json = await res.json();
       if(!res.ok) throw new Error(json && json.error ? json.error : `réponse HTTP ${res.status}`);
-    }catch(e){
+      if(!Array.isArray(json.results) || json.results.length === 0){
+        const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
+        throw new Error(`aucun résultat exploitable (${debugText})`);
+      }
+      return json.results;
+    }));
+
+    const allResults = [];
+    const chunkErrors = [];
+    chunkOutcomes.forEach((outcome, idx)=>{
+      if(outcome.status === 'fulfilled'){
+        allResults.push(...outcome.value);
+      }else{
+        const reason = outcome.reason && outcome.reason.message ? outcome.reason.message : 'échec inconnu';
+        chunkErrors.push(`lien ${idx + 1}/${chunks.length} : ${reason}`);
+      }
+    });
+
+    if(allResults.length === 0){
       importLogByCarrier[g.key] = {
-        text: `Échec du scraping (${e && e.message ? e.message : 'erreur réseau'}). ` +
-              `Vérifiez que le projet est bien déployé sur Vercel avec le dossier /api, et que l'URL « ${scrapeEndpoint} » est accessible.`,
+        text: `Le scraping n'a renvoyé aucun résultat exploitable.` + (chunkErrors.length > 0 ? ` ${chunkErrors.join(' | ')}` : ''),
         err: true
       };
       renderCarrierPanel();
       return;
     }
 
-    if(!Array.isArray(json.results) || json.results.length === 0){
-      const debugText = json.debug ? JSON.stringify(json.debug, null, 2) : '(pas de diagnostic disponible)';
+    await applyFourPxResultsToDb(
+      g,
+      { results: allResults },
+      { respArrayField: 'results', respTrackingField: 'trackingNumber', respLastMileField: 'lastKm' },
+      `le scraping Vercel${chunks.length > 1 ? ` (${chunks.length} liens)` : ''}`
+    );
+
+    if(chunkErrors.length > 0){
+      const current = importLogByCarrier[g.key];
       importLogByCarrier[g.key] = {
-        text: `Le scraping n'a renvoyé aucun résultat exploitable (bouton "Copy Overview" non trouvé/cliqué ou presse-papier headless inaccessible). Diagnostic : ${debugText}`,
-        err: true
+        text: `${current.text} ⚠️ ${chunkErrors.length} lien(s) en échec : ${chunkErrors.join(' | ')}`,
+        err: current.err
       };
       renderCarrierPanel();
-      return;
     }
-
-    await applyFourPxResultsToDb(g, json, { respArrayField: 'results', respTrackingField: 'trackingNumber', respLastMileField: 'lastKm' }, 'le scraping Vercel');
   }
 
   async function copyTextToClipboard(text){

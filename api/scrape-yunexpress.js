@@ -70,6 +70,9 @@ module.exports = async function handler(req, res) {
       })).asElement();
 
       if (dropdownBtnHandle) {
+        await dropdownBtnHandle.evaluate(el => el.scrollIntoView({ block: 'center' })).catch(() => {});
+        await new Promise(r => setTimeout(r, 200));
+
         // Confirmé par capture DevTools + diagnostic : malgré son apparence de menu element-ui,
         // ce dropdown "el-dropdown-selfdefine" ne s'ouvre pas au simple survol — il faut un vrai clic.
         await dropdownBtnHandle.hover().catch(() => {});
@@ -77,9 +80,28 @@ module.exports = async function handler(req, res) {
         let menuItemHandle = await findVisibleMenuItem();
 
         if (!menuItemHandle) {
+          // Un vrai clic (coordonnées CDP) peut atterrir sur un élément qui recouvre le bouton
+          // (bannière/overlay) — on vérifie et on note ce cas dans le diagnostic.
+          clickDebug.obscuringElement = await dropdownBtnHandle.evaluate(el => {
+            const rect = el.getBoundingClientRect();
+            const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            if (!top) return null;
+            if (top === el || el.contains(top)) return null;
+            return { tag: top.tagName, className: typeof top.className === 'string' ? top.className : '' };
+          }).catch(() => null);
+
           await dropdownBtnHandle.click().catch(() => {});
           await new Promise(r => setTimeout(r, clickWaitMs));
           menuItemHandle = await findVisibleMenuItem();
+        }
+
+        if (!menuItemHandle) {
+          // Repli supplémentaire : déclenche un clic natif directement sur le bouton (bypass
+          // d'un éventuel élément qui le recouvrirait aux coordonnées CDP).
+          await dropdownBtnHandle.evaluate(el => el.click()).catch(() => {});
+          await new Promise(r => setTimeout(r, clickWaitMs));
+          menuItemHandle = await findVisibleMenuItem();
+          clickDebug.nativeClickTried = true;
         }
         clickDebug.menuItemFound = !!menuItemHandle;
 
@@ -132,6 +154,9 @@ module.exports = async function handler(req, res) {
           tag: el.tagName,
           className: typeof el.className === 'string' ? el.className : '',
           text: (el.textContent || '').trim().slice(0, 80),
+          visible: el.offsetParent !== null,
+          display: getComputedStyle(el).display,
+          visibility: getComputedStyle(el).visibility,
         });
         const dropdownItems = Array.from(document.querySelectorAll('li, .el-dropdown-menu__item, [role="menuitem"]')).map(describe);
 

@@ -155,7 +155,7 @@ module.exports = async function handler(req, res) {
     }
 
     await browser.close();
-    res.status(200).json({ results, usedOverviewButton: !!overviewText, debug });
+    res.status(200).json({ results, rawText: overviewText || null, usedOverviewButton: !!overviewText, debug });
   } catch (e) {
     if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
     const message = e && e.message ? e.message : 'échec du scraping 4PX';

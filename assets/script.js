@@ -1272,11 +1272,20 @@
         });
         const json = await res.json();
         if(!res.ok) throw new Error(json && json.error ? json.error : `réponse HTTP ${res.status}`);
-        if(!Array.isArray(json.results) || json.results.length === 0){
+
+        // On réanalyse le texte brut copié avec exactement le même algorithme que le bouton
+        // "Importer" (parseTrackingPaste + le kmColIndex/matchColIndex propre à ce transporteur),
+        // plutôt que de faire confiance au découpage générique (colonne 0/1) fait côté serveur —
+        // qui ne correspond pas forcément à la mise en page réelle du texte copié (ex. Yun Express).
+        const updates = (typeof json.rawText === 'string' && json.rawText.trim())
+          ? parseTrackingPaste(json.rawText, g.kmColIndex, g.pasteHasHeader, g.matchColIndex)
+          : (Array.isArray(json.results) ? json.results : []);
+
+        if(updates.length === 0){
           const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
           throw new Error(`aucun résultat exploitable (${debugText})`);
         }
-        return json.results;
+        return updates;
       }finally{
         // Un lot vient de se terminer (succès ou échec) : on avance la barre de progression.
         const progress = scrapeProgressByCarrier[g.key];

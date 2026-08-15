@@ -61,21 +61,11 @@ module.exports = async function handler(req, res) {
     const rawTrackInfoSample = [];
     accepted.forEach((item) => {
       const trackingNumber = cleanNumSuivi(item.number);
-      const providers = (item.track_info && item.track_info.tracking && Array.isArray(item.track_info.tracking.providers))
-        ? item.track_info.tracking.providers
-        : [];
 
-      // Cherche, parmi les "providers" (étapes/transporteurs successifs du colis), un numéro de
-      // suivi propre différent du numéro d'origine — c'est le candidat le plus probable pour le
-      // numéro dernier kilométrique.
-      let lastKm = '';
-      for (const p of providers) {
-        const candidate = p && (p.provider_no || p.number || (p.provider && p.provider.no));
-        if (candidate && cleanNumSuivi(candidate) !== trackingNumber) {
-          lastKm = cleanNumSuivi(candidate);
-          break;
-        }
-      }
+      // Confirmé par une vraie réponse API : le numéro dernier kilométrique est exposé sous
+      // track_info.misc_info.local_number (ex. "LP756776806FR"), pas dans tracking.providers.
+      const localNumber = item.track_info && item.track_info.misc_info ? item.track_info.misc_info.local_number : '';
+      const lastKm = (localNumber && cleanNumSuivi(localNumber) !== trackingNumber) ? cleanNumSuivi(localNumber) : '';
 
       results.push({ trackingNumber, lastKm });
       if (rawTrackInfoSample.length < 3) rawTrackInfoSample.push({ number: item.number, track_info: item.track_info });

@@ -47,9 +47,19 @@
   <div id="log"></div>
 </fieldset>
 
+<fieldset id="carrierSection" style="display:none;">
+  <h2 class="section-title">
+    <span>2. Détection du LastMile Tracking Number</span>
+    <button type="button" id="scrapeAllBtn" class="secondary">Tout récupérer</button>
+  </h2>
+  <div id="scrapeAllLog" style="font-size:12px; margin:4px 0 8px;"></div>
+  <div class="tabs" id="carrierTabs"></div>
+  <div id="carrierPanel"></div>
+</fieldset>
+
 <fieldset id="dbSection">
   <h2 class="section-title">
-    <span>2. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s))</span>
+    <span>3. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s))</span>
     <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Afficher uniquement cette section">⛶</button>
   </h2>
   <div class="actions">
@@ -77,12 +87,6 @@
     <div id="dbCards" class="db-cards"></div>
   </div>
   <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer.</div>
-</fieldset>
-
-<fieldset id="carrierSection" style="display:none;">
-  <h2>3. Suivi groupé par transporteur</h2>
-  <div class="tabs" id="carrierTabs"></div>
-  <div id="carrierPanel"></div>
 </fieldset>
 
 <div id="trackingModalBg" class="modal-bg" style="display:none;">

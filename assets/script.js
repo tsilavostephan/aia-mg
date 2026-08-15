@@ -34,6 +34,8 @@
     carrierSection: document.getElementById('carrierSection'),
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
+    scrapeAllBtn: document.getElementById('scrapeAllBtn'),
+    scrapeAllLog: document.getElementById('scrapeAllLog'),
     fourPxApiConfigModalBg: document.getElementById('fourPxApiConfigModalBg'),
     fourPxPageLoadWaitMs: document.getElementById('fourPxPageLoadWaitMs'),
     fourPxClickWaitMs: document.getElementById('fourPxClickWaitMs'),
@@ -1335,6 +1337,29 @@
       renderCarrierPanel();
     }
   }
+
+  // Lance scrapeCarrierViaVercel() pour tous les transporteurs pris en charge (ceux ayant des colis
+  // en base et une fonction de scraping dédiée), en parallèle — plutôt que de cliquer un par un sur
+  // chaque onglet.
+  async function scrapeAllCarriers(){
+    const eligible = carrierGroups.filter(g => g.scrapeEndpoint && g.nums && g.nums.length > 0);
+
+    if(eligible.length === 0){
+      els.scrapeAllLog.textContent = 'Aucun transporteur avec scraping disponible et des colis en base pour le moment.';
+      return;
+    }
+
+    els.scrapeAllBtn.disabled = true;
+    els.scrapeAllLog.textContent = `Scraping en cours pour ${eligible.length} transporteur(s) : ${eligible.map(g => g.label).join(', ')}…`;
+
+    await Promise.allSettled(eligible.map(g => scrapeCarrierViaVercel(g)));
+
+    els.scrapeAllBtn.disabled = false;
+    els.scrapeAllLog.textContent = `Scraping terminé pour : ${eligible.map(g => g.label).join(', ')}. Voir le détail dans l'onglet de chaque transporteur.`;
+    renderCarrierPanel();
+  }
+
+  els.scrapeAllBtn.addEventListener('click', scrapeAllCarriers);
 
   async function copyTextToClipboard(text){
     try{

@@ -1241,6 +1241,9 @@
         .slice(0, 3)
         .map(r => JSON.stringify(cleanNumSuivi(r.numSuivi)));
       mismatchSample = ` Échantillon scrapé : ${scrapedKeys.join(', ')} — Échantillon base : ${dbKeys.join(', ')}`;
+      if(json.debug){
+        mismatchSample += ` Diagnostic scraping : ${JSON.stringify(json.debug).slice(0, 600)}`;
+      }
     }
 
     importLogByCarrier[g.key] = {

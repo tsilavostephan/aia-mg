@@ -129,13 +129,10 @@ module.exports = async function handler(req, res) {
       const context = browser.defaultBrowserContext();
       await context.overridePermissions('https://track.cainiao.com', ['clipboard-read', 'clipboard-write']);
 
-      // Le conteneur "copyWrapper" contient DEUX icônes identiques en apparence
-      // (span.MailNoList--iconWrapper--xxx, aria-haspopup="true") :
-      //   1) la première (sans autre classe) = "Copy Overview" (tous les colis) — celle qu'il nous faut
-      //   2) la seconde (avec en plus la classe "copySingle") = copie un seul colis (celle qu'on
-      //      ciblait par erreur auparavant, d'où un résultat à une seule ligne au lieu du tableau complet)
-      // On prend donc explicitement la première <span aria-haspopup="true"> du wrapper qui N'A PAS
-      // la classe "copySingle", plutôt qu'un sélecteur CSS ambigu entre les deux icônes.
+      // Confirmé par capture DevTools de l'utilisateur : c'est bien le <span> portant la classe
+      // "copySingle" (en plus de "iconWrapper") qui donne le bon résultat (tableau complet) quand on
+      // clique dessus manuellement. On le cible donc explicitement, avec repli sur le 1er span
+      // aria-haspopup du wrapper si jamais la classe changeait.
       await page.waitForSelector('[class*="copyWrapper"] span[aria-haspopup="true"]', { timeout: 15000 }).catch(() => {});
 
       // Vercel/headless Chrome : la page doit être au premier plan et avoir le focus pour que
@@ -143,11 +140,16 @@ module.exports = async function handler(req, res) {
       await page.bringToFront();
       await page.evaluate(() => window.focus());
 
+      // Marqueur écrit AVANT le clic : si on retrouve ce même marqueur après avoir cliqué, ça prouve
+      // que le clic n'a rien copié du tout (plutôt que de deviner à partir du contenu lu).
+      const sentinel = '__SENTINEL_BEFORE_CLICK__';
+      await page.evaluate((s) => navigator.clipboard.writeText(s).catch(() => {}), sentinel);
+
       const iconHandle = (await page.evaluateHandle(() => {
         const wrapper = document.querySelector('[class*="copyWrapper"]');
         if (!wrapper) return null;
         const spans = Array.from(wrapper.querySelectorAll('span[aria-haspopup="true"]'));
-        return spans.find(s => !/copySingle/i.test(s.className)) || spans[0] || null;
+        return spans.find(s => /copySingle/i.test(s.className)) || spans[0] || null;
       })).asElement();
       clickDebug.iconFound = !!iconHandle;
       if (iconHandle) {
@@ -172,6 +174,7 @@ module.exports = async function handler(req, res) {
           navigator.clipboard.readText().then(t => ({ ok: true, value: t })).catch(e => ({ ok: false, error: e && e.message }))
         );
         clickDebug.clipboardResult = rawClipboard;
+        clickDebug.clipboardUnchangedFromSentinel = rawClipboard.ok && rawClipboard.value === sentinel;
         overviewText = rawClipboard.ok ? rawClipboard.value : null;
       }
     } catch (e) {
@@ -201,12 +204,12 @@ module.exports = async function handler(req, res) {
         .filter(r => r.trackingNumber);
     }
 
-    // Diagnostic : si aucun résultat n'a été extrait, on renvoie des indices sur ce qui a réellement
-    // été rendu par la page (titre, texte visible, éléments dont la classe/le texte évoque "copy" ou
-    // "mailno") — utile pour ajuster les sélecteurs sans avoir besoin d'inspecter la page nous-mêmes.
-    let debug;
+    // Diagnostic : toujours inclus (pas seulement si 0 résultat), pour voir précisément ce que le
+    // clic a réellement copié — y compris quand ça "marche" mais donne le mauvais format.
+    const debug = { clickDebug, overviewTextPreview: overviewText ? overviewText.slice(0, 500) : null };
+
     if (!results || results.length === 0) {
-      debug = await page.evaluate(() => {
+      const domDebug = await page.evaluate(() => {
         const describe = (el) => ({
           tag: el.tagName,
           className: typeof el.className === 'string' ? el.className : '',
@@ -216,33 +219,17 @@ module.exports = async function handler(req, res) {
           outerHTML: (el.outerHTML || '').slice(0, 300),
         });
 
-        // Piste la plus fiable trouvée jusqu'ici : l'icône réelle a l'attribut aria-haspopup="true"
         const haspopupElements = Array.from(document.querySelectorAll('[aria-haspopup]')).map(describe);
-
-        const candidates = Array.from(document.querySelectorAll('*'))
-          .filter(el => {
-            const cls = typeof el.className === 'string' ? el.className : '';
-            return /copy|mailno|overview/i.test(cls) || /copy overview/i.test(el.textContent || '');
-          })
-          .slice(0, 40)
-          .map(describe);
-
-        // Dump complet (non tronqué) du conteneur "copyWrapper" situé juste après "Selected：38" —
-        // c'est probablement là que se trouve le vrai bouton "Copy Overview" du premier repérage.
         const copyWrapperEl = document.querySelector('[class*="copyWrapper"]');
-        const copyWrapperHTML = copyWrapperEl ? copyWrapperEl.outerHTML : null;
 
         return {
           pageTitle: document.title,
           bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1000),
-          tableCount: document.querySelectorAll('table').length,
-          rowCount: document.querySelectorAll('table tr').length,
           haspopupElements,
-          candidateElements: candidates,
-          copyWrapperHTML,
+          copyWrapperHTML: copyWrapperEl ? copyWrapperEl.outerHTML : null,
         };
       });
-      debug.clickDebug = clickDebug;
+      Object.assign(debug, domDebug);
     }
 
     await browser.close();

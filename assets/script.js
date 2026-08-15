@@ -1011,7 +1011,8 @@
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
     { key:'gofo',       label:'GOFO',       match:['GOFO'],                    baseUrl:'https://www.gofo.com/fr/tracking-results/?id=',      kmColIndex:1, mode:'url', numsSeparator:' ', urlEncodeNums:true,
-      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.' },
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
+      scrapeEndpoint: '/api/scrape-gofo' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1086,12 +1087,43 @@
     return g.baseUrl + (g.urlEncodeNums ? encodeURIComponent(joined) : joined);
   }
 
+  // ---------- inclusion des colis "non scannés" (sans numéro dernier kilométrique) ----------
+  // GOFO sert de dernière étape de vérification pour tout colis dont le numéro dernier kilométrique
+  // n'a pas encore été trouvé, quel que soit le transporteur auquel il est normalement rattaché — ce
+  // comportement est activé par défaut pour GOFO, mais peut aussi être activé pour n'importe quel
+  // autre transporteur (YANWEN, etc.) via la case à cocher dans son onglet.
+  const CARRIER_INCLUDE_UNRESOLVED_KEY = 'commandes-carrier-include-unresolved';
+
+  function loadCarrierIncludeUnresolved(){
+    try{
+      const raw = localStorage.getItem(CARRIER_INCLUDE_UNRESOLVED_KEY);
+      return raw ? JSON.parse(raw) : {};
+    }catch(e){
+      return {};
+    }
+  }
+
+  function saveCarrierIncludeUnresolved(map){
+    carrierIncludeUnresolved = map;
+    try{ localStorage.setItem(CARRIER_INCLUDE_UNRESOLVED_KEY, JSON.stringify(map)); }catch(e){ /* stockage indisponible */ }
+  }
+
+  let carrierIncludeUnresolved = loadCarrierIncludeUnresolved();
+
+  function carrierIncludesUnresolved(key){
+    if(Object.prototype.hasOwnProperty.call(carrierIncludeUnresolved, key)) return !!carrierIncludeUnresolved[key];
+    return key === 'gofo'; // activé par défaut uniquement pour GOFO tant que l'utilisateur ne choisit pas autrement
+  }
+
   function computeCarrierGroups(){
     return CARRIERS.map(c=>{
-      const nums = database
-        .filter(r => resolveCarrierKeyForRow(r) === c.key)
-        .map(r => cleanNumSuivi(r.numSuivi))
-        .filter(v => v.length > 0);
+      const matched = database.filter(r => resolveCarrierKeyForRow(r) === c.key);
+      const extra = carrierIncludesUnresolved(c.key)
+        ? database.filter(r => resolveCarrierKeyForRow(r) !== c.key && !String(r.numDernierKm || '').trim())
+        : [];
+      const nums = Array.from(new Set(
+        matched.concat(extra).map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
+      ));
       return { ...c, nums, chunks: chunkArray(nums, CHUNK_SIZE) };
     }).filter(g => g.nums.length > 0);
   }
@@ -1589,10 +1621,17 @@
         <div class="actions"><button id="importPasteBtn">Importer</button></div>
       </div>`;
 
+    const includeUnresolvedHtml = `
+      <label style="font-size:12px; display:flex; align-items:center; gap:6px; margin:4px 0 8px;">
+        <input type="checkbox" id="includeUnresolvedCheckbox" ${carrierIncludesUnresolved(g.key) ? 'checked' : ''}>
+        Inclure aussi les colis sans numéro dernier kilométrique des autres transporteurs (${g.label} comme étape de vérification finale)
+      </label>`;
+
     els.carrierPanel.innerHTML = `
       <p style="font-size:13px; color:var(--muted);">
         ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
       </p>
+      ${includeUnresolvedHtml}
       ${linksHtml}
       ${noteHtml}
       ${manualImportHtml}
@@ -1605,6 +1644,11 @@
       pasteArea.value = pastedTextByCarrier[g.key] || '';
       pasteArea.addEventListener('input', ()=>{ pastedTextByCarrier[g.key] = pasteArea.value; });
     }
+
+    document.getElementById('includeUnresolvedCheckbox').addEventListener('change', (e)=>{
+      saveCarrierIncludeUnresolved({ ...carrierIncludeUnresolved, [g.key]: e.target.checked });
+      updateCarrierTracking();
+    });
 
     els.carrierPanel.querySelectorAll('.linkOpenBtn').forEach(btn=>{
       btn.addEventListener('click', async ()=>{

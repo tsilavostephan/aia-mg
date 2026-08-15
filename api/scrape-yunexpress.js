@@ -51,6 +51,15 @@ module.exports = async function handler(req, res) {
       // el-dropdown-selfdefine" aria-haspopup="list" aria-controls="dropdown-menu-XXXX">Copy & Export</button>
       await page.waitForSelector('button.el-dropdown-selfdefine', { timeout: 15000 }).catch(() => {});
 
+      // La bannière de consentement cookies (".cookies-box") recouvre le bouton et intercepte les
+      // survols/clics envoyés aux coordonnées écran, empêchant le menu de s'ouvrir — on la masque.
+      clickDebug.cookieBannerHidden = await page.evaluate(() => {
+        const el = document.querySelector('.cookies-box');
+        if (!el) return false;
+        el.style.setProperty('display', 'none', 'important');
+        return true;
+      }).catch(() => false);
+
       await page.bringToFront();
       await page.evaluate(() => window.focus());
 

@@ -1005,8 +1005,6 @@
     { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
-    { key:'sfexpress',  label:'SF Express', match:['SF EXPRESS','SFEXPRESS'],  baseUrl:'https://t.17track.net/fr#nums=',                      kmColIndex:1, mode:'url',
-      scrapeEndpoint: '/api/track-17track', scrapeButtonLabel: 'Récupérer via API 17track', sourceLabel: "l'API 17track", disableManualImport:true },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1454,10 +1452,6 @@
         </div>`
       : '';
 
-    // SF Express (17track.net) bloque le navigateur headless via une vérification anti-bot
-    // Cloudflare que nous ne contournerons pas — seul le scraping (quand il fonctionnera) ou une
-    // future API officielle a du sens ici ; la zone de collage manuel est donc masquée pour ce
-    // transporteur.
     const manualImportHtml = g.disableManualImport ? '' : `
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
         <label style="font-size:13px;">Coller les données de suivi ${g.label} (max 10000 caractères) puis cliquer sur Importer</label>

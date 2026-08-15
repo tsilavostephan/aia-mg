@@ -123,29 +123,30 @@ module.exports = async function handler(req, res) {
 
     let overviewText = null;
     try {
-      // Autorise la lecture/écriture du presse-papier headless avant de cliquer (nécessaire pour
-      // que navigator.clipboard.readText() fonctionne une fois le bouton cliqué).
+      // Autorise la lecture/écriture du presse-papier headless avant d'interagir (nécessaire pour
+      // que navigator.clipboard.readText() fonctionne une fois le bouton actionné).
       const context = browser.defaultBrowserContext();
       await context.overridePermissions('https://track.cainiao.com', ['clipboard-read', 'clipboard-write']);
 
-      // L'icône "Copy Overview" est un <span> sans texte (juste une image), avec des noms de
-      // classe générés (CSS Modules, ex. "MailNoList--iconWrapper--3jldZ43") dont le suffixe
-      // haché peut changer d'un déploiement à l'autre — on cible donc le préfixe stable via
-      // [class*=...], avec un repli sur une recherche par texte au cas où un libellé existe ailleurs.
-      const iconSelector = '[class*="MailNoList--iconWrapper"], [class*="copySingle"], [class*="CopyOverview"], [class*="copyOverview"]';
+      // L'icône "Copy Overview" est un <span aria-haspopup="true"> sans texte (juste une image),
+      // avec des noms de classe générés (CSS Modules, ex. "MailNoList--iconWrapper--3jldZ43") dont
+      // le suffixe haché peut changer d'un déploiement à l'autre — on cible donc le préfixe stable
+      // via [class*=...] et l'attribut aria-haspopup, plus stable que le nom de classe.
+      const iconSelector = '[aria-haspopup="true"][class*="MailNoList"], [class*="MailNoList--iconWrapper"], [class*="copySingle"], [class*="CopyOverview"], [class*="copyOverview"]';
       await page.waitForSelector(iconSelector, { timeout: 15000 }).catch(() => {});
 
-      const clicked = await page.evaluate((sel) => {
-        const el = document.querySelector(sel);
-        if (el) { el.click(); return true; }
-        return false;
-      }, iconSelector);
+      const iconHandle = await page.$(iconSelector);
+      if (iconHandle) {
+        // Beaucoup de composants d'icône React n'affichent leur action qu'au survol réel
+        // (onMouseEnter) — on simule donc un vrai survol souris avant de cliquer, plutôt qu'un
+        // .click() synthétique via page.evaluate qui ne déclenche pas ces gestionnaires.
+        await page.hover(iconSelector).catch(() => {});
+        await new Promise(r => setTimeout(r, 400));
+        await page.click(iconSelector).catch(() => {});
+        await new Promise(r => setTimeout(r, 600));
 
-      if (clicked) {
-        // aria-haspopup="true" sur l'icône suggère qu'un menu/popup peut apparaître au clic — si un
-        // élément "Copy Overview" y figure en texte, on le clique aussi ; sinon on suppose que le
-        // premier clic a déjà déclenché la copie directement.
-        await new Promise(r => setTimeout(r, 500));
+        // Si un menu/popup contenant un libellé "Copy Overview" est apparu, on le clique aussi ;
+        // sinon on suppose que le clic/survol précédent a déjà déclenché la copie directement.
         await page.evaluate(() => {
           const el = Array.from(document.querySelectorAll('button, a, span, div, li'))
             .find(e => /copy overview/i.test(e.textContent || '') && e.offsetParent !== null);
@@ -189,24 +190,32 @@ module.exports = async function handler(req, res) {
     let debug;
     if (!results || results.length === 0) {
       debug = await page.evaluate(() => {
+        const describe = (el) => ({
+          tag: el.tagName,
+          className: typeof el.className === 'string' ? el.className : '',
+          title: el.getAttribute('title') || '',
+          ariaLabel: el.getAttribute('aria-label') || '',
+          text: (el.textContent || '').trim().slice(0, 80),
+          outerHTML: (el.outerHTML || '').slice(0, 300),
+        });
+
+        // Piste la plus fiable trouvée jusqu'ici : l'icône réelle a l'attribut aria-haspopup="true"
+        const haspopupElements = Array.from(document.querySelectorAll('[aria-haspopup]')).map(describe);
+
         const candidates = Array.from(document.querySelectorAll('*'))
           .filter(el => {
             const cls = typeof el.className === 'string' ? el.className : '';
             return /copy|mailno|overview/i.test(cls) || /copy overview/i.test(el.textContent || '');
           })
-          .slice(0, 25)
-          .map(el => ({
-            tag: el.tagName,
-            className: typeof el.className === 'string' ? el.className : '',
-            text: (el.textContent || '').trim().slice(0, 80),
-            outerHTML: (el.outerHTML || '').slice(0, 250),
-          }));
+          .slice(0, 40)
+          .map(describe);
 
         return {
           pageTitle: document.title,
-          bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1500),
+          bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1000),
           tableCount: document.querySelectorAll('table').length,
           rowCount: document.querySelectorAll('table tr').length,
+          haspopupElements,
           candidateElements: candidates,
         };
       });

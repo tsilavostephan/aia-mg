@@ -1,16 +1,14 @@
 // Fonction serverless Vercel : scraping headless de la page de suivi YANWEN.
 //
 // Contrairement à 4PX, la page https://track.yw56.com.cn/en/querydel?nums=... affiche d'abord un
-// champ pré-rempli avec les numéros de suivi : il faut appuyer sur Entrée pour lancer la recherche,
-// ce qui affiche ensuite la page de résultats. On y clique sur le bouton "Copy Track"
-// (id="copyTrack", title="Copy summarily tracking results for all numbers.") et on lit le texte
-// copié dans le presse-papier du navigateur headless — même règle de découpage que l'import manuel
-// par collage (colonne 0 = numéro de suivi, colonne 1 = numéro dernier kilométrique) — voir
-// parseOverviewText dans api/_scrapeLib.js et parseTrackingPaste dans assets/script.js.
-//
-// ⚠️ Non vérifié en conditions réelles (pas de navigateur disponible pour tester dans cet
-// environnement) : le délai après l'appui sur Entrée est une estimation à ajuster si besoin,
-// contrairement au sélecteur du bouton qui est un id stable fourni par l'utilisateur.
+// champ pré-rempli (input#numbers_en) avec les numéros de suivi : il faut cliquer sur le bouton
+// flèche <a id="search"> à côté pour lancer la recherche (confirmé par capture DevTools — Entrée
+// seule ne fait rien), ce qui affiche ensuite la page de résultats. On y clique sur le bouton
+// "Copy Track" (id="copyTrack", title="Copy summarily tracking results for all numbers.") et on lit
+// le texte copié dans le presse-papier du navigateur headless — même règle de découpage que
+// l'import manuel par collage (colonne 0 = numéro de suivi, colonne 1 = numéro dernier
+// kilométrique) — voir parseOverviewText dans api/_scrapeLib.js et parseTrackingPaste dans
+// assets/script.js.
 const path = require('node:path');
 const {
   launchBrowser,
@@ -45,42 +43,22 @@ module.exports = async function handler(req, res) {
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
     await new Promise(r => setTimeout(r, pageLoadWaitMs));
 
-    // La page affichée pré-remplit un champ avec les numéros collés dans l'URL ; il faut appuyer
-    // sur Entrée pour lancer la recherche, ce qui charge la page de résultats. Mais une touche
-    // Entrée simulée n'a aucun effet si aucun élément n'a le focus — on clique donc d'abord dans le
-    // champ de saisie pré-rempli pour lui donner le focus.
-    const submitDebug = { inputFound: false, navigated: false };
+    // La page affichée pré-remplit le champ #numbers_en avec les numéros collés dans l'URL ; il faut
+    // cliquer sur le bouton flèche <a id="search"> à côté pour lancer la recherche, ce qui charge la
+    // page de résultats (confirmé par capture DevTools de l'utilisateur — Entrée seule n'a aucun
+    // effet, ce n'est pas un submit de formulaire classique).
+    const submitDebug = { searchBtnFound: false, navigated: false };
     try {
-      const inputHandle = (await page.evaluateHandle(() => {
-        const candidates = Array.from(document.querySelectorAll('textarea, input[type="text"], input:not([type])'));
-        return candidates.find(el => el.offsetParent !== null) || candidates[0] || null;
-      })).asElement();
-      submitDebug.inputFound = !!inputHandle;
-
-      if (inputHandle) {
-        await inputHandle.click({ clickCount: 3 }).catch(() => {});
-        await new Promise(r => setTimeout(r, 200));
-      }
-      await page.keyboard.press('Enter').catch(() => {});
-
-      submitDebug.navigated = await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 })
-        .then(() => true)
-        .catch(() => false);
-
-      // Si aucune navigation n'a été détectée, on tente en repli de cliquer un bouton/icône de
-      // recherche visible (ex. la flèche bleue à droite du champ) au cas où Entrée seule ne suffise pas.
-      if (!submitDebug.navigated) {
-        submitDebug.searchBtnClicked = await page.evaluate(() => {
-          const btn = Array.from(document.querySelectorAll('button, a, svg, [role="button"]'))
-            .find(el => el.offsetParent !== null && (
-              el.tagName === 'BUTTON' || el.tagName === 'SVG' || /search|submit|arrow|query/i.test(el.className || '')
-            ));
-          if (btn) { btn.click(); return true; }
-          return false;
-        });
-        if (submitDebug.searchBtnClicked) {
-          await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 }).catch(() => {});
-        }
+      await page.waitForSelector('#search', { timeout: 15000 }).catch(() => {});
+      const searchBtn = await page.$('#search');
+      submitDebug.searchBtnFound = !!searchBtn;
+      if (searchBtn) {
+        await searchBtn.hover().catch(() => {});
+        await new Promise(r => setTimeout(r, clickWaitMs));
+        await searchBtn.click().catch(() => {});
+        submitDebug.navigated = await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 20000 })
+          .then(() => true)
+          .catch(() => false);
       }
     } catch (e) {
       submitDebug.error = e && e.message;

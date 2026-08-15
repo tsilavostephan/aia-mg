@@ -5,10 +5,10 @@
     "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
-    "@sparticuz/chromium-min": "^123.0.1",
-    "puppeteer-core": "^22.8.2"
+    "@sparticuz/chromium-min": "^141.0.0",
+    "puppeteer-core": "^23.11.0"
   },
   "devDependencies": {
-    "@sparticuz/chromium": "^123.0.1"
+    "@sparticuz/chromium": "^141.0.0"
   }
 }

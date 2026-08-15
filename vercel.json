@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/scrape-4px.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "api/chromium-bin/**"
     }
   }
 }

@@ -1,21 +1,20 @@
 // Exécuté automatiquement après `npm install` (y compris pendant le build Vercel).
 //
-// @sparticuz/chromium-min ne contient pas le binaire Chromium lui-même : il va le télécharger à
-// l'exécution depuis une URL qu'on lui fournit. Ce script construit ce binaire (tar) une bonne
-// fois pour toutes, à partir de @sparticuz/chromium (devDependency, qui embarque le binaire complet),
-// et le place dans assets/chromium-pack.tar — servi en statique par l'app, donc accessible via
-// https://<votre-domaine>/assets/chromium-pack.tar une fois déployé.
+// @sparticuz/chromium-min ne contient pas le binaire Chromium lui-même. On pourrait lui donner une
+// URL à télécharger à l'exécution, mais sur ce projet les déploiements sont protégés par la
+// "Vercel Authentication" (Deployment Protection) — un appel HTTP de la fonction vers son propre
+// déploiement se heurte alors à la page de connexion Vercel au lieu du vrai fichier. On évite donc
+// tout appel réseau : ce script copie simplement les fichiers Chromium (dossier "bin" fourni par la
+// devDependency @sparticuz/chromium) dans api/chromium-bin, inclus directement dans le paquet de la
+// fonction serverless (voir "includeFiles" dans vercel.json). chromium-min les lit alors comme un
+// dossier local, sans aucune requête HTTP.
 //
-// Construire le binaire dans le même environnement Vercel qui l'exécutera ensuite évite les
-// incompatibilités de bibliothèques partagées (ex. "libnss3.so: cannot open shared object file")
-// qu'on peut rencontrer en embarquant directement @sparticuz/chromium dans la fonction serverless.
-//
-// Repris du template officiel Vercel : https://github.com/gabenunez/puppeteer-on-vercel
+// Inspiré du template officiel Vercel (https://github.com/gabenunez/puppeteer-on-vercel), adapté
+// pour lire les fichiers en local plutôt que de les auto-héberger.
 
-import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, cpSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -24,7 +23,7 @@ const projectRoot = dirname(__dirname);
 
 function main() {
   try {
-    console.log('[postinstall] Construction de assets/chromium-pack.tar…');
+    console.log('[postinstall] Copie des fichiers Chromium vers api/chromium-bin…');
 
     const chromiumPkgJsonPath = require.resolve('@sparticuz/chromium/package.json');
     const chromiumDir = dirname(chromiumPkgJsonPath);
@@ -35,17 +34,14 @@ function main() {
       return;
     }
 
-    const outputDir = join(projectRoot, 'assets');
-    const outputPath = join(outputDir, 'chromium-pack.tar');
+    const outputDir = join(projectRoot, 'api', 'chromium-bin');
+    rmSync(outputDir, { recursive: true, force: true }); // repart d'un dossier propre à chaque build
+    mkdirSync(outputDir, { recursive: true });
+    cpSync(binDir, outputDir, { recursive: true });
 
-    execSync(`mkdir -p "${outputDir}" && tar -cf "${outputPath}" -C "${binDir}" .`, {
-      stdio: 'inherit',
-      cwd: projectRoot,
-    });
-
-    console.log('[postinstall] chromium-pack.tar créé :', outputPath);
+    console.log('[postinstall] Fichiers Chromium copiés dans', outputDir);
   } catch (error) {
-    console.warn('[postinstall] Échec de la création de chromium-pack.tar (non bloquant) :', error && error.message);
+    console.warn('[postinstall] Échec de la copie des fichiers Chromium (non bloquant) :', error && error.message);
     process.exit(0); // ne fait jamais échouer l'installation
   }
 }

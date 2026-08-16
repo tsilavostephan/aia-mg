@@ -1031,7 +1031,8 @@
       pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
       scrapeEndpoint: '/api/scrape-topyou' },
     { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1,
-      pasteHint: 'Ce site n\'affiche qu\'un seul colis par lien — ouvrez chaque lien un par un, copiez le numéro dernier kilométrique affiché, puis collez-le ci-dessous.' },
+      pasteHint: 'Ce site n\'affiche qu\'un seul colis par lien — ouvrez chaque lien un par un, copiez le numéro dernier kilométrique affiché, puis collez-le ci-dessous.',
+      scrapeEndpoint: '/api/scrape-cne' },
   ];
   const CHUNK_SIZE = 99;
 

@@ -10,7 +10,14 @@
 // que le "Tracking No." affiché change par rapport au précédent (signe que le panneau de détail
 // s'est mis à jour), puis on le lit.
 const path = require('node:path');
-const { launchBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest } = require('./_scrapeLib');
+const {
+  launchBrowser,
+  discardBrowser,
+  cleanNumSuivi,
+  setCorsHeaders,
+  parseScrapeRequest,
+  buildStructureChangeWarning,
+} = require('./_scrapeLib');
 
 // La langue de la page dépend de la locale détectée par le site (navigateur headless -> souvent
 // anglais, "Tracking No.", plutôt que français, "Numéro de suivi") — on reconnaît les deux.
@@ -125,12 +132,15 @@ module.exports = async function handler(req, res) {
         listContainerFound: !!document.querySelector('.next-list-items'),
       }));
       Object.assign(debug, domDebug);
+      debug.structureChangeWarning = buildStructureChangeWarning(domDebug);
     }
 
-    await browser.close();
+    // Ferme uniquement la page (pas le navigateur) pour permettre sa réutilisation par un prochain
+    // appel "à chaud" de cette même fonction Vercel — voir launchBrowser() dans _scrapeLib.js.
+    await page.close().catch(() => {});
     res.status(200).json({ results, rawText: null, usedOverviewButton: false, debug });
   } catch (e) {
-    if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
+    await discardBrowser(browser);
     const message = e && e.message ? e.message : 'échec du scraping 4PX';
     res.status(502).json({ error: message });
   }

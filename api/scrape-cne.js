@@ -10,7 +10,7 @@
 // number" suivi de sa valeur (ex. "6A07434243409") — confirmé par capture d'écran de l'utilisateur.
 // Lecture directe du DOM, pas de bouton copier à cliquer.
 const path = require('node:path');
-const { launchBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest } = require('./_scrapeLib');
+const { launchBrowser, discardBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest, buildStructureChangeWarning } = require('./_scrapeLib');
 
 async function extractLastMile(page) {
   return page.evaluate(() => {
@@ -42,6 +42,12 @@ module.exports = async function handler(req, res) {
   }
 
   let browser;
+  const startTime = Date.now();
+  // Marge sous la limite de 60s de la fonction Vercel : CNE traite un numéro à la fois (navigation
+  // + retries), donc un lot un peu plus grand qu'avant (voir chunkSize sur l'entrée 'cne' dans
+  // CARRIERS, assets/script.js) doit s'arrêter proprement avant la coupure plutôt que d'échouer sans
+  // résultat pour les derniers numéros du lot.
+  const TIME_BUDGET_MS = 45000;
   try {
     browser = await launchBrowser(path.join(__dirname, 'chromium-bin'));
     let page = await browser.newPage();
@@ -52,8 +58,10 @@ module.exports = async function handler(req, res) {
 
     const results = [];
     const perNumberDebug = [];
+    let stoppedEarly = false;
 
     for (const num of trackingNumbers) {
+      if (Date.now() - startTime > TIME_BUDGET_MS) { stoppedEarly = true; break; }
       const url = `https://www.cne.com/en/track?no=${encodeURIComponent(num)}`;
       try {
         let response = null;
@@ -101,7 +109,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const debug = { requestedCount: trackingNumbers.length, resultCount: results.length };
+    const debug = { requestedCount: trackingNumbers.length, resultCount: results.length, stoppedEarly };
     if (results.length === 0) {
       debug.perNumberDebug = perNumberDebug;
       const domDebug = await page.evaluate(() => ({
@@ -109,12 +117,15 @@ module.exports = async function handler(req, res) {
         bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1000),
       }));
       Object.assign(debug, domDebug);
+      debug.structureChangeWarning = buildStructureChangeWarning(domDebug);
     }
 
-    await browser.close();
+    // Ferme uniquement la page (pas le navigateur) pour permettre sa réutilisation par un prochain
+    // appel "à chaud" de cette même fonction Vercel — voir launchBrowser() dans _scrapeLib.js.
+    await page.close().catch(() => {});
     res.status(200).json({ results, rawText: null, usedOverviewButton: false, debug });
   } catch (e) {
-    if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
+    await discardBrowser(browser);
     const message = e && e.message ? e.message : 'échec du scraping CNE';
     res.status(502).json({ error: message });
   }

@@ -13,11 +13,13 @@
 const path = require('node:path');
 const {
   launchBrowser,
+  discardBrowser,
   cleanNumSuivi,
   parseOverviewText,
   setCorsHeaders,
   parseScrapeRequest,
   readClipboardWithSentinelCheck,
+  buildStructureChangeWarning,
 } = require('./_scrapeLib');
 
 module.exports = async function handler(req, res) {
@@ -153,13 +155,16 @@ module.exports = async function handler(req, res) {
         };
       });
       Object.assign(debug, domDebug);
+      debug.structureChangeWarning = buildStructureChangeWarning(domDebug);
     }
 
-    await browser.close();
+    // Ferme uniquement la page (pas le navigateur) pour permettre sa réutilisation par un prochain
+    // appel "à chaud" de cette même fonction Vercel — voir launchBrowser() dans _scrapeLib.js.
+    await page.close().catch(() => {});
     res.status(200).json({ results, rawText: overviewText || null, usedOverviewButton: !!overviewText, debug });
   } catch (e) {
-    if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
-    const message = e && e.message ? e.message : 'échec du scraping 4PX';
+    await discardBrowser(browser);
+    const message = e && e.message ? e.message : 'échec du scraping CAINIAO';
     res.status(502).json({ error: message });
   }
 };

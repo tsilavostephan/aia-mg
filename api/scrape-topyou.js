@@ -11,7 +11,7 @@
 // "运单号" (waybill number) = numéro de suivi d'origine, "转单号" (transfer number) = numéro dernier
 // kilométrique — absent tant qu'aucun transporteur final n'a encore été assigné à ce colis.
 const path = require('node:path');
-const { launchBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest } = require('./_scrapeLib');
+const { launchBrowser, discardBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest, buildStructureChangeWarning } = require('./_scrapeLib');
 
 module.exports = async function handler(req, res) {
   setCorsHeaders(res);
@@ -92,12 +92,15 @@ module.exports = async function handler(req, res) {
         bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1000),
       }));
       Object.assign(debug, domDebug);
+      debug.structureChangeWarning = buildStructureChangeWarning(domDebug);
     }
 
-    await browser.close();
+    // Ferme uniquement la page (pas le navigateur) pour permettre sa réutilisation par un prochain
+    // appel "à chaud" de cette même fonction Vercel — voir launchBrowser() dans _scrapeLib.js.
+    await page.close().catch(() => {});
     res.status(200).json({ results, rawText: null, usedOverviewButton: false, debug });
   } catch (e) {
-    if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
+    await discardBrowser(browser);
     const message = e && e.message ? e.message : 'échec du scraping TopYou';
     res.status(502).json({ error: message });
   }

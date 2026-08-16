@@ -23,10 +23,12 @@
 const path = require('node:path');
 const {
   launchBrowser,
+  discardBrowser,
   cleanNumSuivi,
   setCorsHeaders,
   parseScrapeRequest,
   readClipboardWithSentinelCheck,
+  buildStructureChangeWarning,
 } = require('./_scrapeLib');
 
 function parseSunyouOverview(text) {
@@ -138,16 +140,20 @@ module.exports = async function handler(req, res) {
         bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1000),
       }));
       Object.assign(debug, domDebug);
+      debug.structureChangeWarning = buildStructureChangeWarning(domDebug);
     }
 
     // ⚠️ rawText est volontairement laissé à null : le format Sunyou (blocs multi-lignes avec
     // "Carrier Tracking Number: ..." noyé dans les événements) n'est pas compatible avec le
     // découpage générique colonne 0/1 (parseTrackingPaste) utilisé côté client quand rawText est
     // fourni — results ci-dessus est déjà correctement analysé côté serveur via parseSunyouOverview.
-    await browser.close();
+    //
+    // Ferme uniquement la page (pas le navigateur) pour permettre sa réutilisation par un prochain
+    // appel "à chaud" de cette même fonction Vercel — voir launchBrowser() dans _scrapeLib.js.
+    await page.close().catch(() => {});
     res.status(200).json({ results, rawText: null, usedOverviewButton: !!overviewText, debug });
   } catch (e) {
-    if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
+    await discardBrowser(browser);
     const message = e && e.message ? e.message : 'échec du scraping Sunyou';
     res.status(502).json({ error: message });
   }

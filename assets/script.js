@@ -1028,7 +1028,11 @@
     { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard',
       pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
       scrapeEndpoint: '/api/scrape-topyou' },
-    { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1,
+    // chunkSize:1 reste nécessaire pour les liens manuels "Ouvrir" (le site n'accepte qu'un seul
+    // numéro par lien) ; scrapeChunkSize regroupe en revanche plusieurs numéros par appel de
+    // fonction Vercel pour le scraping automatique (api/scrape-cne.js boucle en interne sur chaque
+    // numéro dans le même navigateur déjà lancé), pour éviter un lancement de navigateur par colis.
+    { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
       pasteHint: 'Ce site n\'affiche qu\'un seul colis par lien — ouvrez chaque lien un par un, copiez le numéro dernier kilométrique affiché, puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-cne' },
     { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
@@ -1155,8 +1159,12 @@
 
   function computeCarrierGroups(){
     return CARRIERS.map(c=>{
+      // Inutile de rescraper une commande qui a déjà son numéro dernier kilométrique — seules les
+      // commandes encore non résolues sont proposées au scraping automatique/à l'import manuel.
       const nums = Array.from(new Set(
-        database.filter(r => rowBelongsToCarrierGroup(r, c)).map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
+        database
+          .filter(r => rowBelongsToCarrierGroup(r, c) && !String(r.numDernierKm || '').trim())
+          .map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
       ));
       return { ...c, nums, chunks: chunkArray(nums, c.chunkSize || CHUNK_SIZE) };
     }).filter(g => g.nums.length > 0);
@@ -1481,7 +1489,13 @@
   async function scrapeCarrierViaVercel(g){
     const config = loadScrapeConfig();
     const scrapeEndpoint = g.scrapeEndpoint;
-    const chunks = (g.chunks && g.chunks.length > 0) ? g.chunks : [g.nums];
+    // scrapeChunkSize permet de regrouper différemment pour le scraping automatique que pour les
+    // liens manuels "Ouvrir" (voir g.chunks / chunkSize) — utilisé par CNE, dont le site n'accepte
+    // qu'un seul numéro par lien manuel mais dont la fonction Vercel peut traiter plusieurs numéros
+    // dans le même navigateur déjà lancé.
+    const chunks = g.scrapeChunkSize
+      ? chunkArray(g.nums, g.scrapeChunkSize)
+      : ((g.chunks && g.chunks.length > 0) ? g.chunks : [g.nums]);
 
     scrapeProgressByCarrier[g.key] = { done: 0, total: chunks.length };
     importLogByCarrier[g.key] = {
@@ -1513,8 +1527,11 @@
           : (Array.isArray(json.results) ? json.results : []);
 
         if(updates.length === 0){
+          const structureWarning = json.debug && json.debug.structureChangeWarning;
           const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
-          throw new Error(`aucun résultat exploitable (${debugText})`);
+          throw new Error(structureWarning
+            ? `⚠️ ${structureWarning}`
+            : `aucun résultat exploitable (${debugText})`);
         }
         return updates;
       }finally{

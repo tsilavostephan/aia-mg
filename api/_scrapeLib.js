@@ -3,13 +3,28 @@
 
 let cachedExecutablePath = null;
 let launchPromise = null;
+let cachedBrowser = null;
 
 // Lance un navigateur headless à partir des fichiers Chromium empaquetés localement (voir
 // scripts/postinstall.mjs + "includeFiles" dans vercel.json). Le chemin de l'exécutable est résolu
 // une seule fois par instance de fonction puis mis en cache.
+//
+// Réutilise aussi le navigateur d'un appel précédent tant que l'instance de fonction Vercel reste
+// "chaude" (réutilisée entre deux invocations rapprochées) — démarrer un Chromium complet coûte
+// 1 à 3 secondes, inutile de le refaire à chaque appel si un navigateur encore valide existe déjà.
+// Les fonctions appelantes doivent fermer uniquement la PAGE (page.close()) en cas de succès pour
+// permettre cette réutilisation, et appeler discardBrowser() en cas d'erreur (navigateur
+// potentiellement dans un état invalide, on préfère en relancer un neuf au prochain appel).
 async function launchBrowser(binDir) {
   const chromium = (await import('@sparticuz/chromium-min')).default;
   const puppeteer = require('puppeteer-core');
+
+  if (cachedBrowser) {
+    try {
+      if (cachedBrowser.isConnected()) return cachedBrowser;
+    } catch (e) { /* navigateur invalide, on en relance un ci-dessous */ }
+    cachedBrowser = null;
+  }
 
   if (!cachedExecutablePath) {
     if (!launchPromise) {
@@ -20,12 +35,23 @@ async function launchBrowser(binDir) {
     await launchPromise;
   }
 
-  return puppeteer.launch({
+  cachedBrowser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
     executablePath: cachedExecutablePath,
     headless: true,
   });
+  return cachedBrowser;
+}
+
+// À utiliser dans le bloc catch (au lieu de browser.close() directement) : ferme le navigateur ET
+// invalide le cache s'il s'agit bien du navigateur actuellement mis en cache, pour ne jamais
+// retenter de réutiliser une instance potentiellement corrompue après une erreur.
+async function discardBrowser(browser) {
+  if (cachedBrowser === browser) cachedBrowser = null;
+  if (browser) {
+    try { await browser.close(); } catch (e) { /* déjà fermé */ }
+  }
 }
 
 // Nettoie une valeur comme cleanNumSuivi() dans assets/script.js (retire =, ", ', \, trim)
@@ -93,11 +119,23 @@ async function readClipboardWithSentinelCheck(page) {
   return sentinel;
 }
 
+// Distingue "le site a changé de structure" de "vraie absence de données/erreur réseau" : si la
+// page a chargé un vrai contenu (titre non vide, pas une coquille vide ou une redirection avortée)
+// mais qu'aucune donnée n'a pu être extraite, c'est le signe le plus probable que les sélecteurs
+// CSS ne correspondent plus à la page réelle plutôt qu'un simple "0 résultat" normal.
+function buildStructureChangeWarning(domDebug) {
+  const title = domDebug && domDebug.pageTitle ? String(domDebug.pageTitle).trim() : '';
+  if (!title) return null;
+  return `Le site a chargé une vraie page (titre : "${title}") mais aucune donnée reconnue n'a été trouvée — il a probablement changé de structure, les sélecteurs de scraping doivent être mis à jour.`;
+}
+
 module.exports = {
   launchBrowser,
+  discardBrowser,
   cleanNumSuivi,
   parseOverviewText,
   setCorsHeaders,
   parseScrapeRequest,
   readClipboardWithSentinelCheck,
+  buildStructureChangeWarning,
 };

@@ -10,7 +10,7 @@
 // de figure observés : Colis Prive et Postal Carrier/bpost). On lit donc directement cette valeur
 // dans le DOM plutôt que de simuler un clic de copie.
 const path = require('node:path');
-const { launchBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest } = require('./_scrapeLib');
+const { launchBrowser, discardBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest, buildStructureChangeWarning } = require('./_scrapeLib');
 
 module.exports = async function handler(req, res) {
   setCorsHeaders(res);
@@ -91,12 +91,15 @@ module.exports = async function handler(req, res) {
         ).length,
       }));
       Object.assign(debug, domDebug);
+      debug.structureChangeWarning = buildStructureChangeWarning(domDebug);
     }
 
-    await browser.close();
+    // Ferme uniquement la page (pas le navigateur) pour permettre sa réutilisation par un prochain
+    // appel "à chaud" de cette même fonction Vercel — voir launchBrowser() dans _scrapeLib.js.
+    await page.close().catch(() => {});
     res.status(200).json({ results, rawText: null, usedOverviewButton: false, debug });
   } catch (e) {
-    if (browser) { try { await browser.close(); } catch (_e) { /* déjà fermé */ } }
+    await discardBrowser(browser);
     const message = e && e.message ? e.message : 'échec du scraping LANDMARK';
     res.status(502).json({ error: message });
   }

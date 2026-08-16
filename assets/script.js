@@ -1030,6 +1030,8 @@
     { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard',
       pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
       scrapeEndpoint: '/api/scrape-topyou' },
+    { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1,
+      pasteHint: 'Ce site n\'affiche qu\'un seul colis par lien — ouvrez chaque lien un par un, copiez le numéro dernier kilométrique affiché, puis collez-le ci-dessous.' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1057,7 +1059,7 @@
   const DEFAULT_CARRIER_MAPPING = Object.fromEntries([
     'Asendia','China Post','SF Express','Shanghai Shouwu','BRT','Spring','Seur','YDH',
     'JS Express','WanbExpress','SFC','Evri','Whistl','ATPOST','ShipGlobal',
-    'The Delivery Group','CNE','Exapaq','GlobalPost','TNT','Raben Group','APC Postal Logistics','MHI',
+    'The Delivery Group','Exapaq','GlobalPost','TNT','Raben Group','APC Postal Logistics','MHI',
     'Self Delivery','Standard delivery','Std FR Dom_2','Deutsche Post Brief','Standard','Briefpost',
     'Sendcloud','17FEIA','CTT','GOFO','Correos','Sunyou','Cainiao',
   ].map(v => [v.toUpperCase(), 'gofo']));
@@ -1159,7 +1161,7 @@
       const nums = Array.from(new Set(
         database.filter(r => rowBelongsToCarrierGroup(r, c)).map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
       ));
-      return { ...c, nums, chunks: chunkArray(nums, CHUNK_SIZE) };
+      return { ...c, nums, chunks: chunkArray(nums, c.chunkSize || CHUNK_SIZE) };
     }).filter(g => g.nums.length > 0);
   }
 
@@ -1253,7 +1255,7 @@
   }
 
   const CARRIER_TAB_ICONS = {
-    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁', 'topyou': '📮',
+    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁', 'topyou': '📮', 'cne': '🚛',
   };
 
   function renderCarrierTabs(){
@@ -1849,6 +1851,7 @@
     '4PX': { bg:'#fdece0', fg:'#c2540a' },
     'CAINIAO': { bg:'#fef2e0', fg:'#a15c00' },
     'TOPYOU': { bg:'#eafaf6', fg:'#0d9488' },
+    'CNE': { bg:'#f0f4ff', fg:'#3730a3' },
     'YANWEN': { bg:'#e8f3ff', fg:'#1d4ed8' },
     'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
     'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },

@@ -1025,7 +1025,6 @@
     { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
-    { key:'gofo',       label:'GOFO',       match:['GOFO'],                    baseUrl:'https://www.gofo.com/fr/tracking-results/?id=',      kmColIndex:1, mode:'url', numsSeparator:' ', urlEncodeNums:true, disableManualImport:true },
     { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard',
       pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
       scrapeEndpoint: '/api/scrape-topyou' },
@@ -1056,14 +1055,11 @@
   // ne correspondent à aucune entrée exacte (variantes d'orthographe, etc.), sans toucher au code.
   const CARRIER_MAPPING_KEY = 'commandes-carrier-mapping';
 
-  // Valeurs brutes de transporteur à rattacher à GOFO par défaut (tant que l'utilisateur n'a pas
-  // explicitement choisi une autre association pour cette valeur via la fenêtre "⚙ Transporteurs") —
-  // ces transporteurs "dernier kilométrique" sont en réalité tous gérés via GOFO.
-  const DEFAULT_CARRIER_MAPPING = Object.fromEntries([
-    'ATPOST','ShipGlobal','The Delivery Group',
-    'Self Delivery','Standard delivery','Std FR Dom_2','Deutsche Post Brief','Standard','Briefpost',
-    '17FEIA','CTT','GOFO','Correos',
-  ].map(v => [v.toUpperCase(), 'gofo']));
+  // GOFO a été retiré de l'application (plus d'onglet ni de rôle de vérification finale) — plus
+  // aucune association par défaut n'est donc nécessaire ici. Reste vide pour compatibilité avec
+  // resolveCarrierKeysForRow ; la fenêtre "⚙ Transporteurs" permet toujours une association
+  // manuelle vers n'importe quel autre transporteur si besoin.
+  const DEFAULT_CARRIER_MAPPING = {};
 
   function loadCarrierMapping(){
     try{
@@ -1256,7 +1252,7 @@
   }
 
   const CARRIER_TAB_ICONS = {
-    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁', 'topyou': '📮', 'cne': '🚛', 'sunyou': '☀️',
+    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'topyou': '📮', 'cne': '🚛', 'sunyou': '☀️',
   };
 
   function renderCarrierTabs(){
@@ -1868,7 +1864,6 @@
     'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
     'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },
     'LANDMARK': { bg:'#eef2ff', fg:'#4338ca' },
-    'GOFO': { bg:'#fff7e6', fg:'#b45309' },
   };
   function badgeColorsFor(transporteur){
     const norm = normCarrierName(transporteur);

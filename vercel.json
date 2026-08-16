@@ -24,10 +24,6 @@
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"
     },
-    "api/scrape-gofo.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
     "api/scrape-topyou.js": {
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"

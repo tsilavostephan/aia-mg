@@ -1007,8 +1007,11 @@
 
   // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------
   const CARRIERS = [
-    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url',
+    { key:'cainiao',    label:'CAINIAO',    match:['CAINIAO'],                 baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur le bouton « Copy Overview » puis collez le texte copié ci-dessous.',
+      scrapeEndpoint: '/api/scrape-cainiao' },
+    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.4px.com/#/result/34/',                kmColIndex:1, mode:'url',
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le numéro de suivi affiché sous « Numéro de suivi » pour chaque colis, puis collez-les ci-dessous au format « numéro de colis<TAB>numéro dernier kilométrique ».',
       scrapeEndpoint: '/api/scrape-4px' },
     { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », appuyez sur Entrée puis cliquez sur le bouton de copie des résultats, et collez le texte copié ci-dessous.',
@@ -1247,7 +1250,7 @@
   }
 
   const CARRIER_TAB_ICONS = {
-    '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁',
+    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁',
   };
 
   function renderCarrierTabs(){
@@ -1841,6 +1844,7 @@
 
   const CARRIER_BADGE_COLORS = {
     '4PX': { bg:'#fdece0', fg:'#c2540a' },
+    'CAINIAO': { bg:'#fef2e0', fg:'#a15c00' },
     'YANWEN': { bg:'#e8f3ff', fg:'#1d4ed8' },
     'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
     'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },

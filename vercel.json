@@ -4,6 +4,10 @@
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"
     },
+    "api/scrape-cainiao.js": {
+      "maxDuration": 60,
+      "includeFiles": "api/chromium-bin/**"
+    },
     "api/scrape-yanwen.js": {
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"

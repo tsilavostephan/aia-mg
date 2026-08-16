@@ -66,6 +66,7 @@ module.exports = async function handler(req, res) {
   const url = `https://track.4px.com/#/result/34/${trackingNumbers.join(',')}`;
 
   let browser;
+  const startTime = Date.now();
   try {
     browser = await launchBrowser(path.join(__dirname, 'chromium-bin'));
 
@@ -85,21 +86,26 @@ module.exports = async function handler(req, res) {
     // plutôt qu'une seule attente fixe.
     let orderNumsFound = false;
     let retryCount = 0;
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
       retryCount = attempt;
-      orderNumsFound = await page.waitForSelector('.orderNum', { timeout: 8000 }).then(() => true).catch(() => false);
+      orderNumsFound = await page.waitForSelector('.orderNum', { timeout: 6000 }).then(() => true).catch(() => false);
       if (orderNumsFound) break;
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 2000));
     }
-    await new Promise((r) => setTimeout(r, pageLoadWaitMs));
+    await new Promise((r) => setTimeout(r, Math.min(pageLoadWaitMs, 4000)));
 
     const results = [];
     let clickedCount = 0;
     let mismatchCount = 0;
+    let stoppedEarly = false;
+    let firstMismatchDebug = null;
+    const TIME_BUDGET_MS = 45000; // marge sous la limite de 60s de la fonction Vercel (depuis le tout début, browser inclus)
 
     if (orderNumsFound) {
       const itemHandles = await page.$$('.next-list-item');
       for (const item of itemHandles) {
+        if (Date.now() - startTime > TIME_BUDGET_MS) { stoppedEarly = true; break; }
+
         const expectedNum = await item.$eval('.orderNum', (el) => el.textContent.trim()).catch(() => null);
         if (!expectedNum) continue;
 
@@ -107,12 +113,13 @@ module.exports = async function handler(req, res) {
         clickedCount++;
 
         // Attend que le panneau de détail affiche bien CE colis (vérifié via "4PX Order No."),
-        // plutôt qu'une attente fixe qui serait soit trop courte, soit inutilement longue.
+        // avec un temps d'attente volontairement court par élément pour ne jamais dépasser le
+        // budget de temps total, quitte à manquer quelques colis plutôt que de tout perdre au timeout.
         let pair = { orderNo: '', trackingNo: '' };
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 3; i++) {
           pair = await readDetailPair(page);
           if (pair.orderNo === expectedNum) break;
-          await new Promise((r) => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, 150));
         }
 
         if (pair.orderNo === expectedNum) {
@@ -121,11 +128,19 @@ module.exports = async function handler(req, res) {
           }
         } else {
           mismatchCount++;
+          if (!firstMismatchDebug) {
+            firstMismatchDebug = {
+              expectedNum,
+              pair,
+              bodyTextPreview: await page.evaluate(() => (document.body ? document.body.innerText : '').slice(0, 500)),
+            };
+          }
         }
       }
     }
 
-    const debug = { orderNumsFound, retryCount, clickedCount, mismatchCount, resultCount: results.length };
+    const debug = { orderNumsFound, retryCount, clickedCount, mismatchCount, resultCount: results.length, stoppedEarly };
+    if (firstMismatchDebug) debug.firstMismatchDebug = firstMismatchDebug;
 
     if (results.length === 0) {
       const domDebug = await page.evaluate(() => ({

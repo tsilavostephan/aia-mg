@@ -1033,6 +1033,9 @@
     { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1,
       pasteHint: 'Ce site n\'affiche qu\'un seul colis par lien — ouvrez chaque lien un par un, copiez le numéro dernier kilométrique affiché, puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-cne' },
+    { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur l\'icône de copie des résultats puis collez le texte copié ci-dessous.',
+      scrapeEndpoint: '/api/scrape-sunyou' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1062,7 +1065,7 @@
     'JS Express','WanbExpress','SFC','Evri','Whistl','ATPOST','ShipGlobal',
     'The Delivery Group','Exapaq','GlobalPost','TNT','Raben Group','APC Postal Logistics','MHI',
     'Self Delivery','Standard delivery','Std FR Dom_2','Deutsche Post Brief','Standard','Briefpost',
-    'Sendcloud','17FEIA','CTT','GOFO','Correos','Sunyou','Cainiao',
+    'Sendcloud','17FEIA','CTT','GOFO','Correos','Cainiao',
   ].map(v => [v.toUpperCase(), 'gofo']));
 
   function loadCarrierMapping(){
@@ -1256,7 +1259,7 @@
   }
 
   const CARRIER_TAB_ICONS = {
-    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁', 'topyou': '📮', 'cne': '🚛',
+    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁', 'topyou': '📮', 'cne': '🚛', 'sunyou': '☀️',
   };
 
   function renderCarrierTabs(){
@@ -1853,6 +1856,7 @@
     'CAINIAO': { bg:'#fef2e0', fg:'#a15c00' },
     'TOPYOU': { bg:'#eafaf6', fg:'#0d9488' },
     'CNE': { bg:'#f0f4ff', fg:'#3730a3' },
+    'SUNYOU': { bg:'#fff9db', fg:'#996a00' },
     'YANWEN': { bg:'#e8f3ff', fg:'#1d4ed8' },
     'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
     'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },

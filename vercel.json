@@ -35,6 +35,10 @@
     "api/scrape-cne.js": {
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"
+    },
+    "api/scrape-sunyou.js": {
+      "maxDuration": 60,
+      "includeFiles": "api/chromium-bin/**"
     }
   }
 }

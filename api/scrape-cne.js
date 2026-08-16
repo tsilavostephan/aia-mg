@@ -52,19 +52,26 @@ module.exports = async function handler(req, res) {
     for (const num of trackingNumbers) {
       const url = `https://www.cne.com/en/track?no=${encodeURIComponent(num)}`;
       try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-        await new Promise((r) => setTimeout(r, pageLoadWaitMs));
+        const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
+        await new Promise((r) => setTimeout(r, Math.max(pageLoadWaitMs, 3000)));
 
         let lastKm = await extractLastMile(page);
         if (!lastKm) {
-          await new Promise((r) => setTimeout(r, 2000));
+          await new Promise((r) => setTimeout(r, 3000));
           lastKm = await extractLastMile(page);
         }
 
         if (lastKm) {
           results.push({ trackingNumber: cleanNumSuivi(num), lastKm: cleanNumSuivi(lastKm) });
         } else {
-          perNumberDebug.push({ num, found: false });
+          const htmlLength = await page.content().then((h) => h.length).catch(() => -1);
+          perNumberDebug.push({
+            num,
+            found: false,
+            httpStatus: response ? response.status() : null,
+            finalUrl: page.url(),
+            htmlLength,
+          });
         }
       } catch (e) {
         perNumberDebug.push({ num, error: e && e.message });

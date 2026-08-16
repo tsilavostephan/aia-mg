@@ -79,6 +79,18 @@ module.exports = async function handler(req, res) {
 
       const sentinel = await readClipboardWithSentinelCheck(page);
 
+      // "Copy detailed tracking results" copie apparemment le même résumé que l'autre bouton tant
+      // qu'aucune ligne n'est développée (chevron ˅ à droite de chaque ligne, visible sur capture
+      // d'écran) — on développe donc toutes les lignes avant de cliquer sur le bouton copier.
+      const expandedCount = await page.evaluate(() => {
+        const chevrons = Array.from(document.querySelectorAll('[class*="chevron" i], [class*="expand" i], .glyphicon-chevron-down'))
+          .filter((el) => el.offsetParent !== null);
+        chevrons.forEach((el) => el.click());
+        return chevrons.length;
+      }).catch(() => 0);
+      clickDebug.expandedCount = expandedCount;
+      await new Promise((r) => setTimeout(r, clickWaitMs));
+
       // Il y a en réalité deux icônes copier côte à côte dans l'en-tête du tableau (confirmé par
       // capture d'écran) : Copy-1.png / onclick="copyTrackResult(1)" = "Copy detailed tracking
       // results for all numbers" (celle qu'il faut), Copy-2.png / onclick="copyTrackResult(2)" =

@@ -37,7 +37,17 @@ module.exports = async function handler(req, res) {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
 
-    const orderNumsFound = await page.waitForSelector('.orderNum', { timeout: 20000 }).then(() => true).catch(() => false);
+    // La liste peut mettre plus de temps à se remplir quand plusieurs numéros sont demandés à la
+    // fois (chargement/rendu progressif côté site) — on retente plusieurs fois avant d'abandonner,
+    // plutôt qu'une seule attente fixe.
+    let orderNumsFound = false;
+    let retryCount = 0;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      retryCount = attempt;
+      orderNumsFound = await page.waitForSelector('.orderNum', { timeout: 8000 }).then(() => true).catch(() => false);
+      if (orderNumsFound) break;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
     await new Promise((r) => setTimeout(r, pageLoadWaitMs));
 
     const rawResults = await page.evaluate(() => {
@@ -58,6 +68,7 @@ module.exports = async function handler(req, res) {
 
     const debug = {
       orderNumsFound,
+      retryCount,
       orderNumCount: rawResults.orderNums.length,
       suiviCount: rawResults.suiviValues.length,
     };
@@ -66,6 +77,8 @@ module.exports = async function handler(req, res) {
       const domDebug = await page.evaluate(() => ({
         pageTitle: document.title,
         bodyTextPreview: (document.body ? document.body.innerText : '').slice(0, 1000),
+        listItemCount: document.querySelectorAll('.next-list-item').length,
+        listContainerFound: !!document.querySelector('.next-list-items'),
       }));
       Object.assign(debug, domDebug);
     }

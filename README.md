@@ -44,10 +44,10 @@ parties « backend » sont quelques fonctions serverless dans `/api` (scraping e
 - Bouton **Tout récupérer** : lance le scraping automatique pour tous les transporteurs éligibles
   en même temps, avec barre de progression (verte si tout s'est bien passé, rouge sinon).
 - Case à cocher **« Inclure aussi les colis sans numéro dernier kilométrique des autres
-  transporteurs »** (décochée par défaut) : permet à un transporteur donné (typiquement GOFO,
-  utilisé comme étape de vérification finale) de tenter aussi sa chance sur les colis d'autres
-  transporteurs qui n'ont pas encore de numéro dernier kilométrique. Un colis peut ainsi être
-  scrapé par plusieurs transporteurs si besoin.
+  transporteurs »** (décochée par défaut) : permet à un transporteur donné de servir d'étape de
+  vérification finale en tentant aussi sa chance sur les colis d'autres transporteurs qui n'ont pas
+  encore de numéro dernier kilométrique. Un colis peut ainsi être scrapé par plusieurs
+  transporteurs si besoin.
 - Bouton **⚙ Transporteurs** : fenêtre listant toutes les valeurs brutes de la colonne
   « transporteur » trouvées dans la base, avec des cases à cocher pour forcer manuellement leur
   association à un transporteur connu (utile si l'orthographe exacte dans les CSV ne correspond
@@ -92,12 +92,16 @@ api/
   auth.js                   Vérifie le code d'accès et pose le cookie de session
   logout.js                 Efface le cookie de session
   _scrapeLib.js              Fonctions partagées par les fonctions de scraping (Chromium headless, parsing, CORS…)
-  scrape-4px.js              Scraping 4PX (bouton "Copy Overview")
+  _rateLimit.js              Verrouillage progressif par IP après des échecs de connexion répétés (KV/Upstash ou repli en mémoire)
+  scrape-4px.js              Scraping 4PX officiel (clic sur chaque colis de la liste)
+  scrape-cainiao.js          Scraping CAINIAO (bouton "Copy Overview")
   scrape-yanwen.js           Scraping YANWEN (soumission du formulaire + bouton copie)
   scrape-yunexpress.js       Scraping Yun Express (menu "Copy & Export" > "Copy Summary")
   scrape-sfc.js              Scraping SFC (recherche + menu de copie)
   scrape-landmark.js         Scraping LANDMARK (lecture directe du DOM, sans bouton copier)
-  scrape-gofo.js             Scraping GOFO (lecture directe du tableau de résultats)
+  scrape-topyou.js           Scraping TopYou (éditeur CodeMirror + lecture directe du DOM)
+  scrape-cne.js              Scraping CNE (un lien par colis, lecture directe du DOM)
+  scrape-sunyou.js           Scraping Sunyou (bouton copie détaillé, fenêtre desktop large)
 
 scripts/
   postinstall.mjs            Copie les fichiers Chromium nécessaires au scraping lors du build Vercel
@@ -164,15 +168,20 @@ externe (elles pilotent un navigateur headless directement).
 | Transporteur | Import manuel | Scraping automatique |
 |---|:---:|:---:|
 | 4PX | ✅ | ✅ |
+| CAINIAO | ✅ | ✅ |
 | YANWEN | ✅ | ✅ |
 | Yun Express | ✅ | ✅ |
 | SFC | ✅ | ✅ |
 | LANDMARK | ✅ | ✅ |
-| GOFO | ✅ | ✅ |
+| TopYou | ✅ | ✅ |
+| CNE | ✅ | ✅ |
+| Sunyou | ✅ | ✅ |
 
-GOFO peut aussi servir d'étape de vérification finale pour les colis d'autres transporteurs
-« dernier kilométrique » (Asendia, China Post, BRT, Spring, Seur, Evri, TNT, Correos, Cainiao,
-etc. — liste complète et modifiable via le bouton **⚙ Transporteurs**).
+N'importe lequel de ces transporteurs peut aussi servir d'étape de vérification finale pour les
+colis d'autres transporteurs (case à cocher « Inclure aussi les colis sans numéro dernier
+kilométrique des autres transporteurs », voir section 2 ci-dessus) — et de nouvelles valeurs de
+transporteur brutes trouvées dans les CSV peuvent être associées manuellement à l'un de ces
+transporteurs connus via le bouton **⚙ Transporteurs**.
 
 ---
 

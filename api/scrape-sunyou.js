@@ -60,6 +60,11 @@ module.exports = async function handler(req, res) {
     browser = await launchBrowser(path.join(__dirname, 'chromium-bin'));
 
     const page = await browser.newPage();
+    // La fenêtre par défaut du Chromium headless est étroite, ce qui bascule probablement la page
+    // vers une vue "résumé" (tableau, sans le détail des événements) au lieu de la vue "détail"
+    // obtenue dans un vrai navigateur desktop (même problème rencontré sur 4PX) — on force donc une
+    // largeur desktop avant de naviguer.
+    await page.setViewport({ width: 1440, height: 900 });
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     await new Promise((r) => setTimeout(r, pageLoadWaitMs));
 

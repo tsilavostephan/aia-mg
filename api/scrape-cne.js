@@ -52,8 +52,17 @@ module.exports = async function handler(req, res) {
     for (const num of trackingNumbers) {
       const url = `https://www.cne.com/en/track?no=${encodeURIComponent(num)}`;
       try {
-        const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
-        await new Promise((r) => setTimeout(r, Math.max(pageLoadWaitMs, 3000)));
+        let response = null;
+        let navigateAttempts = 0;
+
+        // La navigation aboutit parfois sur "about:blank" (page vide, ~39 caractères de HTML) au
+        // lieu du vrai site — probablement transitoire (DNS, redirection avortée) : on retente
+        // jusqu'à 3 fois avant d'abandonner ce colis.
+        for (navigateAttempts = 1; navigateAttempts <= 3; navigateAttempts++) {
+          response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
+          await new Promise((r) => setTimeout(r, Math.max(pageLoadWaitMs, 3000)));
+          if (page.url() !== 'about:blank') break;
+        }
 
         let lastKm = await extractLastMile(page);
         if (!lastKm) {
@@ -71,6 +80,7 @@ module.exports = async function handler(req, res) {
             httpStatus: response ? response.status() : null,
             finalUrl: page.url(),
             htmlLength,
+            navigateAttempts,
           });
         }
       } catch (e) {

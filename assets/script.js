@@ -35,6 +35,7 @@
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
     carrierMappingBtn: document.getElementById('carrierMappingBtn'),
+    carrierSectionUpdatedCount: document.getElementById('carrierSectionUpdatedCount'),
     carrierMappingModalBg: document.getElementById('carrierMappingModalBg'),
     carrierMappingList: document.getElementById('carrierMappingList'),
     carrierMappingSaveBtn: document.getElementById('carrierMappingSaveBtn'),
@@ -1410,6 +1411,8 @@
   // Extrait le tableau de résultats d'une réponse JSON (selon le mapping configuré), met à jour
   // numDernierKm pour les commandes du transporteur correspondant, sauvegarde et journalise le
   // résultat. Partagé par tous les transporteurs pris en charge pour le scraping (4PX, YANWEN, ...).
+  // Renvoie le nombre de commandes mises à jour (matched), utilisé par scrapeAllCarriers() pour
+  // afficher le total dans le titre de la section une fois tous les transporteurs traités.
   async function applyScrapedResultsToDb(g, json, config, sourceLabel){
     const items = readByPath(json, config.respArrayField);
     if(!Array.isArray(items)){
@@ -1419,7 +1422,7 @@
         err: true
       };
       renderCarrierPanel();
-      return;
+      return 0;
     }
 
     const updateMap = new Map();
@@ -1463,6 +1466,7 @@
       err: false
     };
     render();
+    return matched;
   }
 
   // ---------- scraping via une fonction backend Vercel (4PX, YANWEN, ...) ----------
@@ -1549,10 +1553,10 @@
         err: true
       };
       renderCarrierPanel();
-      return;
+      return 0;
     }
 
-    await applyScrapedResultsToDb(
+    const matched = await applyScrapedResultsToDb(
       g,
       { results: allResults },
       { respArrayField: 'results', respTrackingField: 'trackingNumber', respLastMileField: 'lastKm' },
@@ -1567,6 +1571,8 @@
       };
       renderCarrierPanel();
     }
+
+    return matched;
   }
 
   // Lance scrapeCarrierViaVercel() pour tous les transporteurs pris en charge (ceux ayant des colis
@@ -1588,9 +1594,10 @@
 
     let done = 0;
     const outcomes = await Promise.allSettled(eligible.map(async g => {
-      await scrapeCarrierViaVercel(g);
+      const matched = await scrapeCarrierViaVercel(g);
       done++;
       els.scrapeAllProgressBar.style.width = `${Math.round((done / eligible.length) * 100)}%`;
+      return matched || 0;
     }));
 
     els.scrapeAllBtn.disabled = false;
@@ -1598,6 +1605,10 @@
       || eligible.some(g => importLogByCarrier[g.key] && importLogByCarrier[g.key].err);
     els.scrapeAllBtn.classList.add(anyFailure ? 'scrape-all-error' : 'scrape-all-success');
     els.scrapeAllLog.textContent = `Scraping terminé pour : ${eligible.map(g => g.label).join(', ')}. Voir le détail dans l'onglet de chaque transporteur.`;
+
+    const totalUpdated = outcomes.reduce((sum, o) => sum + (o.status === 'fulfilled' ? o.value : 0), 0);
+    els.carrierSectionUpdatedCount.textContent = ` (${totalUpdated} colis mis à jour)`;
+
     renderCarrierPanel();
   }
 

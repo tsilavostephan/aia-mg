@@ -80,9 +80,10 @@ module.exports = async function handler(req, res) {
       const sentinel = await readClipboardWithSentinelCheck(page);
 
       // Il y a en réalité deux icônes copier côte à côte dans l'en-tête du tableau (confirmé par
-      // capture d'écran) : une pour le résumé (titre contenant "summary", onclick
-      // "copyTrackResult(2)") et une autre pour le détail complet avec le "Carrier Tracking
-      // Number" — c'est cette dernière qu'il faut cliquer, pas celle explicitement titrée "summary".
+      // capture d'écran) : Copy-1.png / onclick="copyTrackResult(1)" = "Copy detailed tracking
+      // results for all numbers" (celle qu'il faut), Copy-2.png / onclick="copyTrackResult(2)" =
+      // résumé Excel uniquement. On cible donc explicitement copyTrackResult(1), sans passer par
+      // une logique de détection par titre qui s'est révélée peu fiable.
       const copyIconsDebug = await page.evaluate(() =>
         Array.from(document.querySelectorAll('img[onclick*="copyTrackResult"], img.pointer')).map((img) => ({
           src: img.getAttribute('src') || '',
@@ -93,18 +94,24 @@ module.exports = async function handler(req, res) {
       clickDebug.copyIconsFound = copyIconsDebug;
 
       const copyBtnHandle = (await page.evaluateHandle(() => {
+        const exact = document.querySelector('img[onclick="copyTrackResult(1)"]');
+        if (exact) return exact;
         const candidates = Array.from(document.querySelectorAll('img[onclick*="copyTrackResult"], img.pointer'));
-        const nonSummary = candidates.find((img) => !/summary/i.test(img.getAttribute('title') || ''));
-        return nonSummary || candidates[0] || null;
+        const detailed = candidates.find((img) => /detailed/i.test(img.getAttribute('title') || ''));
+        return detailed || candidates[0] || null;
       })).asElement();
       clickDebug.copyBtnFound = !!copyBtnHandle;
+      clickDebug.copyBtnClicked = copyBtnHandle
+        ? await copyBtnHandle.evaluate((el) => ({ src: el.getAttribute('src'), onclick: el.getAttribute('onclick') })).catch(() => null)
+        : null;
 
       if (copyBtnHandle) {
         await copyBtnHandle.evaluate((el) => el.scrollIntoView({ block: 'center' })).catch(() => {});
         await new Promise((r) => setTimeout(r, 200));
-        await copyBtnHandle.hover().catch(() => {});
-        await new Promise((r) => setTimeout(r, clickWaitMs));
-        await copyBtnHandle.click().catch(() => {});
+        // Les deux icônes copier sont côte à côte : un clic par coordonnées (hover + click) risque
+        // de tomber légèrement à côté et d'atteindre l'autre icône. Un clic natif directement sur
+        // l'élément (bypass des coordonnées écran) est plus fiable ici.
+        await copyBtnHandle.evaluate((el) => el.click()).catch(() => {});
         await new Promise((r) => setTimeout(r, clickWaitMs));
 
         const rawClipboard = await page.evaluate(() =>

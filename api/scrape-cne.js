@@ -44,7 +44,11 @@ module.exports = async function handler(req, res) {
   let browser;
   try {
     browser = await launchBrowser(path.join(__dirname, 'chromium-bin'));
-    const page = await browser.newPage();
+    let page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    );
+    await page.setViewport({ width: 1366, height: 900 });
 
     const results = [];
     const perNumberDebug = [];
@@ -55,10 +59,19 @@ module.exports = async function handler(req, res) {
         let response = null;
         let navigateAttempts = 0;
 
-        // La navigation aboutit parfois sur "about:blank" (page vide, ~39 caractères de HTML) au
-        // lieu du vrai site — probablement transitoire (DNS, redirection avortée) : on retente
-        // jusqu'à 3 fois avant d'abandonner ce colis.
+        // La navigation aboutit systématiquement sur "about:blank" (page vide, ~39 caractères de
+        // HTML) au lieu du vrai site avec la page/UA par défaut du Chromium headless — on utilise
+        // un user-agent desktop standard (ci-dessus) et on repart d'une page neuve à chaque
+        // tentative, au cas où le contexte de la page précédente serait en cause.
         for (navigateAttempts = 1; navigateAttempts <= 3; navigateAttempts++) {
+          if (navigateAttempts > 1) {
+            await page.close().catch(() => {});
+            page = await browser.newPage();
+            await page.setUserAgent(
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+            );
+            await page.setViewport({ width: 1366, height: 900 });
+          }
           response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
           await new Promise((r) => setTimeout(r, Math.max(pageLoadWaitMs, 3000)));
           if (page.url() !== 'about:blank') break;

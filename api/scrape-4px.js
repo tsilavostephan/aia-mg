@@ -55,13 +55,17 @@ module.exports = async function handler(req, res) {
     await new Promise((r) => setTimeout(r, pageLoadWaitMs));
 
     const rawResults = await page.evaluate(() => {
+      // La langue de la page dépend de la locale détectée par le site (navigateur headless ->
+      // souvent anglais, "Tracking No.", plutôt que français, "Numéro de suivi") — on reconnaît les
+      // deux plutôt que de dépendre d'une langue fixe.
+      const SUIVI_LABEL_RE = /(num[ée]ro de suivi|tracking no\.?)/i;
       const orderNums = Array.from(document.querySelectorAll('.orderNum')).map((el) => (el.textContent || '').trim());
       const suiviValues = Array.from(document.querySelectorAll('span'))
-        .filter((el) => /num[ée]ro de suivi/i.test(el.textContent || ''))
+        .filter((el) => SUIVI_LABEL_RE.test(el.textContent || ''))
         .map((el) => {
           const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
-          const m = text.match(/num[ée]ro de suivi\s*[:：]\s*(\S+)/i);
-          return m ? m[1] : '';
+          const m = text.match(new RegExp(SUIVI_LABEL_RE.source + '\\s*[:：]?\\s*(\\S+)', 'i'));
+          return m ? m[2] : '';
         });
 
       // Repli : mise en page "détail" (ex. mobile) avec des libellés anglais séparés au lieu de la

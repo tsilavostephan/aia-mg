@@ -106,7 +106,10 @@ module.exports = async function handler(req, res) {
         if (trackingNo === previousTrackingNo) unchangedCount++;
 
         previousTrackingNo = trackingNo;
-        if (trackingNo) {
+        // Quand aucun numéro dernier kilométrique n'est encore attribué (colis pas assez avancé
+        // dans son transit), le site affiche parfois le numéro 4PX lui-même en guise de "Tracking
+        // No." — on l'ignore, ça n'apporte aucune information nouvelle.
+        if (trackingNo && cleanNumSuivi(trackingNo) !== cleanNumSuivi(expectedNum)) {
           results.push({ trackingNumber: cleanNumSuivi(expectedNum), lastKm: cleanNumSuivi(trackingNo) });
         }
       }

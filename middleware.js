@@ -19,11 +19,29 @@ async function computeExpectedToken(secret) {
   return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Compare deux chaînes de même longueur attendue (empreintes hexadécimales à 64 caractères) en
+// temps constant — une égalité `===` classique s'arrête au premier caractère différent, ce qui
+// fournit en théorie un canal de timing (Node/Edge n'exposent pas crypto.timingSafeEqual ici).
+function constantTimeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+let missingSecretWarned = false;
+
 export default async function middleware(request) {
   const secret = process.env.APP_AUTH_SECRET || process.env.APP_ACCESS_CODE;
   if (!secret) {
     // Pas de code configuré côté serveur : on ne bloque pas l'accès (évite de verrouiller
-    // définitivement l'app si la variable d'environnement n'a pas encore été renseignée).
+    // définitivement l'app si la variable d'environnement n'a pas encore été renseignée). ⚠️ Ça
+    // veut aussi dire qu'une variable d'environnement mal configurée rend tout le site public sans
+    // avertissement visible — on journalise donc au moins une fois par instance de fonction.
+    if (!missingSecretWarned) {
+      missingSecretWarned = true;
+      console.warn('[middleware] APP_AUTH_SECRET/APP_ACCESS_CODE absent(e) : le site reste accessible sans authentification.');
+    }
     return;
   }
 
@@ -32,7 +50,7 @@ export default async function middleware(request) {
   const token = match ? decodeURIComponent(match[1]) : '';
 
   const expected = await computeExpectedToken(secret);
-  if (token === expected) {
+  if (constantTimeEqual(token, expected)) {
     return; // authentifié, on laisse passer
   }
 

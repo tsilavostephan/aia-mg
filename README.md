@@ -69,6 +69,9 @@ parties « backend » sont quelques fonctions serverless dans `/api` (scraping e
 - L'ensemble du site (pages et API) est protégé par un **code d'accès** unique, vérifié par un
   middleware Vercel (Edge Middleware). Une fois le bon code saisi sur `/login.html`, un cookie
   signé autorise l'accès pendant 30 jours. Lien **Se déconnecter** dans l'en-tête de l'app.
+- Verrouillage progressif par adresse IP en cas d'échecs répétés sur `/api/auth` (5 échecs → 30s,
+  10 → 5 min, 20 → 30 min), pour limiter les attaques par force brute — voir `KV_REST_API_URL` /
+  `KV_REST_API_TOKEN` ci-dessous.
 
 ---
 
@@ -129,6 +132,7 @@ environnement Vercel (ou `vercel dev`).
 |---|---|---|
 | `APP_ACCESS_CODE` | Non (mais recommandé) | Code d'accès à saisir sur la page de connexion. Si absente, l'application reste accessible sans code (pour éviter de se retrouver bloqué dehors par erreur). |
 | `APP_AUTH_SECRET` | Non | Secret utilisé pour signer le cookie de session. Si absent, `APP_ACCESS_CODE` est utilisé à la place — il est recommandé d'utiliser une valeur distincte, longue et aléatoire. |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Non (mais recommandé) | Ajoutées automatiquement en connectant une base **Vercel KV** depuis l'onglet *Storage* du projet sur vercel.com. Permettent à `api/auth.js` de verrouiller progressivement une adresse IP après plusieurs échecs de connexion (partagé entre toutes les instances/régions). Sans ces variables, un compteur en mémoire local par instance sert de repli — moins robuste (se réinitialise à froid, non partagé entre régions) mais actif par défaut. |
 
 Aucune autre variable n'est nécessaire : les fonctions de scraping n'utilisent pas de clé API
 externe (elles pilotent un navigateur headless directement).

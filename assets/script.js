@@ -85,6 +85,7 @@
     scannerError: document.getElementById('scannerError'),
     closeScannerBtn: document.getElementById('closeScannerBtn'),
     focusDbBtn: document.getElementById('focusDbBtn'),
+    shortcutsOverlay: document.getElementById('shortcutsOverlay'),
   };
 
   let selectedFiles = [];
@@ -1831,16 +1832,77 @@
     }
   });
 
-  // Raccourci ALT+Q : place le curseur dans le champ de recherche, où qu'on soit sur la page.
-  // On utilise e.code (position physique de la touche) plutôt que e.key pour que ça marche
-  // quel que soit l'agencement du clavier (AZERTY, QWERTY…).
+  // Raccourcis clavier ALT+<lettre>, actifs où qu'on soit sur la page. On utilise e.code (position
+  // physique de la touche) plutôt que e.key pour que ça marche quel que soit l'agencement du
+  // clavier (AZERTY, QWERTY…). Chaque raccourci réutilise le bouton déjà câblé correspondant
+  // (.click()) plutôt que de dupliquer sa logique — s'il est désactivé/masqué, le clic ne fait
+  // simplement rien.
+  const KEYBOARD_SHORTCUTS = [
+    { code:'KeyO', label:'Ouvrir le sélecteur de fichiers CSV', run: () => els.dropzone.click() },
+    { code:'KeyA', label:'Ajouter à la base de données',        run: () => els.importBtn.click() },
+    { code:'KeyR', label:'Tout récupérer (scraping)',           run: () => els.scrapeAllBtn.click() },
+    { code:'KeyQ', label:'Rechercher (curseur dans le champ)',  run: () => { els.search.focus(); els.search.select(); } },
+    { code:'KeyS', label:'Scanner un code-barres / QR code',    run: () => els.scanBtn.click() },
+    { code:'KeyE', label:'Exporter la base en JSON',            run: () => els.exportJsonBtn.click() },
+    { code:'KeyJ', label:'Importer un JSON',                    run: () => els.jsonFileInput.click() },
+    { code:'KeyX', label:'Effacer la base de données',          run: () => els.clearBtn.click() },
+    { code:'KeyP', label:'Basculer le plein écran (section 3)', run: () => els.focusDbBtn.click() },
+  ];
+
+  // Affiche un rappel des raccourcis disponibles tant que la touche Alt est maintenue seule —
+  // comme les indices de touche d'accès de Windows — pour qu'ils restent découvrables sans avoir
+  // à les mémoriser à l'avance.
+  els.shortcutsOverlay.innerHTML = `
+    <div class="shortcuts-overlay-title">Raccourcis clavier (maintenez Alt)</div>
+    <div class="shortcuts-overlay-list">
+      ${KEYBOARD_SHORTCUTS.map(s => `
+        <div class="shortcuts-overlay-item">
+          <span class="shortcuts-kbd"><kbd class="shortcut-key">Alt</kbd>+<kbd class="shortcut-key">${s.code.replace('Key', '')}</kbd></span>
+          <span>${s.label}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  let shortcutsOverlayVisible = false;
+  function showShortcutsOverlay(){
+    if(shortcutsOverlayVisible) return;
+    shortcutsOverlayVisible = true;
+    els.shortcutsOverlay.classList.add('visible');
+    els.shortcutsOverlay.setAttribute('aria-hidden', 'false');
+  }
+  function hideShortcutsOverlay(){
+    if(!shortcutsOverlayVisible) return;
+    shortcutsOverlayVisible = false;
+    els.shortcutsOverlay.classList.remove('visible');
+    els.shortcutsOverlay.setAttribute('aria-hidden', 'true');
+  }
+
   document.addEventListener('keydown', (e)=>{
+    // Alt seul (sans autre touche) : affiche le rappel des raccourcis. On bloque le comportement
+    // par défaut du navigateur (bascule de la barre de menu sur Firefox/Windows) pour cette seule
+    // pression, sans gêner les combinaisons Alt+lettre ci-dessous.
+    if(e.key === 'Alt'){
+      if(!e.repeat) showShortcutsOverlay();
+      e.preventDefault();
+      return;
+    }
     if(!e.altKey || e.ctrlKey || e.metaKey) return;
-    if(e.code !== 'KeyQ') return;
+    const shortcut = KEYBOARD_SHORTCUTS.find(s => s.code === e.code);
+    if(!shortcut) return;
     e.preventDefault();
-    els.search.focus();
-    els.search.select();
+    shortcut.run();
   });
+
+  document.addEventListener('keyup', (e)=>{
+    if(e.key !== 'Alt') return;
+    e.preventDefault();
+    hideShortcutsOverlay();
+  });
+
+  // Défensif : si la fenêtre perd le focus pendant qu'Alt est maintenu (ex. Alt+Tab), aucun
+  // keyup n'est reçu — sans ça le rappel resterait affiché indéfiniment.
+  window.addEventListener('blur', hideShortcutsOverlay);
 
   // Coller n'importe où sur la page colle directement dans le champ de recherche, sauf si on a
   // déjà le focus sur un champ éditable (recherche elle-même, zone de collage transporteur, etc.),

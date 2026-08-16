@@ -71,12 +71,6 @@
     <span>3. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s), <span id="resolvedCount">0</span> colis mis à jour)</span>
     <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Afficher uniquement cette section">⛶</button>
   </h2>
-  <div class="actions">
-    <button id="exportJsonBtn" class="secondary">📤 Exporter en JSON</button>
-    <label class="file-btn" for="jsonFileInput">📥 Importer un JSON</label>
-    <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;">
-    <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
-  </div>
   <div class="row search-row">
     <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)">
     <button type="button" id="scanBtn" class="scan-btn" title="Scanner un code-barres / QR code">📷</button>
@@ -96,6 +90,12 @@
     <div id="dbCards" class="db-cards"></div>
   </div>
   <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer.</div>
+  <div class="actions actions-bottom">
+    <button id="exportJsonBtn" class="secondary">📤 Exporter en JSON</button>
+    <label class="file-btn" for="jsonFileInput">📥 Importer un JSON</label>
+    <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;">
+    <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
+  </div>
 </fieldset>
 
 <div id="trackingModalBg" class="modal-bg" style="display:none;">
@@ -214,6 +214,8 @@
     </div>
   </div>
 </div>
+
+<div id="shortcutsOverlay" class="shortcuts-overlay" aria-hidden="true"></div>
 
 <script src="assets/script.js"></script>
 </body>

@@ -3,15 +3,50 @@
 // auparavant le nom "4PX" dans cette application avant d'être renommé).
 //
 // La page https://track.4px.com/#/result/34/NUM1,NUM2,... est une application JS (route en
-// fragment #) qui affiche une carte par colis. Chaque carte contient le numéro d'origine dans un
-// <p class="orderNum"> et le numéro dernier kilométrique en texte visible (pas de presse-papier à
-// lire) dans un <span>Numéro de suivi： LP765416770FR<button ...copyBtn...></button></span> —
-// confirmé par le HTML fourni par l'utilisateur. On associe les deux listes par leur position dans
-// le DOM (i-ème carte = i-ème numéro de suivi), les deux étant censées apparaître dans le même
-// ordre ; le nombre d'éléments trouvés de chaque côté est toujours renvoyé en diagnostic pour
-// vérifier que cette hypothèse tient si jamais 0 résultat n'est exploitable.
+// fragment #) qui affiche la liste des colis (chaque carte a un <p class="orderNum">), mais le
+// numéro dernier kilométrique ("Tracking No." / "Numéro de suivi") n'est affiché que pour le colis
+// actuellement sélectionné dans le panneau de détail — confirmé par l'utilisateur : pas de bouton
+// d'export groupé sur ce site. On clique donc sur chaque élément de la liste un par un, on attend
+// que le panneau de détail affiche bien CE colis (vérifié via son "4PX Order No."), puis on lit son
+// "Tracking No.".
 const path = require('node:path');
 const { launchBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest } = require('./_scrapeLib');
+
+// La langue de la page dépend de la locale détectée par le site (navigateur headless -> souvent
+// anglais, "Tracking No.", plutôt que français, "Numéro de suivi") — on reconnaît les deux.
+const SUIVI_LABEL_SRC = '(num[ée]ro de suivi|tracking no\\.?)';
+const ORDER_LABEL_SRC = '^4PX Order No\\.?$';
+
+async function readDetailPair(page) {
+  return page.evaluate(
+    (suiviLabelSrc, orderLabelSrc) => {
+      const suiviRe = new RegExp(suiviLabelSrc, 'i');
+      const orderRe = new RegExp(orderLabelSrc, 'i');
+      const textOf = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+
+      const allEls = Array.from(document.querySelectorAll('body *'));
+      const orderLabelEl = allEls.find((el) => el.children.length === 0 && orderRe.test(textOf(el)));
+      let orderNo = '';
+      if (orderLabelEl) {
+        let sib = orderLabelEl.nextElementSibling;
+        while (sib && !textOf(sib)) sib = sib.nextElementSibling;
+        orderNo = sib ? textOf(sib) : '';
+      }
+
+      let trackingNo = '';
+      const suiviSpan = Array.from(document.querySelectorAll('span')).find((el) => suiviRe.test(el.textContent || ''));
+      if (suiviSpan) {
+        const text = textOf(suiviSpan);
+        const m = text.match(new RegExp(suiviLabelSrc + '\\s*[:：]?\\s*(\\S+)', 'i'));
+        trackingNo = m ? m[2] : '';
+      }
+
+      return { orderNo, trackingNo };
+    },
+    SUIVI_LABEL_SRC,
+    ORDER_LABEL_SRC
+  );
+}
 
 module.exports = async function handler(req, res) {
   setCorsHeaders(res);
@@ -54,51 +89,39 @@ module.exports = async function handler(req, res) {
     }
     await new Promise((r) => setTimeout(r, pageLoadWaitMs));
 
-    const rawResults = await page.evaluate(() => {
-      // La langue de la page dépend de la locale détectée par le site (navigateur headless ->
-      // souvent anglais, "Tracking No.", plutôt que français, "Numéro de suivi") — on reconnaît les
-      // deux plutôt que de dépendre d'une langue fixe.
-      const SUIVI_LABEL_RE = /(num[ée]ro de suivi|tracking no\.?)/i;
-      const orderNums = Array.from(document.querySelectorAll('.orderNum')).map((el) => (el.textContent || '').trim());
-      const suiviValues = Array.from(document.querySelectorAll('span'))
-        .filter((el) => SUIVI_LABEL_RE.test(el.textContent || ''))
-        .map((el) => {
-          const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
-          const m = text.match(new RegExp(SUIVI_LABEL_RE.source + '\\s*[:：]?\\s*(\\S+)', 'i'));
-          return m ? m[2] : '';
-        });
+    const results = [];
+    let clickedCount = 0;
+    let mismatchCount = 0;
 
-      // Repli : mise en page "détail" (ex. mobile) avec des libellés anglais séparés au lieu de la
-      // liste desktop — "4PX Order No." suivi du numéro, puis "Tracking No." suivi du numéro
-      // dernier kilométrique, chacun dans son propre élément.
-      if (orderNums.length === 0) {
-        const allEls = Array.from(document.querySelectorAll('body *'));
-        const textOf = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
-        const findValueAfterLabel = (labelRe) => {
-          const labelEl = allEls.find((el) => el.children.length === 0 && labelRe.test(textOf(el)));
-          if (!labelEl) return '';
-          let sib = labelEl.nextElementSibling;
-          while (sib && !textOf(sib)) sib = sib.nextElementSibling;
-          return sib ? textOf(sib) : '';
-        };
-        const orderNo = findValueAfterLabel(/^4PX Order No\.?$/i);
-        const trackingNo = findValueAfterLabel(/^Tracking No\.?$/i);
-        if (orderNo) { orderNums.push(orderNo); suiviValues.push(trackingNo); }
+    if (orderNumsFound) {
+      const itemHandles = await page.$$('.next-list-item');
+      for (const item of itemHandles) {
+        const expectedNum = await item.$eval('.orderNum', (el) => el.textContent.trim()).catch(() => null);
+        if (!expectedNum) continue;
+
+        await item.click().catch(() => {});
+        clickedCount++;
+
+        // Attend que le panneau de détail affiche bien CE colis (vérifié via "4PX Order No."),
+        // plutôt qu'une attente fixe qui serait soit trop courte, soit inutilement longue.
+        let pair = { orderNo: '', trackingNo: '' };
+        for (let i = 0; i < 8; i++) {
+          pair = await readDetailPair(page);
+          if (pair.orderNo === expectedNum) break;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+
+        if (pair.orderNo === expectedNum) {
+          if (pair.trackingNo) {
+            results.push({ trackingNumber: cleanNumSuivi(expectedNum), lastKm: cleanNumSuivi(pair.trackingNo) });
+          }
+        } else {
+          mismatchCount++;
+        }
       }
+    }
 
-      return { orderNums, suiviValues };
-    });
-
-    const results = rawResults.orderNums
-      .map((num, i) => ({ trackingNumber: cleanNumSuivi(num), lastKm: cleanNumSuivi(rawResults.suiviValues[i] || '') }))
-      .filter((r) => r.trackingNumber && r.lastKm);
-
-    const debug = {
-      orderNumsFound,
-      retryCount,
-      orderNumCount: rawResults.orderNums.length,
-      suiviCount: rawResults.suiviValues.length,
-    };
+    const debug = { orderNumsFound, retryCount, clickedCount, mismatchCount, resultCount: results.length };
 
     if (results.length === 0) {
       const domDebug = await page.evaluate(() => ({

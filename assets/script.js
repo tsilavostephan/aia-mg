@@ -1027,6 +1027,9 @@
     { key:'gofo',       label:'GOFO',       match:['GOFO'],                    baseUrl:'https://www.gofo.com/fr/tracking-results/?id=',      kmColIndex:1, mode:'url', numsSeparator:' ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-gofo' },
+    { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'url',
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », collez les numéros dans la zone de recherche (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
+      scrapeEndpoint: '/api/scrape-topyou' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1250,7 +1253,7 @@
   }
 
   const CARRIER_TAB_ICONS = {
-    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁',
+    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'gofo': '🏁', 'topyou': '📮',
   };
 
   function renderCarrierTabs(){
@@ -1845,6 +1848,7 @@
   const CARRIER_BADGE_COLORS = {
     '4PX': { bg:'#fdece0', fg:'#c2540a' },
     'CAINIAO': { bg:'#fef2e0', fg:'#a15c00' },
+    'TOPYOU': { bg:'#eafaf6', fg:'#0d9488' },
     'YANWEN': { bg:'#e8f3ff', fg:'#1d4ed8' },
     'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
     'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },

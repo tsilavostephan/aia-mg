@@ -1251,15 +1251,19 @@
     return carrierGroups.find(g => g.key === activeCarrierKey) || carrierGroups[0] || null;
   }
 
-  const CARRIER_TAB_ICONS = {
-    'cainiao': '🇨🇳', '4px': '✈️', 'yanwen': '📦', 'yunexpress': '🚚', 'sfc': '🚢', 'landmark': '🌐', 'topyou': '📮', 'cne': '🚛', 'sunyou': '☀️',
+  // Favicons officiels récupérés depuis le site de chaque transporteur (assets/carrier-logos/).
+  const CARRIER_LOGO_FILES = {
+    'cainiao': 'cainiao.png', '4px': '4px.png', 'yanwen': 'yanwen.ico', 'yunexpress': 'yunexpress.ico',
+    'sfc': 'sfc.png', 'landmark': 'landmark.png', 'topyou': 'topyou.ico', 'cne': 'cne.png', 'sunyou': 'sunyou.png',
   };
 
   function renderCarrierTabs(){
     els.carrierTabs.innerHTML = '';
     carrierGroups.forEach(g=>{
       const btn = document.createElement('button');
-      btn.textContent = `${CARRIER_TAB_ICONS[g.key] || '📦'} ${g.label} (${g.nums.length})`;
+      const logoFile = CARRIER_LOGO_FILES[g.key];
+      const logoHtml = logoFile ? `<img src="assets/carrier-logos/${logoFile}" alt="" class="carrier-tab-logo">` : '';
+      btn.innerHTML = `${logoHtml}${g.label} (${g.nums.length})`;
       if(g.key === activeCarrierKey) btn.classList.add('active');
       btn.addEventListener('click', ()=>{
         activeCarrierKey = g.key;

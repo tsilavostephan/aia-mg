@@ -1849,20 +1849,49 @@
     { code:'KeyP', label:'Basculer le plein écran (section 3)', run: () => els.focusDbBtn.click() },
   ];
 
+  // Étiquette affichée par défaut (position QWERTY de la touche, ex. "KeyQ" -> "Q") — mise à jour
+  // ci-dessous dès qu'on connaît la vraie disposition, pour éviter d'afficher "Alt+Q" à un
+  // utilisateur AZERTY dont cette touche physique porte en réalité la lettre "A" (et inversement).
+  const shortcutDisplayKeys = {};
+  KEYBOARD_SHORTCUTS.forEach(s => { shortcutDisplayKeys[s.code] = s.code.replace('Key', ''); });
+
   // Affiche un rappel des raccourcis disponibles tant que la touche Alt est maintenue seule —
   // comme les indices de touche d'accès de Windows — pour qu'ils restent découvrables sans avoir
   // à les mémoriser à l'avance.
-  els.shortcutsOverlay.innerHTML = `
-    <div class="shortcuts-overlay-title">Raccourcis clavier (maintenez Alt)</div>
-    <div class="shortcuts-overlay-list">
-      ${KEYBOARD_SHORTCUTS.map(s => `
-        <div class="shortcuts-overlay-item">
-          <span class="shortcuts-kbd"><kbd class="shortcut-key">Alt</kbd>+<kbd class="shortcut-key">${s.code.replace('Key', '')}</kbd></span>
-          <span>${s.label}</span>
-        </div>
-      `).join('')}
-    </div>
-  `;
+  function renderShortcutsOverlay(){
+    els.shortcutsOverlay.innerHTML = `
+      <div class="shortcuts-overlay-title">Raccourcis clavier (maintenez Alt)</div>
+      <div class="shortcuts-overlay-list">
+        ${KEYBOARD_SHORTCUTS.map(s => `
+          <div class="shortcuts-overlay-item">
+            <span class="shortcuts-kbd"><kbd class="shortcut-key">Alt</kbd>+<kbd class="shortcut-key">${shortcutDisplayKeys[s.code]}</kbd></span>
+            <span>${s.label}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+  renderShortcutsOverlay();
+
+  // Les raccourcis restent liés à la position physique de la touche (e.code) pour fonctionner
+  // quelle que soit la disposition, mais la LETTRE AFFICHÉE doit correspondre à ce qui est
+  // réellement imprimé dessus. Chrome/Edge exposent la vraie disposition active via
+  // KeyboardLayoutMap : on l'utilise dès qu'elle est disponible pour corriger l'affichage.
+  if(navigator.keyboard && navigator.keyboard.getLayoutMap){
+    navigator.keyboard.getLayoutMap()
+      .then(layoutMap => {
+        let changed = false;
+        KEYBOARD_SHORTCUTS.forEach(s => {
+          const real = layoutMap.get(s.code);
+          if(real && real.toUpperCase() !== shortcutDisplayKeys[s.code]){
+            shortcutDisplayKeys[s.code] = real.toUpperCase();
+            changed = true;
+          }
+        });
+        if(changed) renderShortcutsOverlay();
+      })
+      .catch(() => { /* API indisponible/refusée : on garde les lettres QWERTY par défaut */ });
+  }
 
   let shortcutsOverlayVisible = false;
   function showShortcutsOverlay(){
@@ -1891,6 +1920,12 @@
     const shortcut = KEYBOARD_SHORTCUTS.find(s => s.code === e.code);
     if(!shortcut) return;
     e.preventDefault();
+    // Repli pour les navigateurs sans KeyboardLayoutMap (Firefox, Safari) : la touche qu'on vient
+    // réellement d'appuyer nous dit elle-même quelle lettre y est imprimée sur cette disposition.
+    if(/^[a-zA-Z]$/.test(e.key) && e.key.toUpperCase() !== shortcutDisplayKeys[shortcut.code]){
+      shortcutDisplayKeys[shortcut.code] = e.key.toUpperCase();
+      renderShortcutsOverlay();
+    }
     shortcut.run();
   });
 

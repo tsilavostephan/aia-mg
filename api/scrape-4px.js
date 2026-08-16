@@ -7,45 +7,27 @@
 // numéro dernier kilométrique ("Tracking No." / "Numéro de suivi") n'est affiché que pour le colis
 // actuellement sélectionné dans le panneau de détail — confirmé par l'utilisateur : pas de bouton
 // d'export groupé sur ce site. On clique donc sur chaque élément de la liste un par un, on attend
-// que le panneau de détail affiche bien CE colis (vérifié via son "4PX Order No."), puis on lit son
-// "Tracking No.".
+// que le "Tracking No." affiché change par rapport au précédent (signe que le panneau de détail
+// s'est mis à jour), puis on le lit.
 const path = require('node:path');
 const { launchBrowser, cleanNumSuivi, setCorsHeaders, parseScrapeRequest } = require('./_scrapeLib');
 
 // La langue de la page dépend de la locale détectée par le site (navigateur headless -> souvent
 // anglais, "Tracking No.", plutôt que français, "Numéro de suivi") — on reconnaît les deux.
+// (Le libellé "4PX Order No." utilisé auparavant pour vérifier quel colis était affiché n'existe
+// pas sous cette forme dans la vue desktop — confirmé par diagnostic, orderNo revenait toujours
+// vide. On vérifie donc simplement que le "Tracking No." affiché a changé après le clic.)
 const SUIVI_LABEL_SRC = '(num[ée]ro de suivi|tracking no\\.?)';
-const ORDER_LABEL_SRC = '^4PX Order No\\.?$';
 
-async function readDetailPair(page) {
-  return page.evaluate(
-    (suiviLabelSrc, orderLabelSrc) => {
-      const suiviRe = new RegExp(suiviLabelSrc, 'i');
-      const orderRe = new RegExp(orderLabelSrc, 'i');
-      const textOf = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
-
-      const allEls = Array.from(document.querySelectorAll('body *'));
-      const orderLabelEl = allEls.find((el) => el.children.length === 0 && orderRe.test(textOf(el)));
-      let orderNo = '';
-      if (orderLabelEl) {
-        let sib = orderLabelEl.nextElementSibling;
-        while (sib && !textOf(sib)) sib = sib.nextElementSibling;
-        orderNo = sib ? textOf(sib) : '';
-      }
-
-      let trackingNo = '';
-      const suiviSpan = Array.from(document.querySelectorAll('span')).find((el) => suiviRe.test(el.textContent || ''));
-      if (suiviSpan) {
-        const text = textOf(suiviSpan);
-        const m = text.match(new RegExp(suiviLabelSrc + '\\s*[:：]?\\s*(\\S+)', 'i'));
-        trackingNo = m ? m[2] : '';
-      }
-
-      return { orderNo, trackingNo };
-    },
-    SUIVI_LABEL_SRC,
-    ORDER_LABEL_SRC
-  );
+async function readTrackingNo(page) {
+  return page.evaluate((suiviLabelSrc) => {
+    const suiviRe = new RegExp(suiviLabelSrc, 'i');
+    const suiviSpan = Array.from(document.querySelectorAll('span')).find((el) => suiviRe.test(el.textContent || ''));
+    if (!suiviSpan) return '';
+    const text = (suiviSpan.textContent || '').replace(/\s+/g, ' ').trim();
+    const m = text.match(new RegExp(suiviLabelSrc + '\\s*[:：]?\\s*(\\S+)', 'i'));
+    return m ? m[2] : '';
+  }, SUIVI_LABEL_SRC);
 }
 
 module.exports = async function handler(req, res) {
@@ -96,13 +78,14 @@ module.exports = async function handler(req, res) {
 
     const results = [];
     let clickedCount = 0;
-    let mismatchCount = 0;
+    let unchangedCount = 0;
     let stoppedEarly = false;
-    let firstMismatchDebug = null;
     const TIME_BUDGET_MS = 45000; // marge sous la limite de 60s de la fonction Vercel (depuis le tout début, browser inclus)
 
     if (orderNumsFound) {
       const itemHandles = await page.$$('.next-list-item');
+      let previousTrackingNo = await readTrackingNo(page).catch(() => '');
+
       for (const item of itemHandles) {
         if (Date.now() - startTime > TIME_BUDGET_MS) { stoppedEarly = true; break; }
 
@@ -112,35 +95,24 @@ module.exports = async function handler(req, res) {
         await item.click().catch(() => {});
         clickedCount++;
 
-        // Attend que le panneau de détail affiche bien CE colis (vérifié via "4PX Order No."),
-        // avec un temps d'attente volontairement court par élément pour ne jamais dépasser le
-        // budget de temps total, quitte à manquer quelques colis plutôt que de tout perdre au timeout.
-        let pair = { orderNo: '', trackingNo: '' };
-        for (let i = 0; i < 3; i++) {
-          pair = await readDetailPair(page);
-          if (pair.orderNo === expectedNum) break;
+        // Le libellé "4PX Order No." (utilisé auparavant pour confirmer quel colis est affiché)
+        // n'existe pas dans cette vue — on attend simplement que le "Tracking No." affiché change
+        // par rapport au précédent avant de le lire, pour éviter de lire une valeur périmée.
+        let trackingNo = await readTrackingNo(page).catch(() => '');
+        for (let i = 0; i < 4 && trackingNo === previousTrackingNo; i++) {
           await new Promise((r) => setTimeout(r, 150));
+          trackingNo = await readTrackingNo(page).catch(() => '');
         }
+        if (trackingNo === previousTrackingNo) unchangedCount++;
 
-        if (pair.orderNo === expectedNum) {
-          if (pair.trackingNo) {
-            results.push({ trackingNumber: cleanNumSuivi(expectedNum), lastKm: cleanNumSuivi(pair.trackingNo) });
-          }
-        } else {
-          mismatchCount++;
-          if (!firstMismatchDebug) {
-            firstMismatchDebug = {
-              expectedNum,
-              pair,
-              bodyTextPreview: await page.evaluate(() => (document.body ? document.body.innerText : '').slice(0, 500)),
-            };
-          }
+        previousTrackingNo = trackingNo;
+        if (trackingNo) {
+          results.push({ trackingNumber: cleanNumSuivi(expectedNum), lastKm: cleanNumSuivi(trackingNo) });
         }
       }
     }
 
-    const debug = { orderNumsFound, retryCount, clickedCount, mismatchCount, resultCount: results.length, stoppedEarly };
-    if (firstMismatchDebug) debug.firstMismatchDebug = firstMismatchDebug;
+    const debug = { orderNumsFound, retryCount, clickedCount, unchangedCount, resultCount: results.length, stoppedEarly };
 
     if (results.length === 0) {
       const domDebug = await page.evaluate(() => ({

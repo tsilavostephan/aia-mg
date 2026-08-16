@@ -1,7 +1,11 @@
 // Fonction serverless Vercel : scraping headless de la page de suivi Sunyou (sypost.net).
 //
-// La page https://www.sypost.net/search?orderNo=NUM1,%20NUM2 affiche un résumé par colis et une
-// icône de copie (<img onclick="copyTrackResult(2)">) qui copie un texte structuré du type :
+// La page https://www.sypost.net/search?orderNo=NUM1,%20NUM2 affiche un résumé par colis. Deux
+// icônes copier sont présentes côte à côte dans l'en-tête du tableau : Copy-1.png
+// (copyTrackResult(1), "detailed") et Copy-2.png (copyTrackResult(2), "summary"). Avec la fenêtre
+// headless par défaut (trop étroite), les deux boutons renvoyaient le même résumé tronqué (dernier
+// événement seulement) — en forçant une fenêtre desktop large (1920×1080), copyTrackResult(2)
+// renvoie bien le texte structuré complet attendu :
 //
 //   Number：SYZZ046744464
 //   Package status： Delivered (7 Days)
@@ -38,28 +42,6 @@ function parseSunyouOverview(text) {
   return results;
 }
 
-// Format du bouton "Copy tracking results summary" (Copy-2.png) : une ligne par colis, colonnes
-// séparées par des tabulations — Numéro, Origine, Destination, Dernier événement, Statut, Délai.
-// Ne contient jamais le numéro dernier kilométrique (uniquement le tout dernier événement), mais
-// utile en diagnostic pour voir clairement ce que ce bouton renvoie réellement.
-function parseSunyouSummary(text) {
-  return String(text || '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line && !/^=+$/.test(line) && !/^powered by/i.test(line))
-    .map((line) => {
-      const cols = line.split('\t');
-      return {
-        trackingNumber: cols[0] || '',
-        origin: cols[1] || '',
-        destination: cols[2] || '',
-        latestEvent: cols[3] || '',
-        status: (cols[4] || '').trim(),
-        days: cols[5] || '',
-      };
-    });
-}
-
 module.exports = async function handler(req, res) {
   setCorsHeaders(res);
 
@@ -82,9 +64,8 @@ module.exports = async function handler(req, res) {
     browser = await launchBrowser(path.join(__dirname, 'chromium-bin'));
 
     const page = await browser.newPage();
-    // La fenêtre par défaut du Chromium headless est étroite, ce qui peut cacher certains éléments
-    // (icônes réservées à l'affichage desktop large) — on force une largeur généreuse avant de
-    // naviguer, plus large que ce qui avait été tenté précédemment (1440px).
+    // Cf. commentaire d'en-tête : une fenêtre desktop large est nécessaire pour que le bouton copier
+    // renvoie le texte détaillé complet plutôt qu'un résumé tronqué.
     await page.setViewport({ width: 1920, height: 1080 });
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     await new Promise((r) => setTimeout(r, pageLoadWaitMs));
@@ -100,18 +81,6 @@ module.exports = async function handler(req, res) {
 
       const sentinel = await readClipboardWithSentinelCheck(page);
 
-      // "Copy detailed tracking results" copie apparemment le même résumé que l'autre bouton tant
-      // qu'aucune ligne n'est développée (chevron ˅ à droite de chaque ligne, visible sur capture
-      // d'écran) — on développe donc toutes les lignes avant de cliquer sur le bouton copier.
-      const expandedCount = await page.evaluate(() => {
-        const chevrons = Array.from(document.querySelectorAll('[class*="chevron" i], [class*="expand" i], .glyphicon-chevron-down'))
-          .filter((el) => el.offsetParent !== null);
-        chevrons.forEach((el) => el.click());
-        return chevrons.length;
-      }).catch(() => 0);
-      clickDebug.expandedCount = expandedCount;
-      await new Promise((r) => setTimeout(r, clickWaitMs));
-
       const copyIconsDebug = await page.evaluate(() =>
         Array.from(document.querySelectorAll('img[onclick*="copyTrackResult"], img.pointer')).map((img) => ({
           src: img.getAttribute('src') || '',
@@ -121,9 +90,8 @@ module.exports = async function handler(req, res) {
       );
       clickDebug.copyIconsFound = copyIconsDebug;
 
-      // Cible explicitement le bouton "Copy tracking results summary" (Copy-2.png,
-      // copyTrackResult(2)) — celui qui fonctionne de façon fiable, pour voir précisément ce qu'il
-      // renvoie une fois analysé en JSON (voir parseSunyouSummary).
+      // Cible explicitement Copy-2.png (copyTrackResult(2)) — avec la fenêtre desktop large ci-dessus,
+      // ce bouton renvoie bien le texte détaillé complet (voir commentaire d'en-tête).
       const copyBtnHandle = (await page.evaluateHandle(() => {
         const exact = document.querySelector('img[onclick="copyTrackResult(2)"]');
         if (exact) return exact;
@@ -162,11 +130,7 @@ module.exports = async function handler(req, res) {
         .filter((r) => r.trackingNumber && r.lastKm)
       : [];
 
-    const debug = {
-      clickDebug,
-      overviewTextPreview: overviewText ? overviewText.slice(0, 500) : null,
-      summaryParsed: overviewText ? parseSunyouSummary(overviewText) : null,
-    };
+    const debug = { clickDebug, overviewTextPreview: overviewText ? overviewText.slice(0, 500) : null };
 
     if (results.length === 0) {
       const domDebug = await page.evaluate(() => ({

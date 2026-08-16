@@ -1055,8 +1055,8 @@
   // explicitement choisi une autre association pour cette valeur via la fenêtre "⚙ Transporteurs") —
   // ces transporteurs "dernier kilométrique" sont en réalité tous gérés via GOFO.
   const DEFAULT_CARRIER_MAPPING = Object.fromEntries([
-    'Yun Express','Asendia','China Post','SF Express','Shanghai Shouwu','BRT','Spring','Seur','YDH',
-    'JS Express','WanbExpress','SFC','Evri','LANDMARK','Topyou','Whistl','ATPOST','ShipGlobal',
+    'Asendia','China Post','SF Express','Shanghai Shouwu','BRT','Spring','Seur','YDH',
+    'JS Express','WanbExpress','SFC','Evri','Whistl','ATPOST','ShipGlobal',
     'The Delivery Group','CNE','Exapaq','GlobalPost','TNT','Raben Group','APC Postal Logistics','MHI',
     'Self Delivery','Standard delivery','Std FR Dom_2','Deutsche Post Brief','Standard','Briefpost',
     'Sendcloud','17FEIA','CTT','GOFO','Correos','Sunyou','Cainiao',

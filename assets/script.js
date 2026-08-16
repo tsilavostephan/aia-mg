@@ -23,6 +23,7 @@
     log: document.getElementById('log'),
     dbCards: document.getElementById('dbCards'),
     rowCount: document.getElementById('rowCount'),
+    resolvedCount: document.getElementById('resolvedCount'),
     count: document.getElementById('count'),
     emptyState: document.getElementById('emptyState'),
     search: document.getElementById('search'),
@@ -2114,6 +2115,10 @@
     rows.forEach(r=> els.dbCards.appendChild(buildDbCard(r)));
 
     els.rowCount.textContent = database.length;
+    // Recalculé à chaque rendu à partir de l'état actuel de la base (pas un compteur qui
+    // s'incrémenterait à chaque import/scraping) : relancer plusieurs fois les mêmes imports ou le
+    // scraping ne fausse donc jamais ce total.
+    els.resolvedCount.textContent = database.filter(r => String(r.numDernierKm || '').trim()).length;
 
     if(term && filtered.length < database.length){
       els.count.textContent = `${rows.length} affichée(s) / ${filtered.length} résultat(s) / ${database.length} commande(s) au total`;

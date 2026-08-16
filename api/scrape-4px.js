@@ -74,7 +74,11 @@ module.exports = async function handler(req, res) {
     // mobile du site (un seul colis affiché en détail, sans la liste ".next-list-items") au lieu de
     // la mise en page desktop attendue (liste complète des colis) — on force donc une largeur desktop.
     await page.setViewport({ width: 1440, height: 900 });
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
+    // 'networkidle0' exige zéro connexion active pendant 500ms — un widget de chat, des analytics
+    // ou un polling en arrière-plan peuvent empêcher ça indéfiniment et faire échouer la navigation
+    // (constaté avec un lot de 38 colis). La boucle d'attente de ".orderNum" juste après gère déjà
+    // le rendu progressif de la SPA, donc une condition moins stricte suffit ici.
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // La liste peut mettre plus de temps à se remplir quand plusieurs numéros sont demandés à la
     // fois (chargement/rendu progressif côté site) — on retente plusieurs fois avant d'abandonner,

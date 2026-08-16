@@ -63,6 +63,11 @@ module.exports = async function handler(req, res) {
       Array.from(document.querySelectorAll('.or_2')).map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
     );
 
+    // La recherche peut se déclencher deux fois (Entrée pendant la saisie dans CodeMirror, puis le
+    // clic explicite sur le bouton), ce qui duplique les colis affichés (ex. 8 blocs pour 4 colis
+    // demandés) sans que les anciens résultats soient effacés — on déduplique donc par numéro de
+    // suivi avant de renvoyer les résultats.
+    const seen = new Set();
     const results = rawParagraphs
       .map((text) => {
         const origMatch = text.match(/运单号[:：]\s*(\S+)/);
@@ -72,7 +77,12 @@ module.exports = async function handler(req, res) {
           lastKm: cleanNumSuivi(transferMatch ? transferMatch[1] : ''),
         };
       })
-      .filter((r) => r.trackingNumber && r.lastKm);
+      .filter((r) => r.trackingNumber && r.lastKm)
+      .filter((r) => {
+        if (seen.has(r.trackingNumber)) return false;
+        seen.add(r.trackingNumber);
+        return true;
+      });
 
     const debug = { submitDebug, warppersFound, orParagraphCount: rawParagraphs.length, resultCount: results.length };
 

@@ -1027,8 +1027,8 @@
     { key:'gofo',       label:'GOFO',       match:['GOFO'],                    baseUrl:'https://www.gofo.com/fr/tracking-results/?id=',      kmColIndex:1, mode:'url', numsSeparator:' ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-gofo' },
-    { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'url',
-      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », collez les numéros dans la zone de recherche (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
+    { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard',
+      pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
       scrapeEndpoint: '/api/scrape-topyou' },
   ];
   const CHUNK_SIZE = 99;

@@ -35,6 +35,10 @@ module.exports = async function handler(req, res) {
     browser = await launchBrowser(path.join(__dirname, 'chromium-bin'));
 
     const page = await browser.newPage();
+    // La fenêtre par défaut du Chromium headless est étroite, ce qui déclenche la mise en page
+    // mobile du site (un seul colis affiché en détail, sans la liste ".next-list-items") au lieu de
+    // la mise en page desktop attendue (liste complète des colis) — on force donc une largeur desktop.
+    await page.setViewport({ width: 1440, height: 900 });
     await page.goto(url, { waitUntil: 'networkidle0', timeout: 25000 });
 
     // La liste peut mettre plus de temps à se remplir quand plusieurs numéros sont demandés à la
@@ -59,6 +63,25 @@ module.exports = async function handler(req, res) {
           const m = text.match(/num[ée]ro de suivi\s*[:：]\s*(\S+)/i);
           return m ? m[1] : '';
         });
+
+      // Repli : mise en page "détail" (ex. mobile) avec des libellés anglais séparés au lieu de la
+      // liste desktop — "4PX Order No." suivi du numéro, puis "Tracking No." suivi du numéro
+      // dernier kilométrique, chacun dans son propre élément.
+      if (orderNums.length === 0) {
+        const allEls = Array.from(document.querySelectorAll('body *'));
+        const textOf = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+        const findValueAfterLabel = (labelRe) => {
+          const labelEl = allEls.find((el) => el.children.length === 0 && labelRe.test(textOf(el)));
+          if (!labelEl) return '';
+          let sib = labelEl.nextElementSibling;
+          while (sib && !textOf(sib)) sib = sib.nextElementSibling;
+          return sib ? textOf(sib) : '';
+        };
+        const orderNo = findValueAfterLabel(/^4PX Order No\.?$/i);
+        const trackingNo = findValueAfterLabel(/^Tracking No\.?$/i);
+        if (orderNo) { orderNums.push(orderNo); suiviValues.push(trackingNo); }
+      }
+
       return { orderNums, suiviValues };
     });
 

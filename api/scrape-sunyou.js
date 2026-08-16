@@ -79,12 +79,23 @@ module.exports = async function handler(req, res) {
 
       const sentinel = await readClipboardWithSentinelCheck(page);
 
+      // Il y a en réalité deux icônes copier côte à côte dans l'en-tête du tableau (confirmé par
+      // capture d'écran) : une pour le résumé (titre contenant "summary", onclick
+      // "copyTrackResult(2)") et une autre pour le détail complet avec le "Carrier Tracking
+      // Number" — c'est cette dernière qu'il faut cliquer, pas celle explicitement titrée "summary".
+      const copyIconsDebug = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('img[onclick*="copyTrackResult"], img.pointer')).map((img) => ({
+          src: img.getAttribute('src') || '',
+          onclick: img.getAttribute('onclick') || '',
+          title: img.getAttribute('title') || '',
+        }))
+      );
+      clickDebug.copyIconsFound = copyIconsDebug;
+
       const copyBtnHandle = (await page.evaluateHandle(() => {
-        const byOnclick = document.querySelector('img[onclick*="copyTrackResult"]');
-        if (byOnclick) return byOnclick;
-        return Array.from(document.querySelectorAll('img')).find((img) =>
-          /copy tracking results/i.test(img.getAttribute('title') || '')
-        ) || null;
+        const candidates = Array.from(document.querySelectorAll('img[onclick*="copyTrackResult"], img.pointer'));
+        const nonSummary = candidates.find((img) => !/summary/i.test(img.getAttribute('title') || ''));
+        return nonSummary || candidates[0] || null;
       })).asElement();
       clickDebug.copyBtnFound = !!copyBtnHandle;
 

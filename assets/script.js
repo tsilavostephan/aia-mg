@@ -1030,7 +1030,7 @@
     { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard',
       pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
       scrapeEndpoint: '/api/scrape-topyou' },
-    { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1,
+    { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1, silentNoMatch:true,
       pasteHint: 'Ce site n\'affiche qu\'un seul colis par lien — ouvrez chaque lien un par un, copiez le numéro dernier kilométrique affiché, puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-cne' },
     { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
@@ -1511,6 +1511,11 @@
           : (Array.isArray(json.results) ? json.results : []);
 
         if(updates.length === 0){
+          // Pour certains transporteurs (ex. CNE, un lien par colis), 0 résultat sur un lien
+          // signifie simplement "pas encore de numéro dernier kilométrique pour ce colis précis"
+          // — pas un vrai échec technique. On l'affiche silencieusement comme "sans correspondance"
+          // plutôt que comme un lien en échec (voir g.silentNoMatch dans CARRIERS).
+          if(g.silentNoMatch) return [];
           const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
           throw new Error(`aucun résultat exploitable (${debugText})`);
         }

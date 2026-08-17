@@ -209,25 +209,52 @@
       ]
     },
     {
-      id: 'colissimo', label: 'Colissimo / Chronopost / DPD', enabled: true,
+      id: 'colissimo', label: 'Colissimo', enabled: true,
       rules: [
-        // Code-barres 1D "Geopost" de 28 caractères débutant par % (étiquette domestique partagée
-        // par Colissimo, Chronopost et DPD) : digit 1 = '%', digits 2-8 = code postal destination,
-        // digits 9-10 fixes, digits 11-12 = code produit, digits 13-22 = numéro de série, digits
-        // 23-25 = code service, digits 26-28 = code pays. Le numéro de suivi utile occupe les
-        // digits 11 à 22 (12 caractères) — voir la note technique GeoLabel de La Poste/Colissimo
-        // (ex. "%0010000116C0000148195802250" -> "6C0000148195"). L'ancienne borne (19 au lieu de
-        // 22) coupait le numéro 3 caractères trop tôt.
+        // Code-barres 1D "Geopost" de 28 caractères débutant par % (étiquette domestique) : digit 1
+        // = '%', digits 2-8 = code postal destination, digits 9-10 fixes, digits 11-12 = code
+        // produit, digits 13-22 = numéro de série, digits 23-25 = code service, digits 26-28 = code
+        // pays. Le numéro de suivi utile occupe les digits 11 à 22 (12 caractères) — voir la note
+        // technique GeoLabel de La Poste/Colissimo (ex. "%0010000116C0000148195802250" ->
+        // "6C0000148195"). L'ancienne borne (19 au lieu de 22) coupait le numéro 3 caractères trop tôt.
         { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 22 }
+      ]
+    },
+    {
+      // Chronopost et Colissimo partagent la même étiquette/infrastructure Geopost domestique — même
+      // règle d'extraction que Colissimo, gardée comme algorithme séparé (plutôt que fusionnée sous
+      // un seul id) pour pouvoir l'activer/désactiver ou l'ajuster indépendamment si besoin.
+      id: 'chronopost', label: 'Chronopost', enabled: true,
+      rules: [
+        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 22 }
+      ]
+    },
+    {
+      id: 'dpd', label: 'DPD', enabled: true,
+      rules: [
+        // Format officiel DPD (DPD Parcel Label Specification 2.4.1) : texte imprimé sous le
+        // code-barres Code 128, entièrement numérique, 28 caractères : "PPPP PPP TTTT TTTT TTTT TT
+        // SSS CCC D" = code postal (7) + numéro de suivi (14) + code service (3) + code pays (3) +
+        // clé de contrôle (1). Le numéro de suivi utile occupe les positions 8 à 21.
+        { length: 28, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'slice', start: 8, end: 21 }
       ]
     },
     {
       id: 'gls', label: 'GLS', enabled: true,
       rules: [
-        // Code entièrement numérique : on garde la valeur mais on retire les 2 derniers caractères.
-        { length: null, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'removeLast', count: 2 },
-        // Code alphanumérique (ex. "GL00L5UAZM" -> "00L5UAZM") : on retire les 2 premiers caractères.
-        { length: null, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'removeFirst', count: 2 }
+        // Formats GLS trouvés dans la documentation publique (pas de spécification officielle GLS
+        // accessible, contrairement à DPD/Colissimo ci-dessus — confiance moindre) : France
+        // numérique 11 chiffres (ex. scan à 13 chiffres avec 2 caractères de bruit en fin) et
+        // international ~14 chiffres (scan à 16). On garde plusieurs longueurs explicites plutôt
+        // qu'une règle sans contrainte, pour éviter de tronquer par erreur un code d'un autre
+        // transporteur pas encore reconnu.
+        { length: 13, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'removeLast', count: 2 },
+        { length: 16, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'removeLast', count: 2 },
+        // France alphanumérique 8 caractères (ex. "GL00L5UAZM" -> "00L5UAZM", scan à 10 caractères
+        // avec un préfixe de 2 caractères) et format international ~11 caractères (2 lettres + 9
+        // chiffres, scan à 13 caractères).
+        { length: 10, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'removeFirst', count: 2 },
+        { length: 13, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'removeFirst', count: 2 }
       ]
     }
   ];

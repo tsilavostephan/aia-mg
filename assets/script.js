@@ -211,9 +211,14 @@
     {
       id: 'colissimo', label: 'Colissimo / Chronopost / DPD', enabled: true,
       rules: [
-        // Code de 28 caractères débutant par % (ex. "%0094150116C2111186098802250" -> "6C2111186").
-        // Extraction directe des positions 11 à 19 (incluses).
-        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 19 }
+        // Code-barres 1D "Geopost" de 28 caractères débutant par % (étiquette domestique partagée
+        // par Colissimo, Chronopost et DPD) : digit 1 = '%', digits 2-8 = code postal destination,
+        // digits 9-10 fixes, digits 11-12 = code produit, digits 13-22 = numéro de série, digits
+        // 23-25 = code service, digits 26-28 = code pays. Le numéro de suivi utile occupe les
+        // digits 11 à 22 (12 caractères) — voir la note technique GeoLabel de La Poste/Colissimo
+        // (ex. "%0010000116C0000148195802250" -> "6C0000148195"). L'ancienne borne (19 au lieu de
+        // 22) coupait le numéro 3 caractères trop tôt.
+        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 22 }
       ]
     },
     {

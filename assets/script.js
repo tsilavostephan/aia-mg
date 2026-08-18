@@ -1045,7 +1045,7 @@
     { key:'cainiao',    label:'CAINIAO',    match:['CAINIAO'],                 baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur le bouton « Copy Overview » puis collez le texte copié ci-dessous.',
       scrapeEndpoint: '/api/scrape-cainiao' },
-    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.4px.com/#/result/34/',                kmColIndex:1, mode:'url',
+    { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.4px.com/#/result/',                   kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le numéro de suivi affiché sous « Numéro de suivi » pour chaque colis, puis collez-les ci-dessous au format « numéro de colis<TAB>numéro dernier kilométrique ».',
       scrapeEndpoint: '/api/scrape-4px' },
     { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url',

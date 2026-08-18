@@ -2,7 +2,7 @@
 // (track.4px.com — à ne pas confondre avec CAINIAO, géré par api/scrape-cainiao.js, qui utilisait
 // auparavant le nom "4PX" dans cette application avant d'être renommé).
 //
-// La page https://track.4px.com/#/result/34/NUM1,NUM2,... est une application JS (route en
+// La page https://track.4px.com/#/result/NUM1,NUM2,... est une application JS (route en
 // fragment #) qui affiche la liste des colis (chaque carte a un <p class="orderNum">), mais le
 // numéro dernier kilométrique ("Tracking No." / "Numéro de suivi") n'est affiché que pour le colis
 // actuellement sélectionné dans le panneau de détail — confirmé par l'utilisateur : pas de bouton
@@ -52,7 +52,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const url = `https://track.4px.com/#/result/34/${trackingNumbers.join(',')}`;
+  const url = `https://track.4px.com/#/result/${trackingNumbers.join(',')}`;
 
   let browser;
   const startTime = Date.now();

@@ -79,6 +79,11 @@
 
   .row{ margin: 12px 0; }
   .search-row{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .auto-details-label{
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 13px; color: var(--muted); white-space: nowrap; cursor: pointer;
+  }
+  .auto-details-label input[type=checkbox]{ margin: 0; cursor: pointer; }
   label{ font-size: 13.5px; color: var(--text); }
 
   input[type=text], textarea{

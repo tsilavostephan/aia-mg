@@ -85,6 +85,7 @@
     scannerError: document.getElementById('scannerError'),
     closeScannerBtn: document.getElementById('closeScannerBtn'),
     focusDbBtn: document.getElementById('focusDbBtn'),
+    autoDetailsCheckbox: document.getElementById('autoDetailsCheckbox'),
     shortcutsOverlay: document.getElementById('shortcutsOverlay'),
   };
 
@@ -1847,6 +1848,10 @@
     if(e.key !== 'Escape') return;
     if(els.packageModalBg.style.display === 'block'){
       closePackageModal();
+      // Spécifique à la fermeture par Échap (contrairement au bouton "✕ Fermer" ou au clic en
+      // dehors) : on vide aussi la recherche, pour repartir d'un champ propre pour le colis suivant.
+      els.search.value = '';
+      render();
     }else if(els.trackingModalBg.style.display === 'block'){
       els.trackingModalBg.style.display = 'none';
     }else if(els.csvOptionsModalBg.style.display === 'block'){
@@ -1973,13 +1978,16 @@
 
   // Coller n'importe où sur la page colle directement dans le champ de recherche, sauf si on a
   // déjà le focus sur un champ éditable (recherche elle-même, zone de collage transporteur, etc.),
-  // auquel cas on laisse le comportement natif de collage du champ actif.
+  // auquel cas on laisse le comportement natif de collage du champ actif. En mode plein écran de
+  // la section 3, cette exception saute : tout collage va dans la recherche, quel que soit le
+  // champ actif (les seuls champs visibles dans ce mode sont de toute façon liés à cette section).
   document.addEventListener('paste', (e)=>{
     const active = document.activeElement;
     const isEditable = active && (
       active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
     );
-    if(isEditable) return;
+    const forceToSearch = document.body.classList.contains('focus-mode') && active !== els.search;
+    if(isEditable && !forceToSearch) return;
     const text = (e.clipboardData || window.clipboardData)?.getData('text');
     if(!text) return;
     e.preventDefault();
@@ -2236,6 +2244,16 @@
     const filtered = term
       ? database.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(term)))
       : database;
+
+    if(term && els.autoDetailsCheckbox.checked && document.body.classList.contains('focus-mode') && filtered.length === 1){
+      if(autoOpenedRecord !== filtered[0]){
+        autoOpenedRecord = filtered[0];
+        openPackageModal(filtered[0]);
+      }
+    }else{
+      autoOpenedRecord = null;
+    }
+
     const limitVal = els.displayLimit.value; // 'all' ou nombre en chaîne
     const reversedFiltered = filtered.slice().reverse();
     const rows = limitVal === 'all' ? reversedFiltered : reversedFiltered.slice(0, parseInt(limitVal, 10));
@@ -2288,7 +2306,28 @@
     const active = document.body.classList.toggle('focus-mode');
     els.focusDbBtn.textContent = active ? '✕' : '⛶';
     els.focusDbBtn.title = active ? 'Quitter le mode plein écran' : 'Afficher uniquement cette section';
+    render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
   });
+
+  // ---------- "Détails auto" : ouvre automatiquement le détail d'un colis en mode plein écran ----------
+  const AUTO_DETAILS_KEY = 'commandes-auto-details';
+  function loadAutoDetails(){
+    try{ return localStorage.getItem(AUTO_DETAILS_KEY) === 'true'; }catch(e){ return false; }
+  }
+  function saveAutoDetails(enabled){
+    try{ localStorage.setItem(AUTO_DETAILS_KEY, enabled ? 'true' : 'false'); }catch(e){ /* stockage indisponible */ }
+  }
+  els.autoDetailsCheckbox.checked = loadAutoDetails();
+  els.autoDetailsCheckbox.addEventListener('change', ()=>{
+    saveAutoDetails(els.autoDetailsCheckbox.checked);
+    render();
+  });
+
+  // Mémorise le dernier colis ouvert automatiquement pour ne pas le rouvrir en boucle à chaque
+  // rendu tant que la recherche continue de ne correspondre qu'à lui — remis à null dès que la
+  // recherche ne correspond plus à exactement un colis, ce qui permet une nouvelle ouverture
+  // automatique la prochaine fois qu'une recherche se réduit à une seule correspondance.
+  let autoOpenedRecord = null;
 
   // ---------- export / import JSON ----------
   let dbLogTimer = null;

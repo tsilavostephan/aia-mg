@@ -86,6 +86,8 @@
     closeScannerBtn: document.getElementById('closeScannerBtn'),
     focusDbBtn: document.getElementById('focusDbBtn'),
     autoDetailsCheckbox: document.getElementById('autoDetailsCheckbox'),
+    appVersion: document.getElementById('appVersion'),
+    updateAvailableBtn: document.getElementById('updateAvailableBtn'),
     shortcutsOverlay: document.getElementById('shortcutsOverlay'),
   };
 
@@ -2461,4 +2463,58 @@
       });
     });
   }
+
+  // ---------- détection de nouvelle version déployée ----------
+  // assets/version.json est régénéré à chaque build Vercel (voir scripts/generate-version.mjs) avec
+  // un numéro v1.2.DD.MM.HH horodaté au moment du déploiement. On le charge une première fois pour
+  // afficher la version actuellement chargée, puis on le réinterroge périodiquement (sans cache
+  // HTTP) : s'il a changé, une nouvelle version a été déployée pendant que cette page était ouverte.
+  let loadedAppVersion = null;
+
+  async function fetchAppVersion(){
+    try{
+      const res = await fetch('assets/version.json', { cache: 'no-store' });
+      if(!res.ok) return null;
+      const data = await res.json();
+      return data && data.version ? data.version : null;
+    }catch(e){
+      return null; // hors ligne, ou version.json absent (ex. build local sans postinstall) : ignoré
+    }
+  }
+
+  async function checkForAppUpdate(){
+    const current = await fetchAppVersion();
+    if(!current || !loadedAppVersion) return;
+    if(current !== loadedAppVersion){
+      els.updateAvailableBtn.style.display = '';
+    }
+  }
+
+  els.updateAvailableBtn.addEventListener('click', async ()=>{
+    els.updateAvailableBtn.disabled = true;
+    els.updateAvailableBtn.textContent = '⟳ Mise à jour…';
+    try{
+      // Vide le cache du service worker (styles/scripts servis en "cache d'abord") pour être sûr
+      // que le rechargement récupère bien les nouveaux fichiers plutôt que l'ancienne version
+      // encore en cache.
+      if('caches' in window){
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    }catch(e){ /* non bloquant : on recharge quand même */ }
+    location.reload();
+  });
+
+  (async () => {
+    loadedAppVersion = await fetchAppVersion();
+    if(loadedAppVersion) els.appVersion.textContent = `${loadedAppVersion} · © TSLV`;
+
+    const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    setInterval(checkForAppUpdate, CHECK_INTERVAL_MS);
+    // Vérification immédiate dès que l'utilisateur revient sur l'onglet, plutôt que d'attendre
+    // jusqu'à 5 minutes après un déploiement survenu pendant qu'il était sur un autre onglet.
+    document.addEventListener('visibilitychange', () => {
+      if(document.visibilityState === 'visible') checkForAppUpdate();
+    });
+  })();
 })();

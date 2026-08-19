@@ -67,6 +67,26 @@
   }
   .logout-btn:hover{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
+  .update-btn{
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: auto; flex-shrink: 0;
+    padding: 8px 14px;
+    font-size: 13px; font-weight: 700;
+    color: #fff; border: 1px solid var(--primary); border-radius: 999px;
+    background: var(--primary); cursor: pointer;
+    transition: background .12s, border-color .12s, transform .04s;
+    animation: update-btn-pulse 2s ease-in-out infinite;
+  }
+  .update-btn:hover{ background: var(--primary-dark); border-color: var(--primary-dark); }
+  .update-btn:active{ transform: translateY(1px); }
+  /* Le bouton "Se déconnecter" utilise déjà margin-left:auto pour se coller à droite — une fois le
+     bouton MAJ affiché avant lui, c'est lui qui doit pousser vers la droite à sa place. */
+  .update-btn + .logout-btn{ margin-left: 0; }
+  @keyframes update-btn-pulse{
+    0%, 100%{ box-shadow: 0 0 0 0 rgba(37,99,235,0.35); }
+    50%{ box-shadow: 0 0 0 6px rgba(37,99,235,0); }
+  }
+
   fieldset{
     background: var(--card);
     border: 1px solid var(--border);
@@ -520,7 +540,7 @@
     .app-logo{ height: 42px; }
     h1{ font-size: 22px; }
     p.desc{ display: none; } /* superflu sur petit écran, laisse la place à l'essentiel */
-    .logout-btn{ margin-left: 0; }
+    .logout-btn, .update-btn{ margin-left: 0; }
 
     fieldset{ padding: 16px 14px; margin-bottom: 16px; }
 

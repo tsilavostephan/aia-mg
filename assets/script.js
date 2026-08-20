@@ -718,7 +718,22 @@
     try{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(database));
     }catch(e){
-      logLine('Erreur lors de la sauvegarde de la base de données.', true);
+      const detail = e && e.name ? `${e.name}${e.message ? ' : ' + e.message : ''}` : (e && e.message) || 'erreur inconnue';
+      let hint = '';
+      if(e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)){
+        // La cause la plus fréquente en pratique : localStorage est limité à ~5-10 Mo selon le
+        // navigateur, et un gros import CSV peut faire dépasser ce quota d'un coup.
+        let sizeInfo = '';
+        try{
+          const bytes = new Blob([JSON.stringify(database)]).size;
+          sizeInfo = ` (base actuelle : ~${(bytes / 1024 / 1024).toFixed(1)} Mo, ${database.length} commande(s))`;
+        }catch(e2){ /* estimation de taille indisponible, on continue sans */ }
+        hint = ` Le stockage local du navigateur (localStorage, généralement limité à 5-10 Mo) est plein${sizeInfo} — exportez la base en JSON pour la sauvegarder, puis réduisez le nombre de commandes conservées (ex. effacez les plus anciennes déjà livrées).`;
+      }else if(e && (e.name === 'SecurityError' || e.name === 'InvalidStateError')){
+        hint = ' Le stockage local semble désactivé sur cet appareil/navigateur (navigation privée stricte, cookies/stockage bloqués dans les paramètres, ou stockage local désactivé par une extension).';
+      }
+      logLine(`Erreur lors de la sauvegarde de la base de données (${detail}).${hint}`, true);
+      console.error('[saveDatabase]', e);
     }
   }
 

@@ -1077,7 +1077,7 @@
     { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape-landmark' },
-    { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard',
+    { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard', chunkSize:20,
       pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
       scrapeEndpoint: '/api/scrape-topyou' },
     // chunkSize:1 reste nécessaire pour les liens manuels "Ouvrir" (le site n'accepte qu'un seul

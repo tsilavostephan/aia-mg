@@ -1,13 +1,13 @@
 (function(){
   // Colonnes source (index 1-based dans le fichier CSV) -> champ de la base
   const COLS = [
-    { key:'numCommande',   label:'N° Commande',               col:4  },
+    { key:'numCommande',   label:'N° Commande',               col:3  },
     { key:'commandeAmazon',label:'Commande Amazon',           col:2  },
-    { key:'qteCommande',   label:'QTE',                       col:5  },
-    { key:'numSuivi',      label:'Num Suivi',                 col:24 },
-    { key:'qteExpedie',    label:'QTE_EXPED',                 col:25 },
-    { key:'nom',           label:'Nom',                       col:26 },
-    { key:'transporteur',  label:'Transporteur',              col:34 },
+    { key:'qteCommande',   label:'QTE',                       col:4  },
+    { key:'numSuivi',      label:'Num Suivi',                 col:7  },
+    { key:'qteExpedie',    label:'QTE_EXPED',                 col:8  },
+    { key:'nom',           label:'Nom',                       col:9  },
+    { key:'transporteur',  label:'Transporteur',              col:10 },
     { key:'numDernierKm',  label:'Num dernier kilométrique',  col:null } // toujours vide
   ];
   const STORAGE_KEY = 'commandes-db';

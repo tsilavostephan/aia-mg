@@ -2612,10 +2612,12 @@
       // téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
       showBackupProgress(0, 'Envoi vers Vercel Blob… 0 %');
       const { upload } = await loadVercelBlobClient();
+      // allowOverwrite/addRandomSuffix ne se configurent pas ici côté client : Vercel Blob les
+      // impose depuis la réponse de onBeforeGenerateToken côté serveur (voir api/backup.js) —
+      // les repasser ici déclenche une erreur explicite ("doesn't allow allowOverwrite...").
       await upload('data-mg.aiae', payloadBlob, {
         access: 'public',
         handleUploadUrl: '/api/backup',
-        allowOverwrite: true,
         clientPayload: exportCode,
         onUploadProgress: ({ percentage }) => showBackupProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} %`),
       });

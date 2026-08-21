@@ -8,15 +8,8 @@
 // Ce jeton est un HMAC-SHA256 signé avec APP_AUTH_SECRET (variable d'environnement Vercel) — il ne
 // contient jamais le code d'accès lui-même, seulement la preuve qu'il a été saisi correctement une
 // fois (voir api/auth.js pour la vérification du code et la pose du cookie).
-//
-// api/backup est exempté aussi : le webhook "onUploadCompleted" du protocole "client upload" de
-// Vercel Blob (voir api/backup.js) est un appel serveur-à-serveur déclenché par Vercel lui-même,
-// sans notre cookie de session — bloqué ici, il faisait attendre indéfiniment upload() côté client
-// (progression bloquée à 100 % sans jamais aboutir). Reste sûr malgré tout : le blob lui-même est
-// déjà en accès "public" (son contenu est chiffré AES avant l'envoi), et l'écriture reste protégée
-// par le code d'exportation dédié (APP_EXPORT_CODE, vérifié dans api/backup.js) plutôt que le cookie.
 export const config = {
-  matcher: ['/((?!api/auth|api/logout|api/backup|login\\.html|manifest\\.json|assets/(?:logo-aia|favicon|apple-touch-icon|icon-192|icon-512|icon-512-maskable)\\.png).*)'],
+  matcher: ['/((?!api/auth|api/logout|login\\.html|manifest\\.json|assets/(?:logo-aia|favicon|apple-touch-icon|icon-192|icon-512|icon-512-maskable)\\.png).*)'],
 };
 
 async function computeExpectedToken(secret) {

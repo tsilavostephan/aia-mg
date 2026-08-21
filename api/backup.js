@@ -1,26 +1,36 @@
 // Sauvegarde/récupération du fichier .aiae (déjà chiffré côté client, voir assets/script.js) sur
-// Vercel Blob Storage. Les fonctions serverless Vercel plafonnent le corps d'une requête à 4.5 Mo
-// (confirmé par un vrai déploiement : "FUNCTION_PAYLOAD_TOO_LARGE") — largement insuffisant pour
-// une base de plusieurs dizaines de Mo. Le fichier ne passe donc plus du tout par cette fonction :
+// Vercel Blob Storage.
 //
-// - Export : le navigateur envoie le fichier DIRECTEMENT à Vercel Blob (voir le protocole "client
-//   upload" de @vercel/blob/client, chargé depuis un CDN côté client) ; cette fonction ne fait que
-//   générer/valider un jeton de très courte durée (POST) — un échange de contrôle minuscule, jamais
-//   le fichier lui-même.
-// - Import : cette fonction renvoie juste l'URL publique du blob (GET) ; le navigateur va ensuite
-//   chercher son contenu directement auprès de Vercel Blob, pas via cette fonction.
+// Le protocole "client upload" officiel de @vercel/blob/client (upload direct navigateur -> Vercel
+// Blob) a été abandonné : chargé depuis un CDN dans cette app statique sans étape de build (ce SDK
+// est conçu pour être empaqueté via Next.js/Webpack), il envoyait bien le fichier avec succès mais
+// la requête PUT vers vercel.com/api/blob se heurtait systématiquement à un blocage CORS ("No
+// 'Access-Control-Allow-Origin' header"), avec une nouvelle tentative complète à chaque échec
+// (d'où la progression qui revenait sans cesse à 0 % avant de remonter à 100 %, en boucle).
 //
-// Accès "public" : sûr malgré tout puisque le contenu est déjà chiffré (AES-256-GCM) avant d'être
-// envoyé — sans le mot de passe, l'URL seule ne révèle rien de lisible.
+// Nouveau protocole, entièrement maison, qui ne dépend plus que de notre propre fonction (jamais
+// directement de vercel.com depuis le navigateur) :
+// - POST { action:'chunk', exportCode, uploadId, chunkIndex, data } : stocke un morceau (< 4,5 Mo,
+//   la limite d'une requête vers une fonction serverless) dans un blob temporaire.
+// - POST { action:'finalize', exportCode, uploadId, totalChunks } : relit tous les morceaux
+//   (chacun via une requête HTTP faite PAR le serveur, donc jamais soumise aux limites/CORS du
+//   navigateur), les recolle dans l'ordre, écrit le blob final (data-mg.aiae) et nettoie les
+//   morceaux temporaires.
+// - GET : renvoie l'URL publique du blob final (data-mg.aiae) — l'import va ensuite la chercher
+//   directement auprès de Vercel Blob (simple fetch(), fonctionne sans souci puisqu'aucun jeton ni
+//   protocole spécial n'est nécessaire pour lire un blob "public").
 //
-// L'export exige en plus un code dédié (variable d'environnement APP_EXPORT_CODE, distincte du
-// code de connexion) transmis via clientPayload lors de l'appel à upload() côté client — vérifié
-// ci-dessous avant de délivrer le jeton d'upload. L'import reste automatique, sans code.
-const { list } = require('@vercel/blob');
-const { handleUpload } = require('@vercel/blob/client');
+// L'export exige un code dédié (variable d'environnement APP_EXPORT_CODE, distincte du code de
+// connexion), vérifié à chaque morceau et à la finalisation. L'import reste automatique, sans code.
+const { put, list, del } = require('@vercel/blob');
 const { setCorsHeaders } = require('./_scrapeLib');
 
 const BLOB_PATHNAME = 'data-mg.aiae';
+const TMP_PREFIX = 'tmp-export';
+
+function tmpPartPathname(uploadId, chunkIndex) {
+  return `${TMP_PREFIX}/${uploadId}/${chunkIndex}`;
+}
 
 module.exports = async function handler(req, res) {
   setCorsHeaders(res);
@@ -31,35 +41,79 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    // Étape de contrôle du protocole "client upload" : génère le jeton de courte durée qui
-    // autorise le navigateur à envoyer le fichier directement à Vercel Blob, puis (deuxième appel,
-    // déclenché par Vercel Blob lui-même) confirme la fin de l'upload. Cette route est déjà
-    // protégée par le cookie de session (voir middleware.js, qui ne l'exempte pas), mais l'export
-    // demande en plus un code dédié (APP_EXPORT_CODE) — volontairement distinct du code de
-    // connexion — pour confirmer explicitement qu'on veut écraser la sauvegarde existante.
+    const body = req.body || {};
+
+    const expectedCode = process.env.APP_EXPORT_CODE;
+    if (!expectedCode) {
+      res.status(500).json({ error: "Variable d'environnement APP_EXPORT_CODE manquante sur Vercel." });
+      return;
+    }
+    if (body.exportCode !== expectedCode) {
+      res.status(401).json({ error: "Code d'exportation incorrect." });
+      return;
+    }
+
     try {
-      const jsonResponse = await handleUpload({
-        body: req.body,
-        request: req,
-        onBeforeGenerateToken: async (pathname, clientPayload) => {
-          const expectedCode = process.env.APP_EXPORT_CODE;
-          if (!expectedCode) {
-            throw new Error("Variable d'environnement APP_EXPORT_CODE manquante sur Vercel.");
+      if (body.action === 'chunk') {
+        const { uploadId, chunkIndex, data } = body;
+        if (!uploadId || typeof chunkIndex !== 'number' || typeof data !== 'string') {
+          res.status(400).json({ error: 'Requête de morceau invalide (uploadId/chunkIndex/data manquant).' });
+          return;
+        }
+        await put(tmpPartPathname(uploadId, chunkIndex), data, {
+          access: 'public',
+          addRandomSuffix: false,
+          allowOverwrite: true,
+          contentType: 'text/plain',
+        });
+        res.status(200).json({ ok: true });
+        return;
+      }
+
+      if (body.action === 'finalize') {
+        const { uploadId, totalChunks } = body;
+        if (!uploadId || !totalChunks) {
+          res.status(400).json({ error: 'Requête de finalisation invalide (uploadId/totalChunks manquant).' });
+          return;
+        }
+
+        const parts = [];
+        for (let i = 0; i < totalChunks; i++) {
+          const pathname = tmpPartPathname(uploadId, i);
+          const { blobs } = await list({ prefix: pathname, limit: 1 });
+          const partBlob = blobs.find((b) => b.pathname === pathname);
+          if (!partBlob) {
+            res.status(400).json({ error: `Morceau ${i + 1}/${totalChunks} manquant — réessayez l'export.` });
+            return;
           }
-          if (clientPayload !== expectedCode) {
-            throw new Error("Code d'exportation incorrect.");
+          const partRes = await fetch(partBlob.url);
+          if (!partRes.ok) {
+            res.status(502).json({ error: `Échec de la relecture du morceau ${i + 1}/${totalChunks}.` });
+            return;
           }
-          return {
-            allowedContentTypes: ['application/json'],
-            addRandomSuffix: false,
-            allowOverwrite: true,
-          };
-        },
-        onUploadCompleted: async () => { /* rien à faire de plus ici */ },
-      });
-      res.status(200).json(jsonResponse);
+          parts.push(await partRes.text());
+        }
+
+        await put(BLOB_PATHNAME, parts.join(''), {
+          access: 'public',
+          addRandomSuffix: false,
+          allowOverwrite: true,
+          contentType: 'application/json',
+        });
+
+        // Nettoyage des morceaux temporaires — best-effort, une erreur ici n'invalide pas l'export
+        // qui vient de réussir (les morceaux resteront juste jusqu'au prochain export, sans gêner).
+        for (let i = 0; i < totalChunks; i++) {
+          try { await del(tmpPartPathname(uploadId, i)); } catch (e) { /* nettoyage best-effort */ }
+        }
+
+        res.status(200).json({ ok: true });
+        return;
+      }
+
+      res.status(400).json({ error: "Action inconnue (attendu : 'chunk' ou 'finalize')." });
     } catch (e) {
-      res.status(400).json({ error: e && e.message ? e.message : "échec de la génération du jeton d'upload." });
+      res.status(500).json({ error: e && e.message ? e.message : "échec du traitement de l'export." });
     }
     return;
   }

@@ -2538,15 +2538,39 @@
     return cachedLoginCode + ENC_PASSWORD_SUFFIX;
   }
 
-  // Charge @vercel/blob/client depuis un CDN (esm.sh) au lieu d'un bundle local : l'app est du
-  // JS/HTML statique sans étape de build, donc pas de gestionnaire de paquets côté navigateur.
-  // Mis en cache par le module loader du navigateur après le premier appel.
-  let vercelBlobClientPromise = null;
-  function loadVercelBlobClient(){
-    if(!vercelBlobClientPromise){
-      vercelBlobClientPromise = import('https://esm.sh/@vercel/blob@2.8.0/client');
+  // Découpe l'enveloppe chiffrée en morceaux < 4,5 Mo (limite d'une requête vers une fonction
+  // serverless Vercel) et les envoie un par un à notre propre fonction (voir api/backup.js), qui
+  // les recolle et les stocke elle-même sur Vercel Blob. Remplace le protocole "client upload"
+  // officiel de @vercel/blob/client (upload direct navigateur -> Vercel Blob) : chargé depuis un
+  // CDN dans cette app sans étape de build, il envoyait le fichier avec succès mais la requête vers
+  // vercel.com/api/blob se heurtait systématiquement à un blocage CORS côté navigateur (ce SDK est
+  // conçu pour être empaqueté via Next.js/Webpack) — avec une nouvelle tentative complète à chaque
+  // échec, d'où la progression qui repartait sans cesse de 0 % en boucle. Cette approche maison
+  // reste toujours à l'intérieur de notre propre domaine, jamais directement vers vercel.com.
+  const EXPORT_CHUNK_SIZE = 3 * 1024 * 1024; // 3 Mo par morceau, marge confortable sous 4,5 Mo
+
+  async function postBackupAction(action, extra){
+    const res = await fetch('/api/backup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...extra }),
+    });
+    if(!res.ok){
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
     }
-    return vercelBlobClientPromise;
+    return res.json();
+  }
+
+  async function uploadEnvelopeInChunks(envelope, exportCode, onProgress){
+    const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const totalChunks = Math.max(1, Math.ceil(envelope.length / EXPORT_CHUNK_SIZE));
+    for(let i = 0; i < totalChunks; i++){
+      const chunk = envelope.slice(i * EXPORT_CHUNK_SIZE, (i + 1) * EXPORT_CHUNK_SIZE);
+      await postBackupAction('chunk', { exportCode, uploadId, chunkIndex: i, data: chunk });
+      onProgress(((i + 1) / totalChunks) * 100, totalChunks);
+    }
+    await postBackupAction('finalize', { exportCode, uploadId, totalChunks });
   }
 
   function showBackupProgress(percentage, label){
@@ -2627,27 +2651,15 @@
       showExportProgress(0, 'Préparation…');
       const password = await getEncryptionPassword();
       const envelope = await encryptJsonPayload(database, password);
-      const payloadBlob = new Blob([envelope], { type: 'application/json' });
 
-      // Upload envoyé DIRECTEMENT du navigateur vers Vercel Blob (protocole "client upload" — voir
-      // api/backup.js pour l'échange du jeton), plutôt que via notre fonction serverless : celles-ci
-      // plafonnent le corps d'une requête à 4.5 Mo, largement insuffisant pour une grosse base
-      // ("Request Entity Too Large" observé en pratique avec l'ancienne approche). Aucun
-      // téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
+      // Aucun téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
       showExportProgress(0, 'Envoi vers Vercel Blob… 0 %');
-      const { upload } = await loadVercelBlobClient();
-      // allowOverwrite/addRandomSuffix ne se configurent pas ici côté client : Vercel Blob les
-      // impose depuis la réponse de onBeforeGenerateToken côté serveur (voir api/backup.js) —
-      // les repasser ici déclenche une erreur explicite ("doesn't allow allowOverwrite...").
       await withTimeout(
-        upload('data-mg.aiae', payloadBlob, {
-          access: 'public',
-          handleUploadUrl: '/api/backup',
-          clientPayload: exportCode,
-          onUploadProgress: ({ percentage }) => showExportProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} %`),
-        }),
-        90000,
-        "Délai dépassé (90s) sans confirmation de Vercel Blob — l'envoi est peut-être bloqué côté serveur. Vérifiez que le Blob Store est bien connecté au projet, puis réessayez."
+        uploadEnvelopeInChunks(envelope, exportCode, (percentage, totalChunks) =>
+          showExportProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} % (${totalChunks} morceau(x))`)
+        ),
+        180000,
+        "Délai dépassé (3 min) sans confirmation de Vercel Blob — vérifiez que le Blob Store est bien connecté au projet, puis réessayez."
       );
 
       closeExportCodeModal();

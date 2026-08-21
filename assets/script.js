@@ -10,7 +10,6 @@
     { key:'transporteur',  label:'Transporteur',              col:10 },
     { key:'numDernierKm',  label:'Num dernier kilométrique',  col:null } // toujours vide
   ];
-  const STORAGE_KEY = 'commandes-db';
   const COLS_STORAGE_KEY = 'commandes-cols-config';
 
   const els = {
@@ -700,101 +699,22 @@
     renderSearchAlgoList();
   });
 
-  // ---------- stockage persistant (IndexedDB, avec repli localStorage) ----------
-  // La base de commandes elle-même reste entièrement en mémoire (le tableau "database") pendant
-  // que l'app tourne — tout l'affichage/la recherche travaillent déjà sur cette copie en RAM, sans
-  // jamais relire le stockage à chaque rendu. Ce qui posait problème, c'est la PERSISTANCE :
-  // localStorage est plafonné à environ 5-10 Mo par origine selon le navigateur, largement
-  // insuffisant pour une grosse base importée (confirmé par un QuotaExceededError réel). IndexedDB
-  // n'a pas cette limite basse (généralement plusieurs centaines de Mo à plusieurs Go, une part de
-  // l'espace disque libre) — c'est le mécanisme standard des navigateurs pour du stockage important.
-  const IDB_NAME = 'aia-storage';
-  const IDB_STORE = 'kv';
-
-  function openIdb(){
-    return new Promise((resolve, reject) => {
-      if(!('indexedDB' in window)){ reject(new Error('IndexedDB indisponible sur ce navigateur')); return; }
-      const req = indexedDB.open(IDB_NAME, 1);
-      req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error || new Error('échec de l\'ouverture d\'IndexedDB'));
-    });
-  }
-
-  function idbGet(key){
-    return openIdb().then(db => new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readonly');
-      const req = tx.objectStore(IDB_STORE).get(key);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    }));
-  }
-
-  function idbSet(key, value){
-    return openIdb().then(db => new Promise((resolve, reject) => {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).put(value, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    }));
-  }
-
-  async function loadDatabase(){
-    try{
-      let data = await idbGet(STORAGE_KEY);
-      if(data === undefined){
-        // Migration ponctuelle : reprend une base déjà sauvegardée dans l'ancien localStorage
-        // (avant le passage à IndexedDB), puis la bascule dans IndexedDB et libère la place.
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if(raw){
-          try{
-            data = JSON.parse(raw);
-            await idbSet(STORAGE_KEY, data);
-            localStorage.removeItem(STORAGE_KEY);
-          }catch(e){ data = undefined; }
-        }
-      }
-      database = Array.isArray(data) ? data : [];
-    }catch(e){
-      // IndexedDB indisponible (ex. navigation privée stricte sur certains navigateurs) : repli
-      // sur localStorage seul, avec son quota plus restreint.
-      try{
-        const raw = localStorage.getItem(STORAGE_KEY);
-        database = raw ? JSON.parse(raw) : [];
-      }catch(e2){
-        database = [];
-      }
-    }
+  // ---------- base de commandes : en mémoire uniquement, aucune sauvegarde automatique ----------
+  // À la demande explicite de l'utilisateur, sur tous les appareils (mobile compris) : ni
+  // IndexedDB ni localStorage pour la base de commandes elle-même — elle ne vit qu'en mémoire
+  // pendant que l'onglet est ouvert, et se reconstitue en réimportant le JSON exporté (boutons
+  // "Exporter en JSON" / "Importer un JSON" de la section 3) au début de chaque session. Ça évite
+  // toute question de quota de stockage (localStorage ~5-10 Mo, IndexedDB parfois restreint ou
+  // évincé sur mobile) puisqu'il n'y a plus rien à stocker durablement côté navigateur.
+  // saveDatabase() reste une fonction (vide) pour ne pas avoir à toucher tous ses appelants
+  // existants (import CSV, scraping, etc., qui font déjà "await saveDatabase()").
+  function loadDatabase(){
+    database = [];
     render();
   }
 
   async function saveDatabase(){
-    try{
-      await idbSet(STORAGE_KEY, database);
-      return;
-    }catch(idbError){
-      console.error('[saveDatabase] IndexedDB indisponible, repli localStorage :', idbError);
-    }
-    // Repli localStorage uniquement si IndexedDB a échoué — pour une grosse base, ce repli butera
-    // probablement lui aussi sur le quota bien plus faible de localStorage, d'où le message détaillé.
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(database));
-    }catch(e){
-      const detail = e && e.name ? `${e.name}${e.message ? ' : ' + e.message : ''}` : (e && e.message) || 'erreur inconnue';
-      let hint = '';
-      if(e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)){
-        let sizeInfo = '';
-        try{
-          const bytes = new Blob([JSON.stringify(database)]).size;
-          sizeInfo = ` (base actuelle : ~${(bytes / 1024 / 1024).toFixed(1)} Mo, ${database.length} commande(s))`;
-        }catch(e2){ /* estimation de taille indisponible, on continue sans */ }
-        hint = ` IndexedDB a échoué et le repli localStorage (généralement limité à 5-10 Mo) est plein${sizeInfo} — exportez la base en JSON pour la sauvegarder, puis réduisez le nombre de commandes conservées (ex. effacez les plus anciennes déjà livrées).`;
-      }else if(e && (e.name === 'SecurityError' || e.name === 'InvalidStateError')){
-        hint = ' Le stockage local semble désactivé sur cet appareil/navigateur (navigation privée stricte, cookies/stockage bloqués dans les paramètres, ou stockage local désactivé par une extension).';
-      }
-      logLine(`Erreur lors de la sauvegarde de la base de données (${detail}).${hint}`, true);
-      console.error('[saveDatabase]', e);
-    }
+    // volontairement vide : rien n'est persisté.
   }
 
   // ---------- gestion des fichiers sélectionnés ----------
@@ -2353,7 +2273,7 @@
     }
 
     els.emptyState.textContent = database.length === 0
-      ? 'Aucune commande en base pour le moment. Importez un CSV pour commencer.'
+      ? 'Aucune commande en base pour le moment. Importez un CSV pour commencer, ou un JSON exporté lors d\'une session précédente (la base n\'est pas conservée automatiquement entre deux visites).'
       : 'Aucun résultat pour cette recherche.';
     const showList = rows.length > 0;
     els.dbCards.style.display = showList ? 'flex' : 'none';

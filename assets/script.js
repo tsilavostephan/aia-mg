@@ -34,6 +34,9 @@
     backupProgressText: document.getElementById('backupProgressText'),
     exportCodeModalBg: document.getElementById('exportCodeModalBg'),
     exportCodeInput: document.getElementById('exportCodeInput'),
+    exportCodeProgressWrap: document.getElementById('exportCodeProgressWrap'),
+    exportCodeProgressBar: document.getElementById('exportCodeProgressBar'),
+    exportCodeProgressText: document.getElementById('exportCodeProgressText'),
     exportCodeModalError: document.getElementById('exportCodeModalError'),
     exportCodeConfirmBtn: document.getElementById('exportCodeConfirmBtn'),
     exportCodeCancelBtn: document.getElementById('exportCodeCancelBtn'),
@@ -2557,50 +2560,71 @@
     els.backupProgressText.textContent = '';
   }
 
+  // Rejette avec un message clair si "promise" ne se règle pas dans le délai imparti — filet de
+  // sécurité pour ne jamais rester bloqué en silence (ex. upload() qui ne résoudrait/rejetterait
+  // jamais suite à un problème réseau ou serveur imprévu).
+  function withTimeout(promise, ms, message){
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      promise.then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (e) => { clearTimeout(timer); reject(e); }
+      );
+    });
+  }
+
   // ---------- "Exporter" : demande un code d'exportation dédié avant d'envoyer sur Vercel Blob ----------
   // Volontairement distinct du code de connexion (dérivé automatiquement pour le chiffrement, voir
   // getEncryptionPassword) : celui-ci ne fait que confirmer explicitement l'écrasement de la
   // sauvegarde existante. Vérifié côté serveur (api/backup.js) contre APP_EXPORT_CODE — jamais
-  // stocké ni comparé côté client.
-  let exportCodeResolve = null;
-
+  // stocké ni comparé côté client. La fenêtre reste ouverte pendant tout l'envoi (avec sa propre
+  // barre de progression) et affiche l'erreur directement dedans en cas d'échec (code incorrect,
+  // délai dépassé…) — plutôt que de se refermer aveuglément et de ne montrer l'erreur qu'en bas de
+  // page, où elle pouvait passer inaperçue.
   function openExportCodeModal(){
     els.exportCodeInput.value = '';
     els.exportCodeModalError.textContent = '';
+    els.exportCodeProgressWrap.style.display = 'none';
+    els.exportCodeInput.disabled = false;
+    els.exportCodeConfirmBtn.disabled = false;
+    els.exportCodeCancelBtn.disabled = false;
     els.exportCodeModalBg.style.display = 'block';
     els.exportCodeInput.focus();
-    return new Promise((resolve) => { exportCodeResolve = resolve; });
   }
   function closeExportCodeModal(){
     els.exportCodeModalBg.style.display = 'none';
-    if(exportCodeResolve){ exportCodeResolve(null); exportCodeResolve = null; }
   }
-  els.exportCodeCancelBtn.addEventListener('click', closeExportCodeModal);
-  els.exportCodeModalBg.addEventListener('click', (e)=>{
-    if(e.target === els.exportCodeModalBg) closeExportCodeModal();
-  });
-  els.exportCodeConfirmBtn.addEventListener('click', ()=>{
-    const code = els.exportCodeInput.value;
-    if(!code){
-      els.exportCodeModalError.textContent = "Veuillez saisir le code d'exportation.";
-      return;
-    }
-    els.exportCodeModalBg.style.display = 'none';
-    const resolve = exportCodeResolve;
-    exportCodeResolve = null;
-    if(resolve) resolve(code);
-  });
+  function showExportProgress(percentage, label){
+    els.exportCodeProgressWrap.style.display = '';
+    els.exportCodeProgressBar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+    els.exportCodeProgressText.textContent = label;
+  }
 
-  els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
+  els.exportJsonEncryptedBtn.addEventListener('click', ()=>{
     if(database.length === 0){
       setDbLog('Rien à exporter : la base de données est vide.', true);
       return;
     }
-    const exportCode = await openExportCodeModal();
-    if(!exportCode) return; // annulé
+    openExportCodeModal();
+  });
+  els.exportCodeCancelBtn.addEventListener('click', closeExportCodeModal);
+  els.exportCodeModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.exportCodeModalBg) closeExportCodeModal();
+  });
 
-    els.exportJsonEncryptedBtn.disabled = true;
+  els.exportCodeConfirmBtn.addEventListener('click', async ()=>{
+    const exportCode = els.exportCodeInput.value;
+    if(!exportCode){
+      els.exportCodeModalError.textContent = "Veuillez saisir le code d'exportation.";
+      return;
+    }
+
+    els.exportCodeModalError.textContent = '';
+    els.exportCodeInput.disabled = true;
+    els.exportCodeConfirmBtn.disabled = true;
+    els.exportCodeCancelBtn.disabled = true;
     try{
+      showExportProgress(0, 'Préparation…');
       const password = await getEncryptionPassword();
       const envelope = await encryptJsonPayload(database, password);
       const payloadBlob = new Blob([envelope], { type: 'application/json' });
@@ -2610,24 +2634,34 @@
       // plafonnent le corps d'une requête à 4.5 Mo, largement insuffisant pour une grosse base
       // ("Request Entity Too Large" observé en pratique avec l'ancienne approche). Aucun
       // téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
-      showBackupProgress(0, 'Envoi vers Vercel Blob… 0 %');
+      showExportProgress(0, 'Envoi vers Vercel Blob… 0 %');
       const { upload } = await loadVercelBlobClient();
       // allowOverwrite/addRandomSuffix ne se configurent pas ici côté client : Vercel Blob les
       // impose depuis la réponse de onBeforeGenerateToken côté serveur (voir api/backup.js) —
       // les repasser ici déclenche une erreur explicite ("doesn't allow allowOverwrite...").
-      await upload('data-mg.aiae', payloadBlob, {
-        access: 'public',
-        handleUploadUrl: '/api/backup',
-        clientPayload: exportCode,
-        onUploadProgress: ({ percentage }) => showBackupProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} %`),
-      });
+      await withTimeout(
+        upload('data-mg.aiae', payloadBlob, {
+          access: 'public',
+          handleUploadUrl: '/api/backup',
+          clientPayload: exportCode,
+          onUploadProgress: ({ percentage }) => showExportProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} %`),
+        }),
+        90000,
+        "Délai dépassé (90s) sans confirmation de Vercel Blob — l'envoi est peut-être bloqué côté serveur. Vérifiez que le Blob Store est bien connecté au projet, puis réessayez."
+      );
 
+      closeExportCodeModal();
       setDbLog(`Export réussi — ${database.length} commande(s) envoyée(s) sur Vercel Blob (data-mg.aiae).`, false);
     }catch(e){
-      setDbLog(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+      // Affiché ici, dans la fenêtre — pas seulement en bas de page — pour que l'erreur (ex. "Code
+      // d'exportation incorrect.", ou un mot de passe qui aurait fini par échouer plus loin) soit
+      // vue immédiatement, là où l'utilisateur vient de saisir le code.
+      els.exportCodeModalError.textContent = e && e.message ? e.message : 'Échec de l\'export (erreur inconnue).';
     }finally{
-      hideBackupProgress();
-      els.exportJsonEncryptedBtn.disabled = false;
+      els.exportCodeProgressWrap.style.display = 'none';
+      els.exportCodeInput.disabled = false;
+      els.exportCodeConfirmBtn.disabled = false;
+      els.exportCodeCancelBtn.disabled = false;
     }
   });
 
@@ -2638,7 +2672,7 @@
       // /api/backup (GET) ne renvoie que l'URL du blob (petite réponse JSON) — le contenu potentiel-
       // lement volumineux est ensuite récupéré directement depuis Vercel Blob, jamais via notre
       // fonction serverless (même limite de 4.5 Mo que pour l'upload, voir plus haut).
-      const res = await fetch('/api/backup', { cache: 'no-store' });
+      const res = await withTimeout(fetch('/api/backup', { cache: 'no-store' }), 20000, 'Délai dépassé (20s) en attendant Vercel Blob.');
       if(!res.ok){
         const errData = await res.json().catch(() => null);
         throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
@@ -2679,7 +2713,15 @@
       const data = await decryptJsonPayload(text, password);
       await importParsedJsonArray(data, 'data-mg.aiae (Vercel Blob)');
     }catch(err){
-      setDbLog(`Échec de l'import depuis Vercel Blob (${err && err.message ? err.message : 'erreur inconnue'}).`, true);
+      const msg = err && err.message ? err.message : 'erreur inconnue';
+      // Message dédié pour l'erreur de mot de passe (déchiffrement AES échoué) plutôt que noyé dans
+      // un message générique — c'est presque toujours parce que le code de connexion a changé
+      // depuis l'export (le mot de passe en dépend automatiquement, voir getEncryptionPassword).
+      if(msg.indexOf('mot de passe incorrect') !== -1){
+        setDbLog("Échec de l'import : mot de passe incorrect — le code de connexion actuel ne correspond pas à celui utilisé lors de l'export (ou le fichier est corrompu).", true);
+      }else{
+        setDbLog(`Échec de l'import depuis Vercel Blob (${msg}).`, true);
+      }
     }finally{
       hideBackupProgress();
       els.importBackupBtn.disabled = false;

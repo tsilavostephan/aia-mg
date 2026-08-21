@@ -209,6 +209,12 @@
     <div class="row"><label>Code d'exportation<br>
       <input type="password" id="exportCodeInput" autocomplete="off" style="width:100%;">
     </label></div>
+    <div id="exportCodeProgressWrap" style="display:none; margin:10px 0;">
+      <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
+        <div id="exportCodeProgressBar" style="height:100%; width:0%; background:var(--primary); transition:width .15s ease;"></div>
+      </div>
+      <div id="exportCodeProgressText" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
+    </div>
     <div id="exportCodeModalError" class="modal-error"></div>
     <div class="actions">
       <button id="exportCodeConfirmBtn">🔒 Exporter</button>

@@ -29,6 +29,14 @@
     displayLimit: document.getElementById('displayLimit'),
     exportJsonEncryptedBtn: document.getElementById('exportJsonEncryptedBtn'),
     importBackupBtn: document.getElementById('importBackupBtn'),
+    backupProgressWrap: document.getElementById('backupProgressWrap'),
+    backupProgressBar: document.getElementById('backupProgressBar'),
+    backupProgressText: document.getElementById('backupProgressText'),
+    exportCodeModalBg: document.getElementById('exportCodeModalBg'),
+    exportCodeInput: document.getElementById('exportCodeInput'),
+    exportCodeModalError: document.getElementById('exportCodeModalError'),
+    exportCodeConfirmBtn: document.getElementById('exportCodeConfirmBtn'),
+    exportCodeCancelBtn: document.getElementById('exportCodeCancelBtn'),
     dbLog: document.getElementById('dbLog'),
     clearBtn: document.getElementById('clearBtn'),
     carrierSection: document.getElementById('carrierSection'),
@@ -1860,6 +1868,8 @@
       closeSearchOptionsModal();
     }else if(els.fourPxApiConfigModalBg.style.display === 'block'){
       closeScrapeConfigModal();
+    }else if(els.exportCodeModalBg.style.display === 'block'){
+      closeExportCodeModal();
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){
@@ -2536,49 +2546,85 @@
     return vercelBlobClientPromise;
   }
 
+  function showBackupProgress(percentage, label){
+    els.backupProgressWrap.style.display = '';
+    els.backupProgressBar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+    els.backupProgressText.textContent = label;
+  }
+  function hideBackupProgress(){
+    els.backupProgressWrap.style.display = 'none';
+    els.backupProgressBar.style.width = '0%';
+    els.backupProgressText.textContent = '';
+  }
+
+  // ---------- "Exporter" : demande un code d'exportation dédié avant d'envoyer sur Vercel Blob ----------
+  // Volontairement distinct du code de connexion (dérivé automatiquement pour le chiffrement, voir
+  // getEncryptionPassword) : celui-ci ne fait que confirmer explicitement l'écrasement de la
+  // sauvegarde existante. Vérifié côté serveur (api/backup.js) contre APP_EXPORT_CODE — jamais
+  // stocké ni comparé côté client.
+  let exportCodeResolve = null;
+
+  function openExportCodeModal(){
+    els.exportCodeInput.value = '';
+    els.exportCodeModalError.textContent = '';
+    els.exportCodeModalBg.style.display = 'block';
+    els.exportCodeInput.focus();
+    return new Promise((resolve) => { exportCodeResolve = resolve; });
+  }
+  function closeExportCodeModal(){
+    els.exportCodeModalBg.style.display = 'none';
+    if(exportCodeResolve){ exportCodeResolve(null); exportCodeResolve = null; }
+  }
+  els.exportCodeCancelBtn.addEventListener('click', closeExportCodeModal);
+  els.exportCodeModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.exportCodeModalBg) closeExportCodeModal();
+  });
+  els.exportCodeConfirmBtn.addEventListener('click', ()=>{
+    const code = els.exportCodeInput.value;
+    if(!code){
+      els.exportCodeModalError.textContent = "Veuillez saisir le code d'exportation.";
+      return;
+    }
+    els.exportCodeModalBg.style.display = 'none';
+    const resolve = exportCodeResolve;
+    exportCodeResolve = null;
+    if(resolve) resolve(code);
+  });
+
   els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
     if(database.length === 0){
       setDbLog('Rien à exporter : la base de données est vide.', true);
       return;
     }
+    const exportCode = await openExportCodeModal();
+    if(!exportCode) return; // annulé
+
     els.exportJsonEncryptedBtn.disabled = true;
     try{
       const password = await getEncryptionPassword();
       const envelope = await encryptJsonPayload(database, password);
+      const payloadBlob = new Blob([envelope], { type: 'application/json' });
 
-      const localBlob = new Blob([envelope], { type: 'application/json' });
-      const localUrl = URL.createObjectURL(localBlob);
-      const a = document.createElement('a');
-      a.href = localUrl;
-      a.download = 'data-mg.aiae';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(localUrl);
+      // Upload envoyé DIRECTEMENT du navigateur vers Vercel Blob (protocole "client upload" — voir
+      // api/backup.js pour l'échange du jeton), plutôt que via notre fonction serverless : celles-ci
+      // plafonnent le corps d'une requête à 4.5 Mo, largement insuffisant pour une grosse base
+      // ("Request Entity Too Large" observé en pratique avec l'ancienne approche). Aucun
+      // téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
+      showBackupProgress(0, 'Envoi vers Vercel Blob… 0 %');
+      const { upload } = await loadVercelBlobClient();
+      await upload('data-mg.aiae', payloadBlob, {
+        access: 'public',
+        handleUploadUrl: '/api/backup',
+        allowOverwrite: true,
+        clientPayload: exportCode,
+        onUploadProgress: ({ percentage }) => showBackupProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} %`),
+      });
 
-      // Envoie aussi la même enveloppe chiffrée sur Vercel Blob, pour que "Importer" puisse la
-      // récupérer automatiquement plus tard sans passer par ce fichier local. Upload envoyé
-      // DIRECTEMENT du navigateur vers Vercel Blob (protocole "client upload" — voir api/backup.js
-      // pour l'échange du jeton), plutôt que via notre fonction serverless : celles-ci plafonnent
-      // le corps d'une requête à 4.5 Mo, largement insuffisant pour une grosse base ("Request
-      // Entity Too Large" observé en pratique avec l'ancienne approche). Un échec ici n'invalide
-      // pas l'export local qui vient de réussir — juste signalé à part.
-      let backupNote = '';
-      try{
-        const { upload } = await loadVercelBlobClient();
-        await upload('data-mg.aiae', localBlob, {
-          access: 'public',
-          handleUploadUrl: '/api/backup',
-          allowOverwrite: true,
-        });
-      }catch(backupErr){
-        backupNote = ` ⚠️ Sauvegarde sur Vercel Blob échouée (${backupErr && backupErr.message ? backupErr.message : 'erreur inconnue'}) — le fichier local a bien été téléchargé.`;
-      }
-
-      setDbLog(`Export réussi — ${database.length} commande(s) (data-mg.aiae).${backupNote}`, !!backupNote);
+      setDbLog(`Export réussi — ${database.length} commande(s) envoyée(s) sur Vercel Blob (data-mg.aiae).`, false);
     }catch(e){
       setDbLog(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
+      hideBackupProgress();
       els.exportJsonEncryptedBtn.disabled = false;
     }
   });
@@ -2596,14 +2642,44 @@
         throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
       }
       const { url } = await res.json();
+
+      showBackupProgress(0, 'Téléchargement depuis Vercel Blob… 0 %');
       const blobRes = await fetch(url, { cache: 'no-store' });
       if(!blobRes.ok) throw new Error(`échec de la récupération depuis Vercel Blob (HTTP ${blobRes.status}).`);
-      const text = await blobRes.text();
+
+      // fetch() n'a pas d'événement de progression natif : on lit le flux de réponse par morceaux
+      // et on compare les octets reçus au total annoncé par Content-Length pour estimer le %.
+      const totalBytes = Number(blobRes.headers.get('content-length')) || 0;
+      let text;
+      if(totalBytes > 0 && blobRes.body && blobRes.body.getReader){
+        const reader = blobRes.body.getReader();
+        const chunks = [];
+        let received = 0;
+        for(;;){
+          const { done, value } = await reader.read();
+          if(done) break;
+          chunks.push(value);
+          received += value.length;
+          showBackupProgress((received / totalBytes) * 100, `Téléchargement depuis Vercel Blob… ${Math.round((received / totalBytes) * 100)} %`);
+        }
+        const merged = new Uint8Array(received);
+        let offset = 0;
+        chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
+        text = new TextDecoder().decode(merged);
+      }else{
+        // Repli si Content-Length ou les flux ne sont pas disponibles (navigateur ancien, proxy…) :
+        // pas de barre de progression détaillée, mais l'import fonctionne toujours.
+        showBackupProgress(50, 'Téléchargement depuis Vercel Blob…');
+        text = await blobRes.text();
+      }
+      showBackupProgress(100, 'Téléchargement terminé, déchiffrement…');
+
       const data = await decryptJsonPayload(text, password);
       await importParsedJsonArray(data, 'data-mg.aiae (Vercel Blob)');
     }catch(err){
       setDbLog(`Échec de l'import depuis Vercel Blob (${err && err.message ? err.message : 'erreur inconnue'}).`, true);
     }finally{
+      hideBackupProgress();
       els.importBackupBtn.disabled = false;
     }
   });

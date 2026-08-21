@@ -12,6 +12,10 @@
 //
 // Accès "public" : sûr malgré tout puisque le contenu est déjà chiffré (AES-256-GCM) avant d'être
 // envoyé — sans le mot de passe, l'URL seule ne révèle rien de lisible.
+//
+// L'export exige en plus un code dédié (variable d'environnement APP_EXPORT_CODE, distincte du
+// code de connexion) transmis via clientPayload lors de l'appel à upload() côté client — vérifié
+// ci-dessous avant de délivrer le jeton d'upload. L'import reste automatique, sans code.
 const { list } = require('@vercel/blob');
 const { handleUpload } = require('@vercel/blob/client');
 const { setCorsHeaders } = require('./_scrapeLib');
@@ -30,17 +34,27 @@ module.exports = async function handler(req, res) {
     // Étape de contrôle du protocole "client upload" : génère le jeton de courte durée qui
     // autorise le navigateur à envoyer le fichier directement à Vercel Blob, puis (deuxième appel,
     // déclenché par Vercel Blob lui-même) confirme la fin de l'upload. Cette route est déjà
-    // protégée par le cookie de session (voir middleware.js, qui ne l'exempte pas) — inutile de
-    // ré-authentifier dans onBeforeGenerateToken.
+    // protégée par le cookie de session (voir middleware.js, qui ne l'exempte pas), mais l'export
+    // demande en plus un code dédié (APP_EXPORT_CODE) — volontairement distinct du code de
+    // connexion — pour confirmer explicitement qu'on veut écraser la sauvegarde existante.
     try {
       const jsonResponse = await handleUpload({
         body: req.body,
         request: req,
-        onBeforeGenerateToken: async () => ({
-          allowedContentTypes: ['application/json'],
-          addRandomSuffix: false,
-          allowOverwrite: true,
-        }),
+        onBeforeGenerateToken: async (pathname, clientPayload) => {
+          const expectedCode = process.env.APP_EXPORT_CODE;
+          if (!expectedCode) {
+            throw new Error("Variable d'environnement APP_EXPORT_CODE manquante sur Vercel.");
+          }
+          if (clientPayload !== expectedCode) {
+            throw new Error("Code d'exportation incorrect.");
+          }
+          return {
+            allowedContentTypes: ['application/json'],
+            addRandomSuffix: false,
+            allowOverwrite: true,
+          };
+        },
         onUploadCompleted: async () => { /* rien à faire de plus ici */ },
       });
       res.status(200).json(jsonResponse);

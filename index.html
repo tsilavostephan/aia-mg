@@ -96,8 +96,14 @@
     <div id="dbCards" class="db-cards"></div>
   </div>
   <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer, ou un fichier .aiae exporté lors d'une session précédente (la base n'est pas conservée automatiquement entre deux visites).</div>
+  <div id="backupProgressWrap" style="display:none; margin:10px 0;">
+    <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
+      <div id="backupProgressBar" style="height:100%; width:0%; background:var(--primary); transition:width .15s ease;"></div>
+    </div>
+    <div id="backupProgressText" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
+  </div>
   <div class="actions actions-bottom">
-    <button id="exportJsonEncryptedBtn" class="secondary" title="Télécharge data-mg.aiae (chiffré) et l'envoie sur Vercel Blob">🔒 Exporter</button>
+    <button id="exportJsonEncryptedBtn" class="secondary" title="Chiffre et envoie data-mg.aiae sur Vercel Blob (demande un code d'exportation)">🔒 Exporter</button>
     <button id="importBackupBtn" class="secondary" title="Récupère automatiquement la dernière sauvegarde stockée sur Vercel Blob">🔒 Importer</button>
     <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
   </div>
@@ -192,6 +198,21 @@
     <div class="actions">
       <button id="fourPxApiConfigSaveBtn">💾 Enregistrer</button>
       <button id="fourPxApiConfigCancelBtn" class="secondary">✕ Annuler</button>
+    </div>
+  </div>
+</div>
+
+<div id="exportCodeModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box modal-box-narrow">
+    <h2 class="modal-title">Code d'exportation</h2>
+    <p class="modal-subtext">Confirmez l'envoi de la sauvegarde sur Vercel Blob (écrase la précédente).</p>
+    <div class="row"><label>Code d'exportation<br>
+      <input type="password" id="exportCodeInput" autocomplete="off" style="width:100%;">
+    </label></div>
+    <div id="exportCodeModalError" class="modal-error"></div>
+    <div class="actions">
+      <button id="exportCodeConfirmBtn">🔒 Exporter</button>
+      <button id="exportCodeCancelBtn" class="secondary">✕ Annuler</button>
     </div>
   </div>
 </div>

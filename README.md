@@ -145,6 +145,8 @@ environnement Vercel (ou `vercel dev`).
 | `APP_ACCESS_CODE` | Non (mais recommandé) | Code d'accès à saisir sur la page de connexion. Si absente, l'application reste accessible sans code (pour éviter de se retrouver bloqué dehors par erreur). |
 | `APP_AUTH_SECRET` | Non | Secret utilisé pour signer le cookie de session. Si absent, `APP_ACCESS_CODE` est utilisé à la place — il est recommandé d'utiliser une valeur distincte, longue et aléatoire. |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Non (mais recommandé) | Ajoutées automatiquement en connectant une base **Vercel KV** depuis l'onglet *Storage* du projet sur vercel.com. Permettent à `api/auth.js` de verrouiller progressivement une adresse IP après plusieurs échecs de connexion (partagé entre toutes les instances/régions). Sans ces variables, un compteur en mémoire local par instance sert de repli — moins robuste (se réinitialise à froid, non partagé entre régions) mais actif par défaut. |
+| `BLOB_READ_WRITE_TOKEN` | Oui, pour l'export/import `.aiae` | Ajoutée automatiquement en connectant un **Blob Store** depuis l'onglet *Storage* du projet sur vercel.com. Utilisée par `api/backup.js` pour la sauvegarde/récupération du fichier chiffré. |
+| `APP_EXPORT_CODE` | Oui, pour l'export `.aiae` | Code demandé avant d'écraser la sauvegarde existante sur Vercel Blob (distinct du code de connexion). Sans cette variable, l'export échoue avec un message explicite plutôt que d'accepter n'importe quel code. |
 
 Aucune autre variable n'est nécessaire : les fonctions de scraping n'utilisent pas de clé API
 externe (elles pilotent un navigateur headless directement).

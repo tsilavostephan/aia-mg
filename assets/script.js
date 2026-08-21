@@ -2488,6 +2488,17 @@
     return cachedLoginCode + ENC_PASSWORD_SUFFIX;
   }
 
+  // Charge @vercel/blob/client depuis un CDN (esm.sh) au lieu d'un bundle local : l'app est du
+  // JS/HTML statique sans étape de build, donc pas de gestionnaire de paquets côté navigateur.
+  // Mis en cache par le module loader du navigateur après le premier appel.
+  let vercelBlobClientPromise = null;
+  function loadVercelBlobClient(){
+    if(!vercelBlobClientPromise){
+      vercelBlobClientPromise = import('https://esm.sh/@vercel/blob@2.8.0/client');
+    }
+    return vercelBlobClientPromise;
+  }
+
   els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
     if(database.length === 0){
       setDbLog('Rien à exporter : la base de données est vide.', true);
@@ -2498,30 +2509,31 @@
       const password = await getEncryptionPassword();
       const envelope = await encryptJsonPayload(database, password);
 
-      const blob = new Blob([envelope], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+      const localBlob = new Blob([envelope], { type: 'application/json' });
+      const localUrl = URL.createObjectURL(localBlob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = localUrl;
       a.download = 'data-mg.aiae';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(localUrl);
 
-      // Envoie aussi la même enveloppe chiffrée sur Vercel Blob (voir api/backup.js), pour que
-      // "Importer" puisse la récupérer automatiquement plus tard sans passer par ce fichier local.
-      // Un échec ici n'invalide pas l'export local qui vient de réussir — juste signalé à part.
+      // Envoie aussi la même enveloppe chiffrée sur Vercel Blob, pour que "Importer" puisse la
+      // récupérer automatiquement plus tard sans passer par ce fichier local. Upload envoyé
+      // DIRECTEMENT du navigateur vers Vercel Blob (protocole "client upload" — voir api/backup.js
+      // pour l'échange du jeton), plutôt que via notre fonction serverless : celles-ci plafonnent
+      // le corps d'une requête à 4.5 Mo, largement insuffisant pour une grosse base ("Request
+      // Entity Too Large" observé en pratique avec l'ancienne approche). Un échec ici n'invalide
+      // pas l'export local qui vient de réussir — juste signalé à part.
       let backupNote = '';
       try{
-        const res = await fetch('/api/backup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: envelope,
+        const { upload } = await loadVercelBlobClient();
+        await upload('data-mg.aiae', localBlob, {
+          access: 'public',
+          handleUploadUrl: '/api/backup',
+          allowOverwrite: true,
         });
-        if(!res.ok){
-          const errData = await res.json().catch(() => null);
-          throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
-        }
       }catch(backupErr){
         backupNote = ` ⚠️ Sauvegarde sur Vercel Blob échouée (${backupErr && backupErr.message ? backupErr.message : 'erreur inconnue'}) — le fichier local a bien été téléchargé.`;
       }
@@ -2538,12 +2550,18 @@
     els.importBackupBtn.disabled = true;
     try{
       const password = await getEncryptionPassword();
+      // /api/backup (GET) ne renvoie que l'URL du blob (petite réponse JSON) — le contenu potentiel-
+      // lement volumineux est ensuite récupéré directement depuis Vercel Blob, jamais via notre
+      // fonction serverless (même limite de 4.5 Mo que pour l'upload, voir plus haut).
       const res = await fetch('/api/backup', { cache: 'no-store' });
       if(!res.ok){
         const errData = await res.json().catch(() => null);
         throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
       }
-      const text = await res.text();
+      const { url } = await res.json();
+      const blobRes = await fetch(url, { cache: 'no-store' });
+      if(!blobRes.ok) throw new Error(`échec de la récupération depuis Vercel Blob (HTTP ${blobRes.status}).`);
+      const text = await blobRes.text();
       const data = await decryptJsonPayload(text, password);
       await importParsedJsonArray(data, 'data-mg.aiae (Vercel Blob)');
     }catch(err){

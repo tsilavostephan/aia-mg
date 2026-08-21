@@ -1,28 +1,28 @@
 // Sauvegarde/récupération du fichier .aiae (déjà chiffré côté client, voir assets/script.js) sur
-// Vercel Blob Storage.
+// Vercel Blob Storage — store configuré en accès **privé** (choix de l'utilisateur ; l'accès
+// public aurait aussi été sûr puisque le contenu est déjà chiffré AES-256, mais le mode d'accès
+// d'un store Vercel Blob ne peut plus être changé après sa création, donc le code s'adapte).
 //
-// Le protocole "client upload" officiel de @vercel/blob/client (upload direct navigateur -> Vercel
-// Blob) a été abandonné : chargé depuis un CDN dans cette app statique sans étape de build (ce SDK
-// est conçu pour être empaqueté via Next.js/Webpack), il envoyait bien le fichier avec succès mais
-// la requête PUT vers vercel.com/api/blob se heurtait systématiquement à un blocage CORS ("No
-// 'Access-Control-Allow-Origin' header"), avec une nouvelle tentative complète à chaque échec
-// (d'où la progression qui revenait sans cesse à 0 % avant de remonter à 100 %, en boucle).
+// Toute lecture/écriture d'un blob privé exige une autorisation (BLOB_READ_WRITE_TOKEN, lu
+// automatiquement par le SDK) — impossible pour le navigateur de lire une URL de blob privé
+// directement, contrairement à un store public. Cette fonction fait donc systématiquement le
+// relais : elle authentifie la requête (cookie de session + code d'exportation), lit/écrit le blob
+// via le SDK côté serveur, et relaie le flux au navigateur (streamé, jamais bufferisé en entier).
 //
-// Nouveau protocole, entièrement maison, qui ne dépend plus que de notre propre fonction (jamais
-// directement de vercel.com depuis le navigateur) :
-// - POST { action:'chunk', exportCode, uploadId, chunkIndex, data } : stocke un morceau (< 4,5 Mo,
-//   la limite d'une requête vers une fonction serverless) dans un blob temporaire.
-// - POST { action:'finalize', exportCode, uploadId, totalChunks } : relit tous les morceaux
-//   (chacun via une requête HTTP faite PAR le serveur, donc jamais soumise aux limites/CORS du
-//   navigateur), les recolle dans l'ordre, écrit le blob final (data-mg.aiae) et nettoie les
-//   morceaux temporaires.
-// - GET : renvoie l'URL publique du blob final (data-mg.aiae) — l'import va ensuite la chercher
-//   directement auprès de Vercel Blob (simple fetch(), fonctionne sans souci puisqu'aucun jeton ni
-//   protocole spécial n'est nécessaire pour lire un blob "public").
+// Le fichier ne passe jamais en un seul bloc dans le corps d'une requête vers cette fonction : les
+// fonctions serverless Vercel plafonnent une requête entrante à 4,5 Mo ("FUNCTION_PAYLOAD_TOO_LARGE"
+// confirmé en pratique), largement insuffisant pour une base de plusieurs dizaines de Mo.
+// - Export : le navigateur découpe le fichier chiffré en morceaux < 4,5 Mo et les envoie un par un
+//   (POST action:'chunk'), stockés comme blobs temporaires ; une fois tous reçus, POST
+//   action:'finalize' les relit (via get(), pas de limite de taille côté lecture serveur→serveur),
+//   les recolle dans l'ordre, écrit le blob final et nettoie les morceaux temporaires.
+// - Import : GET relit le blob final via get() et le retransmet en flux (streamé, pas de limite de
+//   taille de réponse comme pour une requête entrante) — jamais chargé entièrement en mémoire.
 //
 // L'export exige un code dédié (variable d'environnement APP_EXPORT_CODE, distincte du code de
 // connexion), vérifié à chaque morceau et à la finalisation. L'import reste automatique, sans code.
-const { put, list, del } = require('@vercel/blob');
+const { Readable } = require('node:stream');
+const { put, get, del } = require('@vercel/blob');
 const { setCorsHeaders } = require('./_scrapeLib');
 
 const BLOB_PATHNAME = 'data-mg.aiae';
@@ -30,6 +30,13 @@ const TMP_PREFIX = 'tmp-export';
 
 function tmpPartPathname(uploadId, chunkIndex) {
   return `${TMP_PREFIX}/${uploadId}/${chunkIndex}`;
+}
+
+// Lit un ReadableStream web (renvoyé par get()) jusqu'au bout et le décode en texte.
+async function streamToText(webStream) {
+  const chunks = [];
+  for await (const chunk of Readable.fromWeb(webStream)) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 module.exports = async function handler(req, res) {
@@ -61,7 +68,7 @@ module.exports = async function handler(req, res) {
           return;
         }
         await put(tmpPartPathname(uploadId, chunkIndex), data, {
-          access: 'public',
+          access: 'private',
           addRandomSuffix: false,
           allowOverwrite: true,
           contentType: 'text/plain',
@@ -80,22 +87,16 @@ module.exports = async function handler(req, res) {
         const parts = [];
         for (let i = 0; i < totalChunks; i++) {
           const pathname = tmpPartPathname(uploadId, i);
-          const { blobs } = await list({ prefix: pathname, limit: 1 });
-          const partBlob = blobs.find((b) => b.pathname === pathname);
-          if (!partBlob) {
+          const result = await get(pathname, { access: 'private' });
+          if (!result) {
             res.status(400).json({ error: `Morceau ${i + 1}/${totalChunks} manquant — réessayez l'export.` });
             return;
           }
-          const partRes = await fetch(partBlob.url);
-          if (!partRes.ok) {
-            res.status(502).json({ error: `Échec de la relecture du morceau ${i + 1}/${totalChunks}.` });
-            return;
-          }
-          parts.push(await partRes.text());
+          parts.push(await streamToText(result.stream));
         }
 
         await put(BLOB_PATHNAME, parts.join(''), {
-          access: 'public',
+          access: 'private',
           addRandomSuffix: false,
           allowOverwrite: true,
           contentType: 'application/json',
@@ -120,14 +121,15 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      const { blobs } = await list({ prefix: BLOB_PATHNAME, limit: 10 });
-      const blob = blobs.find((b) => b.pathname === BLOB_PATHNAME);
-      if (!blob) {
+      const result = await get(BLOB_PATHNAME, { access: 'private' });
+      if (!result) {
         res.status(404).json({ error: 'Aucune sauvegarde trouvée sur Vercel Blob — exportez au moins une fois avant de pouvoir importer.' });
         return;
       }
-      res.setHeader('Cache-Control', 'no-store');
-      res.status(200).json({ url: blob.url });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'private, no-store');
+      if (result.blob.size) res.setHeader('Content-Length', String(result.blob.size));
+      Readable.fromWeb(result.stream).pipe(res);
     } catch (e) {
       res.status(500).json({ error: e && e.message ? e.message : 'échec de la lecture depuis Vercel Blob.' });
     }

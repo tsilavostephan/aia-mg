@@ -2681,26 +2681,22 @@
     els.importBackupBtn.disabled = true;
     try{
       const password = await getEncryptionPassword();
-      // /api/backup (GET) ne renvoie que l'URL du blob (petite réponse JSON) — le contenu potentiel-
-      // lement volumineux est ensuite récupéré directement depuis Vercel Blob, jamais via notre
-      // fonction serverless (même limite de 4.5 Mo que pour l'upload, voir plus haut).
-      const res = await withTimeout(fetch('/api/backup', { cache: 'no-store' }), 20000, 'Délai dépassé (20s) en attendant Vercel Blob.');
+      // Store Vercel Blob privé : /api/backup (GET) relit lui-même le blob (autorisation requise,
+      // impossible pour le navigateur de le faire directement) et retransmet son contenu en flux —
+      // jamais chargé entièrement en mémoire côté serveur (voir api/backup.js).
+      showBackupProgress(0, 'Téléchargement depuis Vercel Blob… 0 %');
+      const res = await withTimeout(fetch('/api/backup', { cache: 'no-store' }), 30000, 'Délai dépassé (30s) en attendant Vercel Blob.');
       if(!res.ok){
         const errData = await res.json().catch(() => null);
         throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
       }
-      const { url } = await res.json();
-
-      showBackupProgress(0, 'Téléchargement depuis Vercel Blob… 0 %');
-      const blobRes = await fetch(url, { cache: 'no-store' });
-      if(!blobRes.ok) throw new Error(`échec de la récupération depuis Vercel Blob (HTTP ${blobRes.status}).`);
 
       // fetch() n'a pas d'événement de progression natif : on lit le flux de réponse par morceaux
       // et on compare les octets reçus au total annoncé par Content-Length pour estimer le %.
-      const totalBytes = Number(blobRes.headers.get('content-length')) || 0;
+      const totalBytes = Number(res.headers.get('content-length')) || 0;
       let text;
-      if(totalBytes > 0 && blobRes.body && blobRes.body.getReader){
-        const reader = blobRes.body.getReader();
+      if(totalBytes > 0 && res.body && res.body.getReader){
+        const reader = res.body.getReader();
         const chunks = [];
         let received = 0;
         for(;;){
@@ -2718,7 +2714,7 @@
         // Repli si Content-Length ou les flux ne sont pas disponibles (navigateur ancien, proxy…) :
         // pas de barre de progression détaillée, mais l'import fonctionne toujours.
         showBackupProgress(50, 'Téléchargement depuis Vercel Blob…');
-        text = await blobRes.text();
+        text = await res.text();
       }
       showBackupProgress(100, 'Téléchargement terminé, déchiffrement…');
 

@@ -2396,13 +2396,50 @@
     setDbLog(`${sourceLabel} — ${jsonSummary.join(', ')}.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
   }
 
-  // ---------- export/import .aiae (JSON chiffré AES-256-GCM via l'API Web Crypto du navigateur) ----------
+  // ---------- export/import .aiae (CSV chiffré AES-256-GCM via l'API Web Crypto du navigateur) ----------
   // Unique mécanisme d'export/import de la base (le JSON en clair a été retiré) : un fichier .aiae
   // sûr à partager (email, drive, clé USB) même intercepté, sans dépendance externe (Web Crypto est
   // natif à tous les navigateurs modernes). Le mot de passe n'est jamais saisi à la main — voir
   // getEncryptionPassword() plus bas, qui le dérive automatiquement du code de connexion.
-  const ENC_MAGIC = 'AIAENC1';
+  //
+  // Le contenu chiffré est du CSV plutôt que du JSON : le JSON répète le nom de chaque champ à
+  // chaque commande (8 clés par colis), ce qui gonfle nettement la taille du fichier sur une grosse
+  // base — le CSV n'écrit ces noms qu'une fois, en en-tête.
+  const ENC_MAGIC = 'AIAENC2'; // v2 = contenu CSV (v1, retiré, était du JSON) — refuse volontairement de désérialiser un ancien fichier v1 comme du CSV
   const ENC_PBKDF2_ITERATIONS = 250000;
+
+  // Échappe un champ selon les règles CSV standard (entoure de guillemets si le champ contient une
+  // virgule, un guillemet ou un saut de ligne, en doublant les guillemets internes).
+  function csvEscapeField(v){
+    const s = String(v ?? '');
+    if(/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  // Sérialise les commandes en CSV (en-tête = clés des champs, une ligne par commande) — voir
+  // COLS pour la liste des champs. Symétrique de csvToRecords() ci-dessous.
+  function recordsToCsv(records){
+    const keys = COLS.map(c => c.key);
+    const lines = [keys.map(csvEscapeField).join(',')];
+    records.forEach(r => lines.push(keys.map(k => csvEscapeField(r[k])).join(',')));
+    return lines.join('\r\n');
+  }
+
+  // Reconstruit un tableau de commandes à partir du CSV généré par recordsToCsv() — réutilise le
+  // même analyseur CSV que l'import de fichiers CSV externes (parseCSV), la première ligne étant
+  // ici toujours un en-tête (noms de champs, pas des numéros de colonne à deviner).
+  function csvToRecords(csvText){
+    const rows = parseCSV(csvText);
+    if(!rows || rows.length === 0) return [];
+    const header = rows[0];
+    return rows.slice(1)
+      .filter(row => row && row.some(cell => cell !== '' && cell !== undefined))
+      .map(row => {
+        const rec = {};
+        header.forEach((key, i) => { rec[key] = row[i] !== undefined ? row[i] : ''; });
+        return rec;
+      });
+  }
 
   // btoa/atob sur un Uint8Array direct plante ou est inexact pour de gros tableaux : on encode par
   // blocs pour éviter tout dépassement de pile avec une grosse base (ex. 50 Mo).
@@ -2437,7 +2474,7 @@
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await deriveAesKey(password, salt);
-    const plaintext = new TextEncoder().encode(JSON.stringify(data));
+    const plaintext = new TextEncoder().encode(recordsToCsv(data));
     const ciphertext = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, plaintext);
     return JSON.stringify({
       magic: ENC_MAGIC,
@@ -2452,10 +2489,10 @@
     try{
       envelope = JSON.parse(envelopeText);
     }catch(e){
-      throw new Error("ce n'est pas un fichier JSON chiffré valide.");
+      throw new Error("ce n'est pas un fichier .aiae valide.");
     }
     if(!envelope || envelope.magic !== ENC_MAGIC){
-      throw new Error("format non reconnu — ce n'est pas un fichier .aiae exporté par cette app.");
+      throw new Error("format non reconnu — ce n'est pas un fichier .aiae exporté par cette app (ou il vient d'une version trop ancienne).");
     }
     const salt = base64ToUint8Array(envelope.salt);
     const iv = base64ToUint8Array(envelope.iv);
@@ -2467,7 +2504,7 @@
     }catch(e){
       throw new Error('mot de passe incorrect ou fichier corrompu.');
     }
-    return JSON.parse(new TextDecoder().decode(plaintext));
+    return csvToRecords(new TextDecoder().decode(plaintext));
   }
 
   // Le mot de passe de chiffrement n'est jamais saisi à la main : il est dérivé automatiquement du

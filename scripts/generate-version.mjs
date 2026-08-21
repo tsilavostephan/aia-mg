@@ -9,7 +9,17 @@
 // Ce fichier est un artefact de build (voir .gitignore) : il n'existe pas tant que ce script n'a
 // pas tourné une fois (ex. `npm install` en local, ou build Vercel). Sans lui, l'app affiche
 // simplement sa version statique de repli et la détection de mise à jour reste inactive.
-import { writeFileSync } from 'node:fs';
+//
+// Ce script tamponne aussi ce même numéro de version dans sw.js (CACHE_NAME) : un navigateur ne
+// revérifie/réinstalle un service worker QUE si les octets de son propre script changent — un
+// déploiement qui ne touche que assets/script.js (ex. la plupart des correctifs) ne suffirait donc
+// jamais à lui seul à faire recharger le cache des fichiers statiques (script.js, styles.css…).
+// Constaté en pratique : le bouton "MAJ" ne pouvait jamais apparaître dans une PWA Chrome installée
+// restée bloquée sur un sw.js jamais réinstallé depuis longtemps. sw.js reste un fichier suivi par
+// Git (contrairement à assets/version.json) : ce script le modifie uniquement dans le conteneur de
+// build (Vercel, ou un `npm install` local) — pensez à ne pas committer cette modification locale
+// par erreur si vous lancez ce script sur votre machine (git checkout -- sw.js pour l'annuler).
+import { writeFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +40,18 @@ function buildTimestampParts(date) {
   return { day: get('day'), month: get('month'), hour: get('hour') };
 }
 
+function stampServiceWorker(version) {
+  const swPath = join(projectRoot, 'sw.js');
+  const original = readFileSync(swPath, 'utf8');
+  const stamped = original.replace(/const CACHE_NAME = '[^']*';/, `const CACHE_NAME = 'aia-app-${version}';`);
+  if (stamped === original) {
+    console.warn('[generate-version] Motif CACHE_NAME introuvable dans sw.js — non modifié.');
+    return;
+  }
+  writeFileSync(swPath, stamped);
+  console.log('[generate-version] sw.js tamponné avec', version);
+}
+
 function main() {
   try {
     const now = new Date();
@@ -38,8 +60,9 @@ function main() {
 
     const outputPath = join(projectRoot, 'assets', 'version.json');
     writeFileSync(outputPath, JSON.stringify({ version, generatedAt: now.toISOString() }, null, 2));
-
     console.log('[generate-version]', version, '->', outputPath);
+
+    stampServiceWorker(version);
   } catch (error) {
     console.warn('[generate-version] Échec de la génération de version.json (non bloquant) :', error && error.message);
     process.exit(0); // ne fait jamais échouer l'installation

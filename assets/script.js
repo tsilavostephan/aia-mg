@@ -2309,7 +2309,11 @@
   // ---------- "Détails auto" : ouvre automatiquement le détail d'un colis en mode plein écran ----------
   const AUTO_DETAILS_KEY = 'commandes-auto-details';
   function loadAutoDetails(){
-    try{ return localStorage.getItem(AUTO_DETAILS_KEY) === 'true'; }catch(e){ return false; }
+    // Coché par défaut (activé) tant que l'utilisateur n'a jamais changé ce réglage lui-même.
+    try{
+      const raw = localStorage.getItem(AUTO_DETAILS_KEY);
+      return raw === null ? true : raw === 'true';
+    }catch(e){ return true; }
   }
   function saveAutoDetails(enabled){
     try{ localStorage.setItem(AUTO_DETAILS_KEY, enabled ? 'true' : 'false'); }catch(e){ /* stockage indisponible */ }

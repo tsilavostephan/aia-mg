@@ -32,6 +32,7 @@
     backupProgressWrap: document.getElementById('backupProgressWrap'),
     backupProgressBar: document.getElementById('backupProgressBar'),
     backupProgressText: document.getElementById('backupProgressText'),
+    dbVersionInfo: document.getElementById('dbVersionInfo'),
     exportCodeModalBg: document.getElementById('exportCodeModalBg'),
     exportCodeInput: document.getElementById('exportCodeInput'),
     exportCodeProgressWrap: document.getElementById('exportCodeProgressWrap'),
@@ -2483,7 +2484,7 @@
     );
   }
 
-  async function encryptJsonPayload(data, password){
+  async function encryptJsonPayload(data, password, exportedAt){
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const key = await deriveAesKey(password, salt);
@@ -2491,12 +2492,18 @@
     const ciphertext = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, plaintext);
     return JSON.stringify({
       magic: ENC_MAGIC,
+      // Horodatage de l'export en clair dans l'enveloppe (pas chiffré) : ça ne révèle aucune donnée
+      // sensible, et ça permet d'afficher "quelle version de la base" a été importée sans avoir à
+      // déchiffrer quoi que ce soit pour ça — voir dbVersionInfo.
+      exportedAt: exportedAt || new Date().toISOString(),
       salt: arrayBufferToBase64(salt),
       iv: arrayBufferToBase64(iv),
       ciphertext: arrayBufferToBase64(ciphertext),
     });
   }
 
+  // Renvoie { records, exportedAt } plutôt que juste le tableau de commandes, pour que l'appelant
+  // puisse afficher de quel export provient la base qui vient d'être importée.
   async function decryptJsonPayload(envelopeText, password){
     let envelope;
     try{
@@ -2517,7 +2524,7 @@
     }catch(e){
       throw new Error('mot de passe incorrect ou fichier corrompu.');
     }
-    return csvToRecords(new TextDecoder().decode(plaintext));
+    return { records: csvToRecords(new TextDecoder().decode(plaintext)), exportedAt: envelope.exportedAt || null };
   }
 
   // Le mot de passe de chiffrement n'est jamais saisi à la main : il est dérivé automatiquement du
@@ -2571,6 +2578,19 @@
       onProgress(((i + 1) / totalChunks) * 100, totalChunks);
     }
     await postBackupAction('finalize', { exportCode, uploadId, totalChunks });
+  }
+
+  // Affiche la date/heure de l'export dont provient la base actuellement chargée, en bas à droite
+  // de la rangée Exporter/Importer/Effacer — pour savoir "quelle version" de la base est active.
+  // Non persistant (comme le reste de la base, voir loadDatabase) : disparaît au rechargement de
+  // la page tant qu'un nouvel import ou export n'a pas eu lieu.
+  function setDbVersionInfo(isoDate){
+    if(!isoDate){ els.dbVersionInfo.textContent = ''; return; }
+    const d = new Date(isoDate);
+    if(Number.isNaN(d.getTime())){ els.dbVersionInfo.textContent = ''; return; }
+    const datePart = d.toLocaleDateString('fr-FR');
+    const timePart = d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+    els.dbVersionInfo.textContent = `Version du ${datePart} à ${timePart}`;
   }
 
   function showBackupProgress(percentage, label){
@@ -2650,7 +2670,8 @@
     try{
       showExportProgress(0, 'Préparation…');
       const password = await getEncryptionPassword();
-      const envelope = await encryptJsonPayload(database, password);
+      const exportedAt = new Date().toISOString();
+      const envelope = await encryptJsonPayload(database, password, exportedAt);
 
       // Aucun téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
       showExportProgress(0, 'Envoi vers Vercel Blob… 0 %');
@@ -2663,6 +2684,7 @@
       );
 
       closeExportCodeModal();
+      setDbVersionInfo(exportedAt);
       setDbLog(`Export réussi — ${database.length} commande(s) envoyée(s) sur Vercel Blob (data-mg.aiae).`, false);
     }catch(e){
       // Affiché ici, dans la fenêtre — pas seulement en bas de page — pour que l'erreur (ex. "Code
@@ -2718,8 +2740,9 @@
       }
       showBackupProgress(100, 'Téléchargement terminé, déchiffrement…');
 
-      const data = await decryptJsonPayload(text, password);
-      await importParsedJsonArray(data, 'data-mg.aiae (Vercel Blob)');
+      const { records, exportedAt } = await decryptJsonPayload(text, password);
+      await importParsedJsonArray(records, 'data-mg.aiae (Vercel Blob)');
+      setDbVersionInfo(exportedAt);
     }catch(err){
       const msg = err && err.message ? err.message : 'erreur inconnue';
       // Message dédié pour l'erreur de mot de passe (déchiffrement AES échoué) plutôt que noyé dans
@@ -2742,6 +2765,7 @@
     database = [];
     await saveDatabase();
     render();
+    setDbVersionInfo(null);
     setDbLog('Base de données effacée.', false);
   });
 

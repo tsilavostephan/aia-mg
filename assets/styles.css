@@ -307,6 +307,7 @@
 
   .actions{ margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 0; }
   .actions-bottom{ margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .db-version-info{ margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 
   .carrier-link-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
   .carrier-link-label{ font-size:13px; min-width:150px; flex:1 1 auto; }

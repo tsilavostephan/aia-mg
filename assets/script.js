@@ -700,35 +700,95 @@
     renderSearchAlgoList();
   });
 
-  // ---------- stockage persistant (localStorage du navigateur) ----------
-  // Remarque : window.storage n'existe que dans l'aperçu Artifacts de Claude.ai — sur un vrai
-  // navigateur (Chrome Android, Safari, etc.) il n'existe pas, ce qui provoquait un plantage au
-  // démarrage. On utilise donc localStorage, disponible partout.
-  function loadDatabase(){
+  // ---------- stockage persistant (IndexedDB, avec repli localStorage) ----------
+  // La base de commandes elle-même reste entièrement en mémoire (le tableau "database") pendant
+  // que l'app tourne — tout l'affichage/la recherche travaillent déjà sur cette copie en RAM, sans
+  // jamais relire le stockage à chaque rendu. Ce qui posait problème, c'est la PERSISTANCE :
+  // localStorage est plafonné à environ 5-10 Mo par origine selon le navigateur, largement
+  // insuffisant pour une grosse base importée (confirmé par un QuotaExceededError réel). IndexedDB
+  // n'a pas cette limite basse (généralement plusieurs centaines de Mo à plusieurs Go, une part de
+  // l'espace disque libre) — c'est le mécanisme standard des navigateurs pour du stockage important.
+  const IDB_NAME = 'aia-storage';
+  const IDB_STORE = 'kv';
+
+  function openIdb(){
+    return new Promise((resolve, reject) => {
+      if(!('indexedDB' in window)){ reject(new Error('IndexedDB indisponible sur ce navigateur')); return; }
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('échec de l\'ouverture d\'IndexedDB'));
+    });
+  }
+
+  function idbGet(key){
+    return openIdb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  function idbSet(key, value){
+    return openIdb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  async function loadDatabase(){
     try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      database = raw ? JSON.parse(raw) : [];
+      let data = await idbGet(STORAGE_KEY);
+      if(data === undefined){
+        // Migration ponctuelle : reprend une base déjà sauvegardée dans l'ancien localStorage
+        // (avant le passage à IndexedDB), puis la bascule dans IndexedDB et libère la place.
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(raw){
+          try{
+            data = JSON.parse(raw);
+            await idbSet(STORAGE_KEY, data);
+            localStorage.removeItem(STORAGE_KEY);
+          }catch(e){ data = undefined; }
+        }
+      }
+      database = Array.isArray(data) ? data : [];
     }catch(e){
-      database = [];
+      // IndexedDB indisponible (ex. navigation privée stricte sur certains navigateurs) : repli
+      // sur localStorage seul, avec son quota plus restreint.
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        database = raw ? JSON.parse(raw) : [];
+      }catch(e2){
+        database = [];
+      }
     }
     render();
   }
 
-  function saveDatabase(){
+  async function saveDatabase(){
+    try{
+      await idbSet(STORAGE_KEY, database);
+      return;
+    }catch(idbError){
+      console.error('[saveDatabase] IndexedDB indisponible, repli localStorage :', idbError);
+    }
+    // Repli localStorage uniquement si IndexedDB a échoué — pour une grosse base, ce repli butera
+    // probablement lui aussi sur le quota bien plus faible de localStorage, d'où le message détaillé.
     try{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(database));
     }catch(e){
       const detail = e && e.name ? `${e.name}${e.message ? ' : ' + e.message : ''}` : (e && e.message) || 'erreur inconnue';
       let hint = '';
       if(e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)){
-        // La cause la plus fréquente en pratique : localStorage est limité à ~5-10 Mo selon le
-        // navigateur, et un gros import CSV peut faire dépasser ce quota d'un coup.
         let sizeInfo = '';
         try{
           const bytes = new Blob([JSON.stringify(database)]).size;
           sizeInfo = ` (base actuelle : ~${(bytes / 1024 / 1024).toFixed(1)} Mo, ${database.length} commande(s))`;
         }catch(e2){ /* estimation de taille indisponible, on continue sans */ }
-        hint = ` Le stockage local du navigateur (localStorage, généralement limité à 5-10 Mo) est plein${sizeInfo} — exportez la base en JSON pour la sauvegarder, puis réduisez le nombre de commandes conservées (ex. effacez les plus anciennes déjà livrées).`;
+        hint = ` IndexedDB a échoué et le repli localStorage (généralement limité à 5-10 Mo) est plein${sizeInfo} — exportez la base en JSON pour la sauvegarder, puis réduisez le nombre de commandes conservées (ex. effacez les plus anciennes déjà livrées).`;
       }else if(e && (e.name === 'SecurityError' || e.name === 'InvalidStateError')){
         hint = ' Le stockage local semble désactivé sur cet appareil/navigateur (navigation privée stricte, cookies/stockage bloqués dans les paramètres, ou stockage local désactivé par une extension).';
       }

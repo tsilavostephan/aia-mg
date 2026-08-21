@@ -29,6 +29,17 @@
     displayLimit: document.getElementById('displayLimit'),
     exportJsonBtn: document.getElementById('exportJsonBtn'),
     jsonFileInput: document.getElementById('jsonFileInput'),
+    exportJsonEncryptedBtn: document.getElementById('exportJsonEncryptedBtn'),
+    jsonEncryptedFileInput: document.getElementById('jsonEncryptedFileInput'),
+    encryptModalBg: document.getElementById('encryptModalBg'),
+    encryptModalTitle: document.getElementById('encryptModalTitle'),
+    encryptModalSubtext: document.getElementById('encryptModalSubtext'),
+    encryptPassword: document.getElementById('encryptPassword'),
+    encryptPasswordConfirm: document.getElementById('encryptPasswordConfirm'),
+    encryptPasswordConfirmRow: document.getElementById('encryptPasswordConfirmRow'),
+    encryptModalError: document.getElementById('encryptModalError'),
+    encryptModalConfirmBtn: document.getElementById('encryptModalConfirmBtn'),
+    encryptModalCancelBtn: document.getElementById('encryptModalCancelBtn'),
     dbLog: document.getElementById('dbLog'),
     clearBtn: document.getElementById('clearBtn'),
     carrierSection: document.getElementById('carrierSection'),
@@ -1857,6 +1868,8 @@
       closeSearchOptionsModal();
     }else if(els.fourPxApiConfigModalBg.style.display === 'block'){
       closeScrapeConfigModal();
+    }else if(els.encryptModalBg.style.display === 'block'){
+      closeEncryptModal();
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){
@@ -2359,43 +2372,16 @@
     }
   });
 
-  els.jsonFileInput.addEventListener('change', async (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-
-    let text;
-    try{
-      text = await readFileAsText(file);
-    }catch(err){
-      setDbLog(`${file.name} — échec de la lecture du fichier (${err && err.message ? err.message : 'erreur inconnue'}).`, true);
-      e.target.value = '';
-      return;
-    }
-
-    if(!text || text.trim().length === 0){
-      setDbLog(`${file.name} — le fichier est vide.`, true);
-      e.target.value = '';
-      return;
-    }
-
-    let parsed;
-    try{
-      parsed = JSON.parse(text);
-    }catch(err){
-      setDbLog(`${file.name} — ce n'est pas un JSON valide (${err.message}).`, true);
-      e.target.value = '';
-      return;
-    }
-
+  // Fusionne un tableau déjà décodé (JSON classique ou déchiffré) dans la base, avec la même
+  // logique de dédoublonnage par clé (N° Commande + Commande Amazon) que l'import CSV. Partagée
+  // entre l'import JSON classique et l'import JSON chiffré, pour ne pas dupliquer cette logique.
+  async function importParsedJsonArray(parsed, sourceLabel){
     if(!Array.isArray(parsed)){
-      setDbLog(`${file.name} — le fichier JSON doit contenir un tableau de commandes ([...]), pas un objet unique.`, true);
-      e.target.value = '';
+      setDbLog(`${sourceLabel} — le contenu doit être un tableau de commandes ([...]), pas un objet unique.`, true);
       return;
     }
-
     if(parsed.length === 0){
-      setDbLog(`${file.name} — le tableau JSON est vide, aucune commande à importer.`, true);
-      e.target.value = '';
+      setDbLog(`${sourceLabel} — le tableau est vide, aucune commande à importer.`, true);
       return;
     }
 
@@ -2427,18 +2413,221 @@
     });
 
     if(added === 0 && updated === 0){
-      setDbLog(`${file.name} — aucune entrée valide trouvée dans le tableau JSON (${skipped} élément(s) ignoré(s), format inattendu).`, true);
-      e.target.value = '';
+      setDbLog(`${sourceLabel} — aucune entrée valide trouvée dans le tableau JSON (${skipped} élément(s) ignoré(s), format inattendu).`, true);
       return;
     }
 
     await saveDatabase();
     render();
-    e.target.value = '';
     const jsonSummary = [];
     if(added > 0) jsonSummary.push(`${added} ajoutée(s)`);
     if(updated > 0) jsonSummary.push(`${updated} mise(s) à jour`);
-    setDbLog(`${file.name} — ${jsonSummary.join(', ')}.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
+    setDbLog(`${sourceLabel} — ${jsonSummary.join(', ')}.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
+  }
+
+  els.jsonFileInput.addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+
+    let text;
+    try{
+      text = await readFileAsText(file);
+    }catch(err){
+      setDbLog(`${file.name} — échec de la lecture du fichier (${err && err.message ? err.message : 'erreur inconnue'}).`, true);
+      e.target.value = '';
+      return;
+    }
+
+    if(!text || text.trim().length === 0){
+      setDbLog(`${file.name} — le fichier est vide.`, true);
+      e.target.value = '';
+      return;
+    }
+
+    let parsed;
+    try{
+      parsed = JSON.parse(text);
+    }catch(err){
+      setDbLog(`${file.name} — ce n'est pas un JSON valide (${err.message}).`, true);
+      e.target.value = '';
+      return;
+    }
+
+    await importParsedJsonArray(parsed, file.name);
+    e.target.value = '';
+  });
+
+  // ---------- export/import JSON chiffré (AES-256-GCM via l'API Web Crypto du navigateur) ----------
+  // Même format de données que l'export JSON classique, mais enveloppé dans un fichier protégé par
+  // mot de passe : sûr à partager (email, drive, clé USB) même si le fichier est intercepté, sans
+  // dépendance externe (Web Crypto est disponible nativement dans tous les navigateurs modernes).
+  // Le mot de passe n'est jamais stocké ni envoyé nulle part — seul son dérivé (PBKDF2) sert de clé
+  // de chiffrement, entièrement calculé et utilisé localement dans le navigateur.
+  const ENC_MAGIC = 'AIAENC1';
+  const ENC_PBKDF2_ITERATIONS = 250000;
+
+  // btoa/atob sur un Uint8Array direct plante ou est inexact pour de gros tableaux : on encode par
+  // blocs pour éviter tout dépassement de pile avec une grosse base (ex. 50 Mo).
+  function arrayBufferToBase64(buf){
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for(let i=0; i<bytes.length; i+=chunkSize){
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  }
+  function base64ToUint8Array(b64){
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function deriveAesKey(password, salt){
+    const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name:'PBKDF2', salt, iterations: ENC_PBKDF2_ITERATIONS, hash:'SHA-256' },
+      keyMaterial,
+      { name:'AES-GCM', length:256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async function encryptJsonPayload(data, password){
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveAesKey(password, salt);
+    const plaintext = new TextEncoder().encode(JSON.stringify(data));
+    const ciphertext = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, plaintext);
+    return JSON.stringify({
+      magic: ENC_MAGIC,
+      salt: arrayBufferToBase64(salt),
+      iv: arrayBufferToBase64(iv),
+      ciphertext: arrayBufferToBase64(ciphertext),
+    });
+  }
+
+  async function decryptJsonPayload(envelopeText, password){
+    let envelope;
+    try{
+      envelope = JSON.parse(envelopeText);
+    }catch(e){
+      throw new Error("ce n'est pas un fichier JSON chiffré valide.");
+    }
+    if(!envelope || envelope.magic !== ENC_MAGIC){
+      throw new Error("format non reconnu — ce n'est pas un fichier exporté avec « Exporter (chiffré) ».");
+    }
+    const salt = base64ToUint8Array(envelope.salt);
+    const iv = base64ToUint8Array(envelope.iv);
+    const ciphertext = base64ToUint8Array(envelope.ciphertext);
+    const key = await deriveAesKey(password, salt);
+    let plaintext;
+    try{
+      plaintext = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ciphertext);
+    }catch(e){
+      throw new Error('mot de passe incorrect ou fichier corrompu.');
+    }
+    return JSON.parse(new TextDecoder().decode(plaintext));
+  }
+
+  let pendingDecryptFile = null;
+  let encryptModalMode = null; // 'export' | 'import'
+
+  function openEncryptModal(mode){
+    encryptModalMode = mode;
+    els.encryptPassword.value = '';
+    els.encryptPasswordConfirm.value = '';
+    els.encryptModalError.textContent = '';
+    if(mode === 'export'){
+      els.encryptModalTitle.textContent = 'Exporter en JSON chiffré';
+      els.encryptModalSubtext.textContent = 'Choisissez un mot de passe pour protéger ce fichier — il vous sera demandé pour le réimporter.';
+      els.encryptPasswordConfirmRow.style.display = '';
+      els.encryptModalConfirmBtn.textContent = '🔒 Exporter';
+    }else{
+      els.encryptModalTitle.textContent = 'Importer un JSON chiffré';
+      els.encryptModalSubtext.textContent = 'Saisissez le mot de passe utilisé lors de l\'export de ce fichier.';
+      els.encryptPasswordConfirmRow.style.display = 'none';
+      els.encryptModalConfirmBtn.textContent = '🔓 Importer';
+    }
+    els.encryptModalBg.style.display = 'block';
+    els.encryptPassword.focus();
+  }
+
+  function closeEncryptModal(){
+    els.encryptModalBg.style.display = 'none';
+    pendingDecryptFile = null;
+    encryptModalMode = null;
+    els.jsonEncryptedFileInput.value = '';
+  }
+
+  els.exportJsonEncryptedBtn.addEventListener('click', ()=>{
+    if(database.length === 0){
+      setDbLog('Rien à exporter : la base de données est vide.', true);
+      return;
+    }
+    openEncryptModal('export');
+  });
+
+  els.jsonEncryptedFileInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    pendingDecryptFile = file;
+    openEncryptModal('import');
+  });
+
+  els.encryptModalCancelBtn.addEventListener('click', closeEncryptModal);
+  els.encryptModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.encryptModalBg) closeEncryptModal();
+  });
+
+  els.encryptModalConfirmBtn.addEventListener('click', async ()=>{
+    const password = els.encryptPassword.value;
+    if(!password){
+      els.encryptModalError.textContent = 'Veuillez saisir un mot de passe.';
+      return;
+    }
+
+    if(encryptModalMode === 'export'){
+      if(password !== els.encryptPasswordConfirm.value){
+        els.encryptModalError.textContent = 'Les deux mots de passe ne correspondent pas.';
+        return;
+      }
+      els.encryptModalConfirmBtn.disabled = true;
+      try{
+        const envelope = await encryptJsonPayload(database, password);
+        const blob = new Blob([envelope], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'base-commandes-' + new Date().toISOString().slice(0,10) + '.json.enc';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        closeEncryptModal();
+        setDbLog(`Export chiffré réussi — ${database.length} commande(s).`, false);
+      }catch(e){
+        els.encryptModalError.textContent = `Échec du chiffrement (${e && e.message ? e.message : 'erreur inconnue'}).`;
+      }finally{
+        els.encryptModalConfirmBtn.disabled = false;
+      }
+    }else{
+      if(!pendingDecryptFile) return;
+      const file = pendingDecryptFile;
+      els.encryptModalConfirmBtn.disabled = true;
+      try{
+        const text = await readFileAsText(file);
+        const data = await decryptJsonPayload(text, password);
+        closeEncryptModal();
+        await importParsedJsonArray(data, file.name);
+      }catch(e){
+        els.encryptModalError.textContent = e && e.message ? e.message : 'Échec du déchiffrement.';
+      }finally{
+        els.encryptModalConfirmBtn.disabled = false;
+      }
+    }
   });
 
   els.clearBtn.addEventListener('click', async ()=>{

@@ -34,11 +34,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if(event.request.method !== 'GET') return;
 
-  // /api/version est justement l'endpoint que le client interroge pour détecter qu'une nouvelle
-  // version a été déployée (voir assets/script.js) — le servir depuis le cache "cache d'abord"
-  // ci-dessous le figerait indéfiniment sur la première version vue et casserait la détection.
-  // Toujours réseau, jamais de repli cache (une réponse obsolète serait pire qu'une erreur ici).
-  if(event.request.url.endsWith('/api/version')){
+  // Toujours réseau, jamais de cache pour ces deux endpoints :
+  // - /api/version : c'est justement ce que le client interroge pour détecter qu'une nouvelle
+  //   version a été déployée (voir assets/script.js) — le mettre en cache le figerait sur la
+  //   première version vue et casserait la détection.
+  // - /api/login-code : renvoie le code d'accès en clair (voir api/login-code.js) — le mettre en
+  //   cache le rendrait lisible par quiconque inspecte le cache du service worker, sans même être
+  //   authentifié à ce moment-là.
+  if(event.request.url.endsWith('/api/version') || event.request.url.endsWith('/api/login-code')){
     event.respondWith(fetch(event.request));
     return;
   }

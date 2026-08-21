@@ -95,14 +95,11 @@
   <div class="list-scroll">
     <div id="dbCards" class="db-cards"></div>
   </div>
-  <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer, ou un JSON exporté lors d'une session précédente (la base n'est pas conservée automatiquement entre deux visites).</div>
+  <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer, ou un fichier .aiae exporté lors d'une session précédente (la base n'est pas conservée automatiquement entre deux visites).</div>
   <div class="actions actions-bottom">
-    <button id="exportJsonBtn" class="secondary">📤 Exporter en JSON</button>
-    <label class="file-btn" for="jsonFileInput">📥 Importer un JSON</label>
-    <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;">
-    <button id="exportJsonEncryptedBtn" class="secondary" title="Exporte un fichier JSON protégé par mot de passe, sûr à partager">🔒 Exporter (chiffré)</button>
-    <label class="file-btn" for="jsonEncryptedFileInput" title="Importe un fichier exporté avec « Exporter (chiffré) »">🔒 Importer (chiffré)</label>
-    <input type="file" id="jsonEncryptedFileInput" accept=".enc,.json.enc" style="display:none;">
+    <button id="exportJsonEncryptedBtn" class="secondary" title="Télécharge data-mg.aiae, chiffré automatiquement">🔒 Exporter</button>
+    <label class="file-btn" for="jsonEncryptedFileInput" title="Importe un fichier .aiae exporté par cette app">🔒 Importer</label>
+    <input type="file" id="jsonEncryptedFileInput" accept=".aiae" style="display:none;">
     <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
   </div>
 </fieldset>
@@ -197,28 +194,6 @@
       <button id="fourPxApiConfigSaveBtn">💾 Enregistrer</button>
       <button id="fourPxApiConfigCancelBtn" class="secondary">✕ Annuler</button>
     </div>
-  </div>
-</div>
-
-<div id="encryptModalBg" class="modal-bg" style="display:none;">
-  <div class="modal-box modal-box-narrow">
-    <h2 class="modal-title" id="encryptModalTitle">Exporter en JSON chiffré</h2>
-    <p class="modal-subtext" id="encryptModalSubtext"></p>
-    <div class="row"><label>Mot de passe<br>
-      <input type="password" id="encryptPassword" autocomplete="new-password" style="width:100%;">
-    </label></div>
-    <div class="row" id="encryptPasswordConfirmRow"><label>Confirmer le mot de passe<br>
-      <input type="password" id="encryptPasswordConfirm" autocomplete="new-password" style="width:100%;">
-    </label></div>
-    <div id="encryptModalError" class="modal-error"></div>
-    <div class="actions">
-      <button id="encryptModalConfirmBtn">🔒 Continuer</button>
-      <button id="encryptModalCancelBtn" class="secondary">✕ Annuler</button>
-    </div>
-    <p class="modal-footnote">
-      Mot de passe oublié = données irrécupérables : il n'y a pas de porte dérobée, le fichier est
-      chiffré localement dans votre navigateur (AES-256, aucune donnée envoyée à un serveur).
-    </p>
   </div>
 </div>
 

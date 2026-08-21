@@ -1,5 +1,8 @@
 {
   "functions": {
+    "api/version.js": {
+      "includeFiles": "assets/version.json"
+    },
     "api/scrape-4px.js": {
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"

@@ -34,11 +34,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if(event.request.method !== 'GET') return;
 
-  // version.json est justement le fichier que le client interroge pour détecter qu'une nouvelle
+  // /api/version est justement l'endpoint que le client interroge pour détecter qu'une nouvelle
   // version a été déployée (voir assets/script.js) — le servir depuis le cache "cache d'abord"
   // ci-dessous le figerait indéfiniment sur la première version vue et casserait la détection.
   // Toujours réseau, jamais de repli cache (une réponse obsolète serait pire qu'une erreur ici).
-  if(event.request.url.endsWith('/assets/version.json')){
+  if(event.request.url.endsWith('/api/version')){
     event.respondWith(fetch(event.request));
     return;
   }

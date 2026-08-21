@@ -2480,20 +2480,25 @@
   }
 
   // ---------- détection de nouvelle version déployée ----------
-  // assets/version.json est régénéré à chaque build Vercel (voir scripts/generate-version.mjs) avec
-  // un numéro v1.2.DD.MM.HH horodaté au moment du déploiement. On le charge une première fois pour
-  // afficher la version actuellement chargée, puis on le réinterroge périodiquement (sans cache
-  // HTTP) : s'il a changé, une nouvelle version a été déployée pendant que cette page était ouverte.
+  // /api/version lit assets/version.json (régénéré à chaque build Vercel, voir
+  // scripts/generate-version.mjs) et renvoie un numéro v1.2.DD.MM.HH horodaté au moment du
+  // déploiement. On passe par une fonction serverless plutôt que de servir ce fichier directement
+  // comme asset statique : sur Vercel, les fichiers sous /assets sont servis depuis l'arborescence
+  // Git du projet (qui n'a jamais ce fichier généré, volontairement absent du dépôt), alors que les
+  // fonctions sont construites après "npm install" et voient bien le fichier généré par postinstall.
+  // On charge une première fois pour afficher la version actuellement chargée, puis on réinterroge
+  // périodiquement (sans cache HTTP) : si la valeur change, une nouvelle version a été déployée
+  // pendant que cette page était ouverte.
   let loadedAppVersion = null;
 
   async function fetchAppVersion(){
     try{
-      const res = await fetch('assets/version.json', { cache: 'no-store' });
+      const res = await fetch('/api/version', { cache: 'no-store' });
       if(!res.ok) return null;
       const data = await res.json();
       return data && data.version ? data.version : null;
     }catch(e){
-      return null; // hors ligne, ou version.json absent (ex. build local sans postinstall) : ignoré
+      return null; // hors ligne, ou version indisponible (ex. build local sans postinstall) : ignoré
     }
   }
 

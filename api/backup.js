@@ -61,6 +61,13 @@ module.exports = async function handler(req, res) {
     }
 
     try {
+      // Simple vérification du code (déverrouillage de l'app côté client, voir assets/script.js) —
+      // le contrôle exportCode ci-dessus a déjà eu lieu ; il ne reste rien d'autre à faire ici.
+      if (body.action === 'verify-code') {
+        res.status(200).json({ ok: true });
+        return;
+      }
+
       if (body.action === 'chunk') {
         const { uploadId, chunkIndex, data } = body;
         if (!uploadId || typeof chunkIndex !== 'number' || typeof data !== 'string') {

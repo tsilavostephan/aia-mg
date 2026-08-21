@@ -62,8 +62,9 @@ parties « backend » sont quelques fonctions serverless dans `/api` (scraping e
     transforment un numéro collé/scanné (ex. extraction depuis un code-barres) avant de chercher
     une correspondance. Entièrement personnalisable via une fenêtre dédiée (ajout/suppression de
     règles, export/import en XML).
-- Export/import de toute la base au format JSON.
-- Mode plein écran pour la section base de données (bouton ⛶).
+- Verrouillé par défaut à la connexion : seule cette section est visible, export désactivé.
+  Alt+T (ou le bouton 🔒) déverrouille tout avec un code dédié, pour la session.
+- Export/import chiffrés (`.aiae`) via Vercel Blob — voir section Sauvegarde ci-dessous.
 
 ### 4. Authentification
 - L'ensemble du site (pages et API) est protégé par un **code d'accès** unique, vérifié par un
@@ -168,8 +169,8 @@ externe (elles pilotent un navigateur headless directement).
      transporteurs éligibles d'un coup.
 3. **Rechercher une commande** : utiliser le champ de recherche de la section 3 (scan possible via
    l'icône caméra), ou parcourir/filtrer la liste des commandes.
-4. **Exporter/sauvegarder** : utiliser **Exporter en JSON** pour conserver une copie de la base, ou
-   **Importer un JSON** pour la restaurer.
+4. **Sauvegarder** : Alt+T pour déverrouiller, puis **🔒 Exporter** (envoie sur Vercel Blob,
+   chiffré) ou **🔒 Importer** (récupère la dernière sauvegarde, automatique, sans code).
 
 ---
 

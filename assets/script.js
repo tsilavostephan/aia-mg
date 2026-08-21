@@ -35,9 +35,6 @@
     dbVersionInfo: document.getElementById('dbVersionInfo'),
     exportCodeModalBg: document.getElementById('exportCodeModalBg'),
     exportCodeInput: document.getElementById('exportCodeInput'),
-    exportCodeProgressWrap: document.getElementById('exportCodeProgressWrap'),
-    exportCodeProgressBar: document.getElementById('exportCodeProgressBar'),
-    exportCodeProgressText: document.getElementById('exportCodeProgressText'),
     exportCodeModalError: document.getElementById('exportCodeModalError'),
     exportCodeConfirmBtn: document.getElementById('exportCodeConfirmBtn'),
     exportCodeCancelBtn: document.getElementById('exportCodeCancelBtn'),
@@ -1897,7 +1894,7 @@
     { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click() },
     { code:'KeyJ', label:'Importer une base (.aiae)',           run: () => els.importBackupBtn.click() },
     { code:'KeyX', label:'Effacer la base de données',          run: () => els.clearBtn.click() },
-    { code:'KeyP', label:'Basculer le plein écran (section 3)', run: () => els.focusDbBtn.click() },
+    { code:'KeyT', label:'Verrouiller / déverrouiller',         run: () => els.focusDbBtn.click() },
   ];
 
   // Étiquette affichée par défaut (position QWERTY de la touche, ex. "KeyQ" -> "Q") — mise à jour
@@ -2312,15 +2309,74 @@
   });
   els.search.addEventListener('change', applyTrackingTransformIfNeeded);
 
-  // ---------- mode plein écran de la section "2. Base de données" ----------
-  // Le bouton en haut à droite de la section bascule l'affichage : seuls l'en-tête de l'app et
-  // cette section restent visibles. Seul un nouveau clic sur ce même bouton permet de revenir en
-  // arrière — volontairement, la touche Échap ne fait rien dans ce mode.
-  els.focusDbBtn.addEventListener('click', ()=>{
-    const active = document.body.classList.toggle('focus-mode');
-    els.focusDbBtn.textContent = active ? '✕' : '⛶';
-    els.focusDbBtn.title = active ? 'Quitter le mode plein écran' : 'Afficher uniquement cette section';
+  // ---------- verrouillage : au départ, section 3 seule + export bloqué ----------
+  // Dès la connexion, l'app démarre verrouillée : seule la section 3 est visible (mode plein
+  // écran) et le bouton Exporter est désactivé. Alt+T (ou le bouton 🔒) demande le code
+  // d'exportation pour tout déverrouiller d'un coup — toutes les sections réapparaissent et
+  // Exporter n'a plus besoin de code pour le reste de la session (code mémorisé côté client).
+  // Alt+T une seconde fois reverrouille instantanément, sans code.
+  let exportUnlocked = false;
+  let unlockedExportCode = null;
+
+  function syncLockUi(){
+    document.body.classList.toggle('focus-mode', !exportUnlocked);
+    els.focusDbBtn.textContent = exportUnlocked ? '🔓' : '🔒';
+    els.focusDbBtn.title = exportUnlocked ? 'Déverrouillé — Alt+T pour verrouiller' : 'Verrouillé — Alt+T pour déverrouiller';
+    els.exportJsonEncryptedBtn.disabled = !exportUnlocked;
+    els.exportJsonEncryptedBtn.title = exportUnlocked ? 'Exporter vers Vercel Blob' : 'Verrouillé — Alt+T pour déverrouiller';
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
+  }
+
+  function openExportCodeModal(){
+    els.exportCodeInput.value = '';
+    els.exportCodeModalError.textContent = '';
+    els.exportCodeInput.disabled = false;
+    els.exportCodeConfirmBtn.disabled = false;
+    els.exportCodeCancelBtn.disabled = false;
+    els.exportCodeModalBg.style.display = 'block';
+    els.exportCodeInput.focus();
+  }
+  function closeExportCodeModal(){
+    els.exportCodeModalBg.style.display = 'none';
+  }
+
+  els.focusDbBtn.addEventListener('click', ()=>{
+    if(exportUnlocked){
+      exportUnlocked = false;
+      unlockedExportCode = null;
+      syncLockUi();
+    }else{
+      openExportCodeModal();
+    }
+  });
+  els.exportCodeCancelBtn.addEventListener('click', closeExportCodeModal);
+  els.exportCodeModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.exportCodeModalBg) closeExportCodeModal();
+  });
+
+  els.exportCodeConfirmBtn.addEventListener('click', async ()=>{
+    const code = els.exportCodeInput.value;
+    if(!code){
+      els.exportCodeModalError.textContent = 'Code requis.';
+      return;
+    }
+    els.exportCodeModalError.textContent = '';
+    els.exportCodeInput.disabled = true;
+    els.exportCodeConfirmBtn.disabled = true;
+    els.exportCodeCancelBtn.disabled = true;
+    try{
+      await postBackupAction('verify-code', { exportCode: code });
+      unlockedExportCode = code;
+      exportUnlocked = true;
+      syncLockUi();
+      closeExportCodeModal();
+    }catch(e){
+      els.exportCodeModalError.textContent = e && e.message ? e.message : 'Échec de la vérification.';
+    }finally{
+      els.exportCodeInput.disabled = false;
+      els.exportCodeConfirmBtn.disabled = false;
+      els.exportCodeCancelBtn.disabled = false;
+    }
   });
 
   // ---------- "Détails auto" : ouvre automatiquement le détail d'un colis en mode plein écran ----------
@@ -2617,85 +2673,36 @@
     });
   }
 
-  // ---------- "Exporter" : demande un code d'exportation dédié avant d'envoyer sur Vercel Blob ----------
-  // Volontairement distinct du code de connexion (dérivé automatiquement pour le chiffrement, voir
-  // getEncryptionPassword) : celui-ci ne fait que confirmer explicitement l'écrasement de la
-  // sauvegarde existante. Vérifié côté serveur (api/backup.js) contre APP_EXPORT_CODE — jamais
-  // stocké ni comparé côté client. La fenêtre reste ouverte pendant tout l'envoi (avec sa propre
-  // barre de progression) et affiche l'erreur directement dedans en cas d'échec (code incorrect,
-  // délai dépassé…) — plutôt que de se refermer aveuglément et de ne montrer l'erreur qu'en bas de
-  // page, où elle pouvait passer inaperçue.
-  function openExportCodeModal(){
-    els.exportCodeInput.value = '';
-    els.exportCodeModalError.textContent = '';
-    els.exportCodeProgressWrap.style.display = 'none';
-    els.exportCodeInput.disabled = false;
-    els.exportCodeConfirmBtn.disabled = false;
-    els.exportCodeCancelBtn.disabled = false;
-    els.exportCodeModalBg.style.display = 'block';
-    els.exportCodeInput.focus();
-  }
-  function closeExportCodeModal(){
-    els.exportCodeModalBg.style.display = 'none';
-  }
-  function showExportProgress(percentage, label){
-    els.exportCodeProgressWrap.style.display = '';
-    els.exportCodeProgressBar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
-    els.exportCodeProgressText.textContent = label;
-  }
-
-  els.exportJsonEncryptedBtn.addEventListener('click', ()=>{
+  els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
+    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
     if(database.length === 0){
       setDbLog('Rien à exporter : la base de données est vide.', true);
       return;
     }
-    openExportCodeModal();
-  });
-  els.exportCodeCancelBtn.addEventListener('click', closeExportCodeModal);
-  els.exportCodeModalBg.addEventListener('click', (e)=>{
-    if(e.target === els.exportCodeModalBg) closeExportCodeModal();
-  });
-
-  els.exportCodeConfirmBtn.addEventListener('click', async ()=>{
-    const exportCode = els.exportCodeInput.value;
-    if(!exportCode){
-      els.exportCodeModalError.textContent = "Veuillez saisir le code d'exportation.";
-      return;
-    }
-
-    els.exportCodeModalError.textContent = '';
-    els.exportCodeInput.disabled = true;
-    els.exportCodeConfirmBtn.disabled = true;
-    els.exportCodeCancelBtn.disabled = true;
+    els.exportJsonEncryptedBtn.disabled = true;
     try{
-      showExportProgress(0, 'Préparation…');
+      showBackupProgress(0, 'Préparation…');
       const password = await getEncryptionPassword();
       const exportedAt = new Date().toISOString();
       const envelope = await encryptJsonPayload(database, password, exportedAt);
 
       // Aucun téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
-      showExportProgress(0, 'Envoi vers Vercel Blob… 0 %');
+      showBackupProgress(0, 'Envoi vers Vercel Blob… 0 %');
       await withTimeout(
-        uploadEnvelopeInChunks(envelope, exportCode, (percentage, totalChunks) =>
-          showExportProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} % (${totalChunks} morceau(x))`)
+        uploadEnvelopeInChunks(envelope, unlockedExportCode, (percentage, totalChunks) =>
+          showBackupProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} % (${totalChunks} morceau(x))`)
         ),
         180000,
-        "Délai dépassé (3 min) sans confirmation de Vercel Blob — vérifiez que le Blob Store est bien connecté au projet, puis réessayez."
+        "Délai dépassé (3 min) — vérifiez que le Blob Store est bien connecté au projet, puis réessayez."
       );
 
-      closeExportCodeModal();
       setDbVersionInfo(exportedAt);
-      setDbLog(`Export réussi — ${database.length} commande(s) envoyée(s) sur Vercel Blob (data-mg.aiae).`, false);
+      setDbLog(`Export réussi — ${database.length} commande(s) envoyée(s) sur Vercel Blob.`, false);
     }catch(e){
-      // Affiché ici, dans la fenêtre — pas seulement en bas de page — pour que l'erreur (ex. "Code
-      // d'exportation incorrect.", ou un mot de passe qui aurait fini par échouer plus loin) soit
-      // vue immédiatement, là où l'utilisateur vient de saisir le code.
-      els.exportCodeModalError.textContent = e && e.message ? e.message : 'Échec de l\'export (erreur inconnue).';
+      setDbLog(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
-      els.exportCodeProgressWrap.style.display = 'none';
-      els.exportCodeInput.disabled = false;
-      els.exportCodeConfirmBtn.disabled = false;
-      els.exportCodeCancelBtn.disabled = false;
+      hideBackupProgress();
+      els.exportJsonEncryptedBtn.disabled = !exportUnlocked;
     }
   });
 
@@ -2770,6 +2777,7 @@
   });
 
   loadDatabase();
+  syncLockUi(); // état verrouillé par défaut à chaque connexion (voir plus haut)
 
   // Enregistrement du service worker (mode PWA installable). On ne le fait que si le contexte
   // le permet (HTTPS ou localhost) : sur file:// ou http simple, l'API n'existe pas et ce bloc

@@ -70,7 +70,7 @@
 <fieldset id="dbSection">
   <h2 class="section-title">
     <span>3. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s), <span id="resolvedCount">0</span> colis mis à jour)</span>
-    <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Afficher uniquement cette section">⛶</button>
+    <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Verrouillé — Alt+T pour déverrouiller">🔒</button>
   </h2>
   <div class="row search-row">
     <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)">
@@ -103,7 +103,7 @@
     <div id="backupProgressText" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
   </div>
   <div class="actions actions-bottom">
-    <button id="exportJsonEncryptedBtn" class="secondary" title="Chiffre et envoie data-mg.aiae sur Vercel Blob (demande un code d'exportation)">🔒 Exporter</button>
+    <button id="exportJsonEncryptedBtn" class="secondary" title="Verrouillé — Alt+T pour déverrouiller" disabled>🔒 Exporter</button>
     <button id="importBackupBtn" class="secondary" title="Récupère automatiquement la dernière sauvegarde stockée sur Vercel Blob">🔒 Importer</button>
     <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
     <span id="dbVersionInfo" class="db-version-info" title="Date/heure de l'export dont provient la base actuellement chargée"></span>
@@ -205,20 +205,14 @@
 
 <div id="exportCodeModalBg" class="modal-bg" style="display:none;">
   <div class="modal-box modal-box-narrow">
-    <h2 class="modal-title">Code d'exportation</h2>
-    <p class="modal-subtext">Confirmez l'envoi de la sauvegarde sur Vercel Blob (écrase la précédente).</p>
-    <div class="row"><label>Code d'exportation<br>
+    <h2 class="modal-title">Déverrouiller</h2>
+    <p class="modal-subtext">Code requis pour afficher toutes les sections et activer l'export.</p>
+    <div class="row"><label>Code<br>
       <input type="password" id="exportCodeInput" autocomplete="off" style="width:100%;">
     </label></div>
-    <div id="exportCodeProgressWrap" style="display:none; margin:10px 0;">
-      <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
-        <div id="exportCodeProgressBar" style="height:100%; width:0%; background:var(--primary); transition:width .15s ease;"></div>
-      </div>
-      <div id="exportCodeProgressText" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
-    </div>
     <div id="exportCodeModalError" class="modal-error"></div>
     <div class="actions">
-      <button id="exportCodeConfirmBtn">🔒 Exporter</button>
+      <button id="exportCodeConfirmBtn">🔓 Déverrouiller</button>
       <button id="exportCodeCancelBtn" class="secondary">✕ Annuler</button>
     </div>
   </div>

@@ -1042,34 +1042,34 @@
   const CARRIERS = [
     { key:'cainiao',    label:'CAINIAO',    match:['CAINIAO'],                 baseUrl:'https://track.cainiao.com/orderTrack?mailNoList=', kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur le bouton « Copy Overview » puis collez le texte copié ci-dessous.',
-      scrapeEndpoint: '/api/scrape-cainiao' },
+      scrapeEndpoint: '/api/scrape' },
     { key:'4px',        label:'4PX',        match:['4PX'],                     baseUrl:'https://track.4px.com/#/result/0/',                 kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le numéro de suivi affiché sous « Numéro de suivi » pour chaque colis, puis collez-les ci-dessous au format « numéro de colis<TAB>numéro dernier kilométrique ».',
-      scrapeEndpoint: '/api/scrape-4px' },
+      scrapeEndpoint: '/api/scrape' },
     { key:'yanwen',     label:'YANWEN',     match:['YANWEN'],                  baseUrl:'https://track.yw56.com.cn/en/querydel?nums=',      kmColIndex:1, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », appuyez sur Entrée puis cliquez sur le bouton de copie des résultats, et collez le texte copié ci-dessous.',
-      scrapeEndpoint: '/api/scrape-yanwen' },
+      scrapeEndpoint: '/api/scrape' },
     { key:'yunexpress', label:'Yun Express',match:['YUN EXPRESS','YUNEXPRESS'],baseUrl:'https://www.yuntrack.com/parcelTracking?id=',       kmColIndex:2, mode:'url',
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », survolez le bouton « Copy & Export » puis cliquez sur « Copy Summary » dans le menu, et collez le texte copié ci-dessous.',
-      scrapeEndpoint: '/api/scrape-yunexpress' },
+      scrapeEndpoint: '/api/scrape' },
     { key:'sfc',        label:'SFC',        match:['SFC'],                     baseUrl:'https://www.sendfromchina.com/track',                kmColIndex:2, mode:'clipboard', pasteHasHeader:true, matchColIndex:1,
-      scrapeEndpoint: '/api/scrape-sfc' },
+      scrapeEndpoint: '/api/scrape' },
     { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
-      scrapeEndpoint: '/api/scrape-landmark' },
+      scrapeEndpoint: '/api/scrape' },
     { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard', chunkSize:20,
       pasteHint: 'Collez les numéros copiés dans la zone de recherche de la page (un par ligne), cliquez sur le bouton de recherche, puis copiez les résultats affichés et collez-les ci-dessous.',
-      scrapeEndpoint: '/api/scrape-topyou' },
+      scrapeEndpoint: '/api/scrape' },
     // chunkSize:1 reste nécessaire pour les liens manuels "Ouvrir" (le site n'accepte qu'un seul
     // numéro par lien) ; scrapeChunkSize regroupe en revanche plusieurs numéros par appel de
-    // fonction Vercel pour le scraping automatique (api/scrape-cne.js boucle en interne sur chaque
+    // fonction Vercel pour le scraping automatique (lib/scrapers/cne.js boucle en interne sur chaque
     // numéro dans le même navigateur déjà lancé), pour éviter un lancement de navigateur par colis.
     { key:'cne',        label:'CNE',        match:['CNE'],                     baseUrl:'https://www.cne.com/en/track?no=',                   kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
       pasteHint: 'Ce site n\'affiche qu\'un seul colis par lien — ouvrez chaque lien un par un, copiez le numéro dernier kilométrique affiché, puis collez-le ci-dessous.',
-      scrapeEndpoint: '/api/scrape-cne' },
+      scrapeEndpoint: '/api/scrape' },
     { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur l\'icône de copie des résultats puis collez le texte copié ci-dessous.',
-      scrapeEndpoint: '/api/scrape-sunyou' },
+      scrapeEndpoint: '/api/scrape' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1508,9 +1508,11 @@
   }
 
   // ---------- scraping via une fonction backend Vercel (4PX, YANWEN, ...) ----------
-  // Chaque transporteur pris en charge pour le scraping a sa propre fonction serverless (voir
-  // g.scrapeEndpoint dans CARRIERS, ex. api/scrape-4px.js / api/scrape-yanwen.js) qui ouvre
-  // réellement sa page de suivi dans un navigateur headless, clique sur le bon bouton de copie et
+  // Un unique endpoint /api/scrape (voir g.scrapeEndpoint dans CARRIERS) dispatche vers le module
+  // du bon transporteur selon le champ "carrier" du corps de la requête (voir api/scrape.js et
+  // lib/scrapers/*.js) — regroupé ainsi plutôt qu'une fonction par transporteur pour rester sous la
+  // limite de fonctions serverless du plan Vercel Hobby (12 max). Chaque module ouvre réellement sa
+  // page de suivi dans un navigateur headless, clique sur le bon bouton de copie et
   // lit le texte copié dans le presse-papier du navigateur headless. Toutes renvoient le même
   // format, déjà découpé selon la règle de l'import manuel : { results: [{ trackingNumber, lastKm }, ...] }.
   //
@@ -1542,6 +1544,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            carrier: g.key,
             trackingNumbers: chunk,
             pageLoadWaitMs: config.pageLoadWaitMs || 4000,
             clickWaitMs: config.clickWaitMs || 600,

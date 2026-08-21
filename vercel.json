@@ -3,39 +3,7 @@
     "api/version.js": {
       "includeFiles": "assets/version.json"
     },
-    "api/scrape-4px.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-cainiao.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-yanwen.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-yunexpress.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-sfc.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-landmark.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-topyou.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-cne.js": {
-      "maxDuration": 60,
-      "includeFiles": "api/chromium-bin/**"
-    },
-    "api/scrape-sunyou.js": {
+    "api/scrape.js": {
       "maxDuration": 60,
       "includeFiles": "api/chromium-bin/**"
     }

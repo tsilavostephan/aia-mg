@@ -91,20 +91,28 @@ assets/
 api/
   auth.js                   Vérifie le code d'accès et pose le cookie de session
   logout.js                 Efface le cookie de session
+  login-code.js              Renvoie le code d'accès à une session déjà connectée (dérivation du mot de passe de chiffrement .aiae)
+  backup.js                  Sauvegarde/récupère le fichier .aiae chiffré sur Vercel Blob Storage
+  version.js                 Renvoie le numéro de version généré au build (détection de mise à jour)
+  scrape.js                  Point d'entrée unique du scraping : dispatche vers lib/scrapers/*.js selon le champ "carrier"
   _scrapeLib.js              Fonctions partagées par les fonctions de scraping (Chromium headless, parsing, CORS…)
   _rateLimit.js              Verrouillage progressif par IP après des échecs de connexion répétés (KV/Upstash ou repli en mémoire)
-  scrape-4px.js              Scraping 4PX officiel (clic sur chaque colis de la liste)
-  scrape-cainiao.js          Scraping CAINIAO (bouton "Copy Overview")
-  scrape-yanwen.js           Scraping YANWEN (soumission du formulaire + bouton copie)
-  scrape-yunexpress.js       Scraping Yun Express (menu "Copy & Export" > "Copy Summary")
-  scrape-sfc.js              Scraping SFC (recherche + menu de copie)
-  scrape-landmark.js         Scraping LANDMARK (lecture directe du DOM, sans bouton copier)
-  scrape-topyou.js           Scraping TopYou (éditeur CodeMirror + lecture directe du DOM)
-  scrape-cne.js              Scraping CNE (un lien par colis, lecture directe du DOM)
-  scrape-sunyou.js           Scraping Sunyou (bouton copie détaillé, fenêtre desktop large)
+
+lib/scrapers/                Un module par transporteur (hors de /api : pas compté dans la limite de 12
+                              fonctions serverless du plan Vercel Hobby), tous appelés via api/scrape.js
+  4px.js                     Scraping 4PX officiel (clic sur chaque colis de la liste)
+  cainiao.js                 Scraping CAINIAO (bouton "Copy Overview")
+  yanwen.js                  Scraping YANWEN (soumission du formulaire + bouton copie)
+  yunexpress.js              Scraping Yun Express (menu "Copy & Export" > "Copy Summary")
+  sfc.js                     Scraping SFC (recherche + menu de copie)
+  landmark.js                Scraping LANDMARK (lecture directe du DOM, sans bouton copier)
+  topyou.js                  Scraping TopYou (éditeur CodeMirror + lecture directe du DOM)
+  cne.js                     Scraping CNE (un lien par colis, lecture directe du DOM)
+  sunyou.js                  Scraping Sunyou (bouton copie détaillé, fenêtre desktop large)
 
 scripts/
   postinstall.mjs            Copie les fichiers Chromium nécessaires au scraping lors du build Vercel
+  generate-version.mjs       Génère le numéro de version et tamponne le service worker à chaque build
 
 vercel.json                  Configuration des fonctions serverless (durée max, fichiers inclus)
 package.json                 Dépendances (puppeteer-core, @sparticuz/chromium-min)

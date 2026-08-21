@@ -28,7 +28,7 @@
     search: document.getElementById('search'),
     displayLimit: document.getElementById('displayLimit'),
     exportJsonEncryptedBtn: document.getElementById('exportJsonEncryptedBtn'),
-    jsonEncryptedFileInput: document.getElementById('jsonEncryptedFileInput'),
+    importBackupBtn: document.getElementById('importBackupBtn'),
     dbLog: document.getElementById('dbLog'),
     clearBtn: document.getElementById('clearBtn'),
     carrierSection: document.getElementById('carrierSection'),
@@ -1878,7 +1878,7 @@
     { code:'KeyQ', label:'Rechercher (curseur dans le champ)',  run: () => { els.search.focus(); els.search.select(); } },
     { code:'KeyS', label:'Scanner un code-barres / QR code',    run: () => els.scanBtn.click() },
     { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click() },
-    { code:'KeyJ', label:'Importer une base (.aiae)',           run: () => els.jsonEncryptedFileInput.click() },
+    { code:'KeyJ', label:'Importer une base (.aiae)',           run: () => els.importBackupBtn.click() },
     { code:'KeyX', label:'Effacer la base de données',          run: () => els.clearBtn.click() },
     { code:'KeyP', label:'Basculer le plein écran (section 3)', run: () => els.focusDbBtn.click() },
   ];
@@ -2494,6 +2494,7 @@
     try{
       const password = await getEncryptionPassword();
       const envelope = await encryptJsonPayload(database, password);
+
       const blob = new Blob([envelope], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -2503,7 +2504,26 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setDbLog(`Export réussi — ${database.length} commande(s) (data-mg.aiae).`, false);
+
+      // Envoie aussi la même enveloppe chiffrée sur Vercel Blob (voir api/backup.js), pour que
+      // "Importer" puisse la récupérer automatiquement plus tard sans passer par ce fichier local.
+      // Un échec ici n'invalide pas l'export local qui vient de réussir — juste signalé à part.
+      let backupNote = '';
+      try{
+        const res = await fetch('/api/backup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: envelope,
+        });
+        if(!res.ok){
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+        }
+      }catch(backupErr){
+        backupNote = ` ⚠️ Sauvegarde sur Vercel Blob échouée (${backupErr && backupErr.message ? backupErr.message : 'erreur inconnue'}) — le fichier local a bien été téléchargé.`;
+      }
+
+      setDbLog(`Export réussi — ${database.length} commande(s) (data-mg.aiae).${backupNote}`, !!backupNote);
     }catch(e){
       setDbLog(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
@@ -2511,18 +2531,22 @@
     }
   });
 
-  els.jsonEncryptedFileInput.addEventListener('change', async (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
+  els.importBackupBtn.addEventListener('click', async ()=>{
+    els.importBackupBtn.disabled = true;
     try{
       const password = await getEncryptionPassword();
-      const text = await readFileAsText(file);
+      const res = await fetch('/api/backup', { cache: 'no-store' });
+      if(!res.ok){
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+      }
+      const text = await res.text();
       const data = await decryptJsonPayload(text, password);
-      await importParsedJsonArray(data, file.name);
+      await importParsedJsonArray(data, 'data-mg.aiae (Vercel Blob)');
     }catch(err){
-      setDbLog(`${file.name} — échec de l'import (${err && err.message ? err.message : 'erreur inconnue'}).`, true);
+      setDbLog(`Échec de l'import depuis Vercel Blob (${err && err.message ? err.message : 'erreur inconnue'}).`, true);
     }finally{
-      e.target.value = '';
+      els.importBackupBtn.disabled = false;
     }
   });
 

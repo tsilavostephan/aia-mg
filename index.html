@@ -97,9 +97,8 @@
   </div>
   <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer, ou un fichier .aiae exporté lors d'une session précédente (la base n'est pas conservée automatiquement entre deux visites).</div>
   <div class="actions actions-bottom">
-    <button id="exportJsonEncryptedBtn" class="secondary" title="Télécharge data-mg.aiae, chiffré automatiquement">🔒 Exporter</button>
-    <label class="file-btn" for="jsonEncryptedFileInput" title="Importe un fichier .aiae exporté par cette app">🔒 Importer</label>
-    <input type="file" id="jsonEncryptedFileInput" accept=".aiae" style="display:none;">
+    <button id="exportJsonEncryptedBtn" class="secondary" title="Télécharge data-mg.aiae (chiffré) et l'envoie sur Vercel Blob">🔒 Exporter</button>
+    <button id="importBackupBtn" class="secondary" title="Récupère automatiquement la dernière sauvegarde stockée sur Vercel Blob">🔒 Importer</button>
     <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
   </div>
 </fieldset>

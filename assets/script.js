@@ -1079,6 +1079,12 @@
     { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur l\'icône de copie des résultats puis collez le texte copié ci-dessous.',
       scrapeEndpoint: '/api/scrape' },
+    // match:[] volontairement vide : aucune valeur de la colonne "transporteur" ne rattache un
+    // colis à 17TRACK automatiquement — seule l'association manuelle (⚙ Transporteurs) ou la case
+    // "Inclure aussi les colis sans numéro dernier kilométrique" l'y ajoute. Pas de scrapeEndpoint :
+    // uniquement le mode manuel (lien + collage), pas de scraping automatique pour ce transporteur.
+    { key:'17track',    label:'17TRACK',    match:[],                          baseUrl:'https://t.17track.net/fr#nums=',                     kmColIndex:1, mode:'url', chunkSize:40,
+      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », ouvrez le détail de chaque colis puis cliquez sur « Copier les détails », et collez le texte copié ci-dessous.' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1208,7 +1214,8 @@
           .map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
       ));
       return { ...c, nums, chunks: chunkArray(nums, c.chunkSize || CHUNK_SIZE) };
-    }).filter(g => g.nums.length > 0);
+    }).filter(g => g.nums.length > 0)
+      .sort((a, b) => b.nums.length - a.nums.length); // le plus de colis d'abord
   }
 
   // ---------- fenêtre d'association manuelle transporteur ----------

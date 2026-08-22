@@ -1545,7 +1545,9 @@
   // scrapeChunkSize), envoyer toutes les requêtes d'une seule salve dépasse largement la limite de
   // connexions simultanées par origine du navigateur (~6) et sature les fonctions Vercel, faisant
   // échouer une grande partie en timeout au lieu de les traiter par vagues.
-  const MAX_CONCURRENT_SCRAPES = 4;
+  // Valeur volontairement agressive (au prix d'un risque plus élevé de timeout/plantage si Vercel
+  // ou le site cible sature — accepté explicitement pour privilégier la vitesse).
+  const MAX_CONCURRENT_SCRAPES = 6;
 
   async function runWithConcurrencyLimit(items, limit, worker){
     const results = new Array(items.length);

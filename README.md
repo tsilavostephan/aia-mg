@@ -110,6 +110,7 @@ lib/scrapers/                Un module par transporteur (hors de /api : pas comp
   topyou.js                  Scraping TopYou (éditeur CodeMirror + lecture directe du DOM)
   cne.js                     Scraping CNE (un lien par colis, lecture directe du DOM)
   sunyou.js                  Scraping Sunyou (bouton copie détaillé, fenêtre desktop large)
+  17track.js                 Scraping 17TRACK (déplie les cartes, lit "Last-mile Tracking Number")
 
 scripts/
   postinstall.mjs            Copie les fichiers Chromium nécessaires au scraping lors du build Vercel
@@ -187,6 +188,7 @@ externe (elles pilotent un navigateur headless directement).
 | TopYou | ✅ | ✅ |
 | CNE | ✅ | ✅ |
 | Sunyou | ✅ | ✅ |
+| 17TRACK | ❌ | ✅ |
 
 N'importe lequel de ces transporteurs peut aussi servir d'étape de vérification finale pour les
 colis d'autres transporteurs (case à cocher « Inclure aussi les colis sans numéro dernier

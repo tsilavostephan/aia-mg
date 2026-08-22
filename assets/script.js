@@ -1081,10 +1081,11 @@
       scrapeEndpoint: '/api/scrape' },
     // match:[] volontairement vide : aucune valeur de la colonne "transporteur" ne rattache un
     // colis à 17TRACK automatiquement — seule l'association manuelle (⚙ Transporteurs) ou la case
-    // "Inclure aussi les colis sans numéro dernier kilométrique" l'y ajoute. Pas de scrapeEndpoint :
-    // uniquement le mode manuel (lien + collage), pas de scraping automatique pour ce transporteur.
+    // "Inclure aussi les colis sans numéro dernier kilométrique" l'y ajoute. Scraping uniquement
+    // (disableManualImport) : pas de collage manuel, seulement "Ouvrir" (dépannage) + scraping.
     { key:'17track',    label:'17TRACK',    match:[],                          baseUrl:'https://t.17track.net/fr#nums=',                     kmColIndex:1, mode:'url', chunkSize:40,
-      pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », ouvrez le détail de chaque colis puis cliquez sur « Copier les détails », et collez le texte copié ci-dessous.' },
+      disableManualImport: true,
+      scrapeEndpoint: '/api/scrape' },
   ];
   const CHUNK_SIZE = 99;
 

@@ -98,6 +98,7 @@ api/
   scrape.js                  Point d'entrée unique du scraping : dispatche vers lib/scrapers/*.js selon le champ "carrier"
   _scrapeLib.js              Fonctions partagées par les fonctions de scraping (Chromium headless, parsing, CORS…)
   _rateLimit.js              Verrouillage progressif par IP après des échecs de connexion répétés (KV/Upstash ou repli en mémoire)
+  _stealthScrapeLib.js        Lancement de navigateur "furtif" (puppeteer-extra-plugin-stealth) pour les sites avec détection anti-bot
 
 lib/scrapers/                Un module par transporteur (hors de /api : pas compté dans la limite de 12
                               fonctions serverless du plan Vercel Hobby), tous appelés via api/scrape.js
@@ -110,6 +111,7 @@ lib/scrapers/                Un module par transporteur (hors de /api : pas comp
   topyou.js                  Scraping TopYou (éditeur CodeMirror + lecture directe du DOM)
   cne.js                     Scraping CNE (un lien par colis, lecture directe du DOM)
   sunyou.js                  Scraping Sunyou (bouton copie détaillé, fenêtre desktop large)
+  parcelsapp.js              Scraping PARCELSAPP (un lien par colis, navigateur furtif, "Next tracking numbers")
 
 scripts/
   postinstall.mjs            Copie les fichiers Chromium nécessaires au scraping lors du build Vercel
@@ -187,6 +189,7 @@ externe (elles pilotent un navigateur headless directement).
 | TopYou | ✅ | ✅ |
 | CNE | ✅ | ✅ |
 | Sunyou | ✅ | ✅ |
+| PARCELSAPP | ❌ | ✅ |
 
 N'importe lequel de ces transporteurs peut aussi servir d'étape de vérification finale pour les
 colis d'autres transporteurs (case à cocher « Inclure aussi les colis sans numéro dernier

@@ -1079,6 +1079,15 @@
     { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur l\'icône de copie des résultats puis collez le texte copié ci-dessous.',
       scrapeEndpoint: '/api/scrape' },
+    // Scraping uniquement (disableManualImport), aucun lien "Ouvrir" affiché (hideLinks) : ce site
+    // n'accepte qu'un seul numéro par lien (chunkSize:1) et il peut y avoir des centaines de colis,
+    // ce qui donnerait autant de boutons à afficher un par un. scrapeChunkSize regroupe malgré tout
+    // plusieurs numéros par appel de fonction Vercel (voir lib/scrapers/parcelsapp.js, même principe
+    // que CNE). match:['SF EXPRESS'] : SF Express est scrappé par défaut avec ce transporteur.
+    { key:'parcelsapp', label:'PARCELSAPP', match:['SF EXPRESS'],              baseUrl:'https://parcelsapp.com/en/tracking/',                kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
+      disableManualImport: true,
+      hideLinks: true,
+      scrapeEndpoint: '/api/scrape' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1696,7 +1705,10 @@
     activeCarrierKey = g.key;
 
     const openLabel = g.mode === 'clipboard' ? '📋🔗 Copier + Ouvrir' : '🔗 Ouvrir';
-    const linksHtml = g.chunks.map((chunk, idx)=>
+    // hideLinks : certains sites n'acceptent qu'un seul numéro par lien (chunkSize:1), ce qui
+    // donnerait un bouton par colis — jusqu'à plusieurs centaines. On masque alors entièrement ces
+    // liens individuels ; seul le scraping automatique reste proposé (voir PARCELSAPP dans CARRIERS).
+    const linksHtml = g.hideLinks ? '' : g.chunks.map((chunk, idx)=>
       `<div class="carrier-link-row">
         <span class="carrier-link-label">Lien ${idx+1} — ${chunk.length} colis</span>
         <button class="linkOpenBtn" data-idx="${idx}">${openLabel}</button>
@@ -1754,7 +1766,7 @@
 
     els.carrierPanel.innerHTML = `
       <p style="font-size:13px; color:var(--muted);">
-        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
+        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${(!g.hideLinks && g.chunks.length > 1) ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
       </p>
       ${includeUnresolvedHtml}
       ${linksHtml}

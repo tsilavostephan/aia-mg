@@ -2325,7 +2325,7 @@
     const resolvedTotal = database.filter(r => String(r.numDernierKm || '').trim()).length;
     els.resolvedCount.textContent = resolvedTotal;
     els.resolvedPercent.textContent = database.length > 0
-      ? ` (${Math.round((resolvedTotal / database.length) * 100)}%)`
+      ? ` (${((resolvedTotal / database.length) * 100).toFixed(2)}%)`
       : '';
 
     if(term && filtered.length < database.length){

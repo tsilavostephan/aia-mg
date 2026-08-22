@@ -1079,14 +1079,15 @@
     { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur l\'icône de copie des résultats puis collez le texte copié ci-dessous.',
       scrapeEndpoint: '/api/scrape' },
-    // Scraping uniquement (disableManualImport), aucun lien "Ouvrir" affiché (hideLinks) : ce site
-    // n'accepte qu'un seul numéro par lien (chunkSize:1) et il peut y avoir des centaines de colis,
-    // ce qui donnerait autant de boutons à afficher un par un. scrapeChunkSize regroupe malgré tout
-    // plusieurs numéros par appel de fonction Vercel (voir lib/scrapers/parcelsapp.js, même principe
-    // que CNE). match:['SF EXPRESS'] : SF Express est scrappé par défaut avec ce transporteur.
+    // Scraping uniquement (disableManualImport) : ce site n'accepte qu'un seul numéro par lien
+    // (chunkSize:1) et il peut y avoir des centaines de colis, donc les liens "Ouvrir" sont affichés
+    // en petits boutons numérotés (compactLinks) plutôt qu'une ligne complète par lien.
+    // scrapeChunkSize regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
+    // lib/scrapers/parcelsapp.js, même principe que CNE). match:['SF EXPRESS'] : SF Express est
+    // scrappé par défaut avec ce transporteur.
     { key:'parcelsapp', label:'PARCELSAPP', match:['SF EXPRESS'],              baseUrl:'https://parcelsapp.com/en/tracking/',                kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
       disableManualImport: true,
-      hideLinks: true,
+      compactLinks: true,
       scrapeEndpoint: '/api/scrape' },
   ];
   const CHUNK_SIZE = 99;
@@ -1705,16 +1706,22 @@
     activeCarrierKey = g.key;
 
     const openLabel = g.mode === 'clipboard' ? '📋🔗 Copier + Ouvrir' : '🔗 Ouvrir';
-    // hideLinks : certains sites n'acceptent qu'un seul numéro par lien (chunkSize:1), ce qui
-    // donnerait un bouton par colis — jusqu'à plusieurs centaines. On masque alors entièrement ces
-    // liens individuels ; seul le scraping automatique reste proposé (voir PARCELSAPP dans CARRIERS).
-    const linksHtml = g.hideLinks ? '' : g.chunks.map((chunk, idx)=>
-      `<div class="carrier-link-row">
-        <span class="carrier-link-label">Lien ${idx+1} — ${chunk.length} colis</span>
-        <button class="linkOpenBtn" data-idx="${idx}">${openLabel}</button>
-        <button class="linkShowBtn" data-idx="${idx}">👁️ Afficher</button>
-      </div>`
-    ).join('');
+    // compactLinks : certains sites n'acceptent qu'un seul numéro par lien (chunkSize:1), ce qui
+    // donnerait jusqu'à plusieurs centaines de lignes complètes — on affiche alors une simple grille
+    // de petits boutons numérotés (10 par rangée), un par lien, plutôt qu'une ligne par lien.
+    const linksHtml = g.compactLinks
+      ? `<div class="carrier-compact-links" style="display:grid; grid-template-columns:repeat(10, minmax(0, 1fr)); gap:4px; max-width:420px; margin:8px 0;">
+          ${g.chunks.map((chunk, idx)=>
+            `<button class="linkOpenBtn" data-idx="${idx}" title="Colis ${idx+1} : ${chunk[0]}" style="font-size:11px; padding:2px 0; min-width:0;">${idx+1}</button>`
+          ).join('')}
+        </div>`
+      : g.chunks.map((chunk, idx)=>
+          `<div class="carrier-link-row">
+            <span class="carrier-link-label">Lien ${idx+1} — ${chunk.length} colis</span>
+            <button class="linkOpenBtn" data-idx="${idx}">${openLabel}</button>
+            <button class="linkShowBtn" data-idx="${idx}">👁️ Afficher</button>
+          </div>`
+        ).join('');
 
     const log = importLogByCarrier[g.key];
     const logHtml = log ? `<div style="font-size:12px; margin-top:6px; color:${log.err ? 'var(--danger)' : 'var(--success)'};">${log.text}</div>` : '';
@@ -1766,7 +1773,7 @@
 
     els.carrierPanel.innerHTML = `
       <p style="font-size:13px; color:var(--muted);">
-        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${(!g.hideLinks && g.chunks.length > 1) ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
+        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
       </p>
       ${includeUnresolvedHtml}
       ${linksHtml}

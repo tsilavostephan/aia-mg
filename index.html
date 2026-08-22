@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>AIA — Gestionnaire de commandes</title>
+<title>AIA — Base de commandes</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#113D91">
 <meta name="mobile-web-app-capable" content="yes">
@@ -21,7 +21,7 @@
 <div class="app-header">
   <img class="app-logo" src="assets/logo-aia.png" alt="AIA">
   <div class="app-header-text">
-    <p class="desc">Importez plusieurs fichiers CSV pour alimenter la base de données de commandes.</p>
+    <p class="desc">Importez plusieurs fichiers CSV pour alimenter la base de données de commandes pour retrouvées le numéro de suivi du dernier kilomètre.</p>
     <p class="app-version" id="appVersion">v1.2 &middot; &copy; TSLV</p>
   </div>
   <button type="button" id="updateAvailableBtn" class="update-btn" style="display:none;" title="Une nouvelle version de l'application est disponible">⟳ MAJ</button>
@@ -29,10 +29,10 @@
 </div>
 
 <fieldset id="csvSection">
-  <h2>1. Importer des fichiers CSV</h2>
+  <h2>Importer les fichiers CSV</h2>
   <div class="row">
     <div id="dropzone" class="dropzone">
-      <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers CSV ici</div>
+      <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers IMPORT CSV ici</div>
       <div class="dropzone-sub">Plusieurs fichiers peuvent être sélectionnés en même temps</div>
       <input type="file" id="fileInput" accept=".csv,text/csv" multiple style="display:none;">
     </div>
@@ -51,10 +51,10 @@
 
 <fieldset id="carrierSection" style="display:none;">
   <h2 class="section-title">
-    <span>2. Détection du LastMile Tracking Number<span id="carrierSectionUpdatedCount" style="color:var(--card);"></span></span>
+    <span>Détection du Numéro dernier kilomètre de Suivi<span id="carrierSectionUpdatedCount" style="color:var(--card);"></span></span>
     <span class="section-title-actions">
       <button type="button" id="carrierMappingBtn" class="secondary" title="Associer manuellement les valeurs de transporteur">⚙️ Transporteurs</button>
-      <button type="button" id="scrapeAllBtn" class="secondary">🔄 Tout récupérer</button>
+      <button type="button" id="scrapeAllBtn" class="secondary">🔄 Récuperer AUTO</button>
     </span>
   </h2>
   <div id="scrapeAllProgressWrap" style="display:none; margin:6px 0;">
@@ -69,7 +69,7 @@
 
 <fieldset id="dbSection">
   <h2 class="section-title">
-    <span>3. Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s), <span id="resolvedCount">0</span> colis mis à jour)</span>
+    <span>Base de données (<span id="rowCount">0</span> commande(s) enregistrée(s), <span id="resolvedCount">0</span> colis mis à jour)</span>
     <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Verrouillé — Alt+T pour déverrouiller">🔒</button>
   </h2>
   <div class="row search-row">

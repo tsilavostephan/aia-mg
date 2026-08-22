@@ -1540,6 +1540,29 @@
   // maximum plutôt qu'un seul très gros lot : le site de suivi peut limiter/tronquer le nombre de
   // numéros pris en compte par requête, et une URL avec des centaines de numéros peut poser
   // problème. Les lots sont scrapés en parallèle (un appel de fonction Vercel par lien), puis fusionnés.
+  // Limite le nombre de requêtes de scraping en vol simultanément. Avec des transporteurs à des
+  // milliers de lots (PARCELSAPP : un lien par colis, regroupés seulement par 10 — voir
+  // scrapeChunkSize), envoyer toutes les requêtes d'une seule salve dépasse largement la limite de
+  // connexions simultanées par origine du navigateur (~6) et sature les fonctions Vercel, faisant
+  // échouer une grande partie en timeout au lieu de les traiter par vagues.
+  const MAX_CONCURRENT_SCRAPES = 4;
+
+  async function runWithConcurrencyLimit(items, limit, worker){
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    async function runNext(){
+      while(nextIndex < items.length){
+        const idx = nextIndex++;
+        results[idx] = await worker(items[idx], idx).then(
+          value => ({ status: 'fulfilled', value }),
+          reason => ({ status: 'rejected', reason })
+        );
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runNext));
+    return results;
+  }
+
   async function scrapeCarrierViaVercel(g){
     const config = loadScrapeConfig();
     const scrapeEndpoint = g.scrapeEndpoint;
@@ -1553,12 +1576,12 @@
 
     scrapeProgressByCarrier[g.key] = { done: 0, total: chunks.length };
     importLogByCarrier[g.key] = {
-      text: `Scraping ${g.label} (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités en parallèle` : '') + ` (peut prendre jusqu'à 30-60 secondes)…`,
+      text: `Scraping ${g.label} (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités par vagues de ${MAX_CONCURRENT_SCRAPES}` : '') + ` (peut prendre du temps pour un grand nombre de colis)…`,
       err: false
     };
     renderCarrierPanel();
 
-    const chunkOutcomes = await Promise.allSettled(chunks.map(async (chunk) => {
+    const chunkOutcomes = await runWithConcurrencyLimit(chunks, MAX_CONCURRENT_SCRAPES, async (chunk) => {
       try{
         const res = await fetch(scrapeEndpoint, {
           method: 'POST',
@@ -1597,7 +1620,7 @@
           renderCarrierPanel();
         }
       }
-    }));
+    });
 
     scrapeProgressByCarrier[g.key] = null;
 

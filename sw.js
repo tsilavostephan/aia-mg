@@ -1,6 +1,6 @@
 // Service worker minimal : nécessaire pour que Chrome propose une vraie installation PWA
 // (WebAPK) plutôt qu'un simple raccourci. Stratégie "cache d'abord" sur les fichiers de l'app.
-const CACHE_NAME = 'aia-app-v1.2.22.08.08';
+const CACHE_NAME = 'aia-app-v1.2.22.08.09';
 const CORE_ASSETS = [
   './',
   './index.html',

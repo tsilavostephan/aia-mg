@@ -5,7 +5,7 @@
     },
     "api/scrape.js": {
       "maxDuration": 60,
-      "includeFiles": "{api/chromium-bin/**,node_modules/puppeteer-extra-plugin-stealth/evasions/**}"
+      "includeFiles": "api/chromium-bin/**"
     }
   }
 }

@@ -12,7 +12,6 @@ const { setCorsHeaders } = require('./_scrapeLib');
 
 const SCRAPERS = {
   '4px': require('../lib/scrapers/4px'),
-  '17track': require('../lib/scrapers/17track'),
   cainiao: require('../lib/scrapers/cainiao'),
   cne: require('../lib/scrapers/cne'),
   landmark: require('../lib/scrapers/landmark'),

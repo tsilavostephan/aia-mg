@@ -178,12 +178,15 @@
     return String(v ?? '').replace(/[="'\\]/g, '').trim();
   }
 
-  // Extrait le Nom depuis la colonne 26 : la valeur utile se trouve entre "CART'IN" et ", CART'IN"
-  // (apostrophe droite ou typographique acceptée). Si le motif n'est pas trouvé, renvoie ''.
-  function extractNomFromCol26(v){
+  // Extrait le Nom depuis la colonne 7 : le premier mot trouvé entre "CART'IN" et la première
+  // virgule qui suit (apostrophe droite ou typographique acceptée). Si le motif n'est pas trouvé,
+  // renvoie ''.
+  function extractNomFromCol7(v){
     const str = String(v ?? '');
-    const m = str.match(/CART['’]IN(.*?),\s*CART['’]IN/i);
-    return m ? m[1].trim() : '';
+    const m = str.match(/CART['’]IN(.*?),/i);
+    if(!m) return '';
+    const word = m[1].trim().match(/\S+/);
+    return word ? word[0] : '';
   }
 
   // ---------- reconnaissance du numéro de suivi collé / scanné ----------
@@ -803,7 +806,7 @@
         if(c.key === 'numSuivi'){
           rec[c.key] = cleanNumSuivi(v);
         }else if(c.key === 'nom'){
-          rec[c.key] = extractNomFromCol26(v);
+          rec[c.key] = extractNomFromCol7(v);
         }else{
           rec[c.key] = v;
         }
@@ -1010,7 +1013,9 @@
         const existingIndex = key ? orderKeyIndex.get(key) : undefined;
 
         if(existingIndex !== undefined){
-          database[existingIndex] = { ...database[existingIndex], ...rec };
+          // Le CSV n'a pas de colonne Num dernier kilométrique (col:null) : on garde la valeur
+          // déjà en base au lieu de l'écraser avec la chaîne vide de rec.
+          database[existingIndex] = { ...database[existingIndex], ...rec, numDernierKm: database[existingIndex].numDernierKm };
           updated++;
         }else{
           database.push(rec);
@@ -2298,8 +2303,11 @@
   // ---------- affichage liste ----------
   function render(){
     const term = els.search.value.trim().toLowerCase();
-    const filtered = term
-      ? database.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(term)))
+    // Plusieurs critères séparés par des virgules fonctionnent comme un OU : une ligne correspond
+    // dès qu'au moins un des critères est trouvé dans au moins un de ses champs.
+    const terms = term.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    const filtered = terms.length
+      ? database.filter(r => terms.some(t => Object.values(r).some(v => String(v).toLowerCase().includes(t))))
       : database;
 
     if(term && els.autoDetailsCheckbox.checked && document.body.classList.contains('focus-mode') && filtered.length === 1){
@@ -2308,6 +2316,12 @@
         openPackageModal(filtered[0]);
       }
     }else{
+      // La recherche ne correspond plus à un seul colis (0 ou plusieurs résultats) : si une fiche
+      // avait été ouverte automatiquement pour une recherche précédente, elle affichait un colis
+      // périmé, sans rapport avec la nouvelle recherche — on la referme.
+      if(autoOpenedRecord && els.packageModalBg.style.display === 'block'){
+        closePackageModal();
+      }
       autoOpenedRecord = null;
     }
 
@@ -2491,7 +2505,10 @@
         const existingIndex = key ? orderKeyIndexJson.get(key) : undefined;
 
         if(existingIndex !== undefined){
-          database[existingIndex] = { ...database[existingIndex], ...rec };
+          // Ne pas effacer le Num dernier kilométrique déjà en base si l'enregistrement importé
+          // n'en a pas (ou en a un vide) : on garde la valeur existante dans ce cas.
+          const numDernierKm = rec.numDernierKm ? rec.numDernierKm : database[existingIndex].numDernierKm;
+          database[existingIndex] = { ...database[existingIndex], ...rec, numDernierKm };
           updated++;
         }else{
           database.push(rec);

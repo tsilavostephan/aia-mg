@@ -34,10 +34,11 @@ function buildTimestampParts(date) {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
+    minute: '2-digit',
     hourCycle: 'h23',
   }).formatToParts(date);
   const get = (type) => parts.find((p) => p.type === type)?.value || '00';
-  return { day: get('day'), month: get('month'), hour: get('hour') };
+  return { day: get('day'), month: get('month'), hour: get('hour'), minute: get('minute') };
 }
 
 function stampServiceWorker(version) {
@@ -55,8 +56,11 @@ function stampServiceWorker(version) {
 function main() {
   try {
     const now = new Date();
-    const { day, month, hour } = buildTimestampParts(now);
-    const version = `v1.2.${day}.${month}.${hour}`;
+    const { day, month, hour, minute } = buildTimestampParts(now);
+    // Granularité à la minute (et pas seulement à l'heure) : deux déploiements dans la même heure
+    // — fréquent en cas d'itérations rapides — produisaient auparavant le même numéro de version,
+    // donc aucune mise à jour n'était détectée côté client tant que l'heure ne changeait pas.
+    const version = `v1.2.${day}.${month}.${hour}${minute}`;
 
     const outputPath = join(projectRoot, 'assets', 'version.json');
     writeFileSync(outputPath, JSON.stringify({ version, generatedAt: now.toISOString() }, null, 2));

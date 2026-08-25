@@ -2740,6 +2740,45 @@
     });
   }
 
+  // Télécharge et déchiffre la sauvegarde actuellement sur Vercel Blob. Renvoie null s'il n'y en a
+  // encore aucune (404, avant le premier export). Partagée entre l'import manuel et la fusion
+  // automatique avant chaque export (voir plus bas) — pour ne jamais dupliquer cette logique de
+  // lecture par flux/déchiffrement.
+  async function downloadRemoteBackup(password, onProgress){
+    const res = await withTimeout(fetch('/api/backup', { cache: 'no-store' }), 30000, 'Délai dépassé (30s) en attendant Vercel Blob.');
+    if(res.status === 404) return null;
+    if(!res.ok){
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+    }
+
+    // fetch() n'a pas d'événement de progression natif : on lit le flux de réponse par morceaux
+    // et on compare les octets reçus au total annoncé par Content-Length pour estimer le %.
+    const totalBytes = Number(res.headers.get('content-length')) || 0;
+    let text;
+    if(totalBytes > 0 && res.body && res.body.getReader){
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+      for(;;){
+        const { done, value } = await reader.read();
+        if(done) break;
+        chunks.push(value);
+        received += value.length;
+        if(onProgress) onProgress((received / totalBytes) * 100);
+      }
+      const merged = new Uint8Array(received);
+      let offset = 0;
+      chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
+      text = new TextDecoder().decode(merged);
+    }else{
+      if(onProgress) onProgress(50);
+      text = await res.text();
+    }
+
+    return decryptJsonPayload(text, password);
+  }
+
   els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
     if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
     if(database.length === 0){
@@ -2750,6 +2789,19 @@
     try{
       showBackupProgress(0, 'Préparation…');
       const password = await getEncryptionPassword();
+
+      // Fusionne d'abord avec la sauvegarde déjà présente sur Vercel Blob (si elle existe) : sans
+      // ça, exporter depuis une session qui n'a en mémoire qu'une partie des commandes (ex. juste
+      // les CSV importés aujourd'hui) écraserait tout l'historique déjà en ligne au lieu de le
+      // compléter — l'utilisateur ne retrouverait alors plus les colis des mois précédents.
+      showBackupProgress(0, 'Récupération de la sauvegarde existante…');
+      const remote = await downloadRemoteBackup(password, (pct) =>
+        showBackupProgress(pct * 0.3, `Récupération de la sauvegarde existante… ${Math.round(pct)} %`)
+      );
+      if(remote && Array.isArray(remote.records) && remote.records.length > 0){
+        await importParsedJsonArray(remote.records, 'fusion avant export');
+      }
+
       const exportedAt = new Date().toISOString();
       const envelope = await encryptJsonPayload(database, password, exportedAt);
 
@@ -2777,46 +2829,18 @@
     els.importBackupBtn.disabled = true;
     try{
       const password = await getEncryptionPassword();
-      // Store Vercel Blob privé : /api/backup (GET) relit lui-même le blob (autorisation requise,
-      // impossible pour le navigateur de le faire directement) et retransmet son contenu en flux —
-      // jamais chargé entièrement en mémoire côté serveur (voir api/backup.js).
       showBackupProgress(0, 'Téléchargement depuis Vercel Blob… 0 %');
-      const res = await withTimeout(fetch('/api/backup', { cache: 'no-store' }), 30000, 'Délai dépassé (30s) en attendant Vercel Blob.');
-      if(!res.ok){
-        const errData = await res.json().catch(() => null);
-        throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
-      }
-
-      // fetch() n'a pas d'événement de progression natif : on lit le flux de réponse par morceaux
-      // et on compare les octets reçus au total annoncé par Content-Length pour estimer le %.
-      const totalBytes = Number(res.headers.get('content-length')) || 0;
-      let text;
-      if(totalBytes > 0 && res.body && res.body.getReader){
-        const reader = res.body.getReader();
-        const chunks = [];
-        let received = 0;
-        for(;;){
-          const { done, value } = await reader.read();
-          if(done) break;
-          chunks.push(value);
-          received += value.length;
-          showBackupProgress((received / totalBytes) * 100, `Téléchargement depuis Vercel Blob… ${Math.round((received / totalBytes) * 100)} %`);
-        }
-        const merged = new Uint8Array(received);
-        let offset = 0;
-        chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
-        text = new TextDecoder().decode(merged);
-      }else{
-        // Repli si Content-Length ou les flux ne sont pas disponibles (navigateur ancien, proxy…) :
-        // pas de barre de progression détaillée, mais l'import fonctionne toujours.
-        showBackupProgress(50, 'Téléchargement depuis Vercel Blob…');
-        text = await res.text();
+      const remote = await downloadRemoteBackup(password, (pct) =>
+        showBackupProgress(pct, `Téléchargement depuis Vercel Blob… ${Math.round(pct)} %`)
+      );
+      if(!remote){
+        setDbLog('Aucune sauvegarde trouvée sur Vercel Blob — exportez au moins une fois avant de pouvoir importer.', true);
+        return;
       }
       showBackupProgress(100, 'Téléchargement terminé, déchiffrement…');
 
-      const { records, exportedAt } = await decryptJsonPayload(text, password);
-      await importParsedJsonArray(records, 'data-mg.aiae (Vercel Blob)');
-      setDbVersionInfo(exportedAt);
+      await importParsedJsonArray(remote.records, 'data-mg.aiae (Vercel Blob)');
+      setDbVersionInfo(remote.exportedAt);
     }catch(err){
       const msg = err && err.message ? err.message : 'erreur inconnue';
       // Message dédié pour l'erreur de mot de passe (déchiffrement AES échoué) plutôt que noyé dans

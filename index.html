@@ -21,7 +21,7 @@
 <div class="app-header">
   <img class="app-logo" src="assets/logo-aia.png" alt="AIA">
   <div class="app-header-text">
-    <p class="desc">Importez plusieurs fichiers CSV pour alimenter la base de données de commandes pour retrouver le numéro de suivi du dernier kilomètre.</p>
+    <p class="desc">Importez plusieurs fichiers CSV pour alimenter la base de données ou cliquer sur IMPORTER pour avoir la sauvegarde.</p>
     <p class="app-version" id="appVersion">v1.2 &middot; &copy; TSLV</p>
   </div>
   <button type="button" id="updateAvailableBtn" class="update-btn" style="display:none;" title="Une nouvelle version de l'application est disponible">⟳ MAJ</button>
@@ -29,7 +29,7 @@
 </div>
 
 <fieldset id="csvSection">
-  <h2>Importer les fichiers CSV</h2>
+  <h2>Importer les fichiers CSV (Import tout pour aia)</h2>
   <div class="row">
     <div id="dropzone" class="dropzone">
       <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers IMPORT CSV ici</div>
@@ -95,7 +95,7 @@
   <div class="list-scroll">
     <div id="dbCards" class="db-cards"></div>
   </div>
-  <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer, ou un fichier .aiae exporté lors d'une session précédente (la base n'est pas conservée automatiquement entre deux visites).</div>
+  <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer, ou cliquer sur IMPORTER (la base n'est pas conservée automatiquement entre deux visites).</div>
   <div id="backupProgressWrap" style="display:none; margin:10px 0;">
     <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
       <div id="backupProgressBar" style="height:100%; width:0%; background:var(--primary); transition:width .15s ease;"></div>

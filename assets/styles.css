@@ -369,8 +369,11 @@
   .qty-match{ color: var(--success); font-weight: 700; }
   .qty-mismatch{ color: var(--danger); font-weight: 700; }
 
-  .package-qr{ display: flex; justify-content: center; padding: 8px 0 16px; }
+  .package-qr-row{ display: flex; align-items: center; justify-content: center; gap: 14px; padding: 8px 0 16px; }
+  .package-qr{ display: flex; justify-content: center; padding: 0; }
   .package-qr img, .package-qr canvas{ border-radius: 8px; border: 1px solid var(--border); padding: 8px; background: #fff; }
+  .package-qr-text{ font-size: 14px; line-height: 1.6; text-align: left; }
+  .package-qr-text .package-qr-text-label{ color: var(--muted); font-size: 12px; margin-right: 6px; }
 
   .scan-btn{
     display: inline-flex;

@@ -134,7 +134,14 @@
   <div class="modal-box modal-box-narrow">
     <h2 class="modal-title">Détails du colis</h2>
     <div id="packageModalBody"></div>
-    <div id="packageQrCode" class="package-qr"></div>
+    <div class="package-qr-row">
+      <label class="toggle-switch" title="Afficher le numéro de suivi et le numéro dernier kilométrique à la place du QR code">
+        <input type="checkbox" id="packageQrTextToggle" class="toggle-switch-input">
+        <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+      </label>
+      <div id="packageQrCode" class="package-qr"></div>
+      <div id="packageQrText" class="package-qr-text" style="display:none;"></div>
+    </div>
     <div class="actions" style="margin-top:16px;">
       <button id="closePackageModalBtn" class="secondary">✕ Fermer</button>
     </div>

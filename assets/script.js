@@ -71,6 +71,8 @@
     packageModalBg: document.getElementById('packageModalBg'),
     packageModalBody: document.getElementById('packageModalBody'),
     packageQrCode: document.getElementById('packageQrCode'),
+    packageQrText: document.getElementById('packageQrText'),
+    packageQrTextToggle: document.getElementById('packageQrTextToggle'),
     closePackageModalBtn: document.getElementById('closePackageModalBtn'),
     csvOptionsBtn: document.getElementById('csvOptionsBtn'),
     csvOptionsModalBg: document.getElementById('csvOptionsModalBg'),
@@ -178,15 +180,13 @@
     return String(v ?? '').replace(/[="'\\]/g, '').trim();
   }
 
-  // Extrait le Nom depuis la colonne 7 : le premier mot trouvé entre "CART'IN" et la première
-  // virgule qui suit (apostrophe droite ou typographique acceptée). Si le motif n'est pas trouvé,
-  // renvoie ''.
+  // Extrait le Nom depuis la colonne 7 : le texte trouvé entre "CART'IN" et la première virgule qui
+  // suit (apostrophe droite ou typographique acceptée), ex. "CART'IN Giovany Salomon, AEIC - ..."
+  // -> "Giovany Salomon". Si le motif n'est pas trouvé, renvoie ''.
   function extractNomFromCol7(v){
     const str = String(v ?? '');
     const m = str.match(/CART['’]IN(.*?),/i);
-    if(!m) return '';
-    const word = m[1].trim().match(/\S+/);
-    return word ? word[0] : '';
+    return m ? m[1].trim() : '';
   }
 
   // ---------- reconnaissance du numéro de suivi collé / scanné ----------
@@ -2188,11 +2188,11 @@
     const qteClass = qteMatch ? 'qty-match' : 'qty-mismatch';
 
     const fields = [
-      { label:'Transporteur',              value:r.transporteur },
+      { label:'Nom',                       value:r.nom },
       { label:'Num Suivi',                 value:r.numSuivi },
       { label:'Commande Amazon',           value:r.commandeAmazon },
       { label:'N° Commande',               value:r.numCommande },
-      { label:'Nom',                       value:r.nom },
+      { label:'Transporteur',              value:r.transporteur },
       { label:'QTE',                       value:r.qteCommande, extraClass: qteClass },
       { label:'QTE_EXPED',                 value:r.qteExpedie,  extraClass: qteClass },
       { label:'Num dernier kilométrique',  value:r.numDernierKm },
@@ -2224,8 +2224,33 @@
       }catch(e){ /* génération QR indisponible, on ignore silencieusement */ }
     }
 
+    els.packageQrText.innerHTML = '';
+    [
+      { label:'Num Suivi', value:r.numSuivi },
+      { label:'Num dernier kilométrique', value:r.numDernierKm },
+    ].forEach(f=>{
+      const line = document.createElement('div');
+      const labelEl = document.createElement('span');
+      labelEl.className = 'package-qr-text-label';
+      labelEl.textContent = f.label + ' :';
+      line.appendChild(labelEl);
+      line.appendChild(document.createTextNode(f.value || '—'));
+      els.packageQrText.appendChild(line);
+    });
+
+    applyPackageQrDisplayMode();
+
     els.packageModalBg.style.display = 'block';
   }
+
+  // Bascule entre le QR code et le texte (numéro de suivi + numéro dernier kilométrique) selon
+  // l'état de l'interrupteur, à côté du QR code dans la fiche colis.
+  function applyPackageQrDisplayMode(){
+    const showText = els.packageQrTextToggle.checked;
+    els.packageQrCode.style.display = showText ? 'none' : '';
+    els.packageQrText.style.display = showText ? '' : 'none';
+  }
+  els.packageQrTextToggle.addEventListener('change', applyPackageQrDisplayMode);
 
   // ---------- scanner caméra (code-barres / QR code) ----------
   let scannerInstance = null;

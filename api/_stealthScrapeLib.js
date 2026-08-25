@@ -33,10 +33,17 @@ async function launchStealthBrowser(binDir) {
   puppeteer.use(StealthPlugin());
 
   cachedBrowser = await puppeteer.launch({
-    args: chromium.args,
+    // --disable-blink-features=AutomationControlled : en plus du patch JS de StealthPlugin sur
+    // navigator.webdriver, retire aussi l'indicateur correspondant côté moteur Chromium lui-même
+    // (certaines vérifications anti-bot le lisent directement, avant même l'exécution du JS de la
+    // page) — inoffensif à ajouter, ne peut qu'aider.
+    args: [...chromium.args, '--disable-blink-features=AutomationControlled'],
     defaultViewport: chromium.defaultViewport,
     executablePath: cachedExecutablePath,
-    headless: true,
+    // headless recommandé par @sparticuz/chromium pour la version du binaire embarqué (mode
+    // "headless=new" quand disponible, moins facilement détectable que l'ancien mode headless) —
+    // repli sur true si la propriété est absente (anciennes versions du package).
+    headless: chromium.headless ?? true,
   });
   return cachedBrowser;
 }

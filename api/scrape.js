@@ -15,6 +15,7 @@ const SCRAPERS = {
   cainiao: require('../lib/scrapers/cainiao'),
   cne: require('../lib/scrapers/cne'),
   landmark: require('../lib/scrapers/landmark'),
+  ordertracker: require('../lib/scrapers/ordertracker'),
   parcelsapp: require('../lib/scrapers/parcelsapp'),
   sfc: require('../lib/scrapers/sfc'),
   sunyou: require('../lib/scrapers/sunyou'),

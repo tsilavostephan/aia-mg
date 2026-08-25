@@ -369,6 +369,9 @@
   .qty-match{ color: var(--success); font-weight: 700; }
   .qty-mismatch{ color: var(--danger); font-weight: 700; }
 
+  /* Num dernier kilométrique : numéro mis en évidence dans la fiche colis */
+  .package-detail-bold{ font-weight: 700; }
+
   .package-qr-row{ display: flex; align-items: center; justify-content: center; gap: 14px; padding: 8px 0 16px; }
   .package-qr{ display: flex; justify-content: center; padding: 0; }
   .package-qr img, .package-qr canvas{ border-radius: 8px; border: 1px solid var(--border); padding: 8px; background: #fff; }

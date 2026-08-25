@@ -1931,6 +1931,17 @@
     }
   });
 
+  // Raccourci dédié "²" (position physique Backquote, quel que soit l'agencement du clavier — même
+  // logique que e.code plus bas) pour actionner le switch QR code / texte sans avoir à cliquer,
+  // pratique quand on scanne colis après colis. Actif uniquement fiche colis ouverte.
+  document.addEventListener('keydown', (e)=>{
+    if(e.code !== 'Backquote') return;
+    if(els.packageModalBg.style.display !== 'block') return;
+    e.preventDefault();
+    els.packageQrTextToggle.checked = !els.packageQrTextToggle.checked;
+    applyPackageQrDisplayMode();
+  });
+
   // Raccourcis clavier ALT+<lettre>, actifs où qu'on soit sur la page. On utilise e.code (position
   // physique de la touche) plutôt que e.key pour que ça marche quel que soit l'agencement du
   // clavier (AZERTY, QWERTY…). Chaque raccourci réutilise le bouton déjà câblé correspondant
@@ -2188,14 +2199,13 @@
     const qteClass = qteMatch ? 'qty-match' : 'qty-mismatch';
 
     const fields = [
-      { label:'Nom',                       value:r.nom },
-      { label:'Num Suivi',                 value:r.numSuivi },
-      { label:'Commande Amazon',           value:r.commandeAmazon },
       { label:'N° Commande',               value:r.numCommande },
-      { label:'Transporteur',              value:r.transporteur },
+      { label:'Commande Amazon',           value:r.commandeAmazon },
+      { label:'Num Suivi',                 value:r.numSuivi },
+      { label:'Transporteur',              value:r.transporteur, key:'transporteur' },
       { label:'QTE',                       value:r.qteCommande, extraClass: qteClass },
       { label:'QTE_EXPED',                 value:r.qteExpedie,  extraClass: qteClass },
-      { label:'Num dernier kilométrique',  value:r.numDernierKm },
+      { label:'Num dernier kilométrique',  value:r.numDernierKm, extraClass: 'package-detail-bold' },
     ];
 
     els.packageModalBody.innerHTML = '';
@@ -2206,7 +2216,20 @@
       labelEl.className = 'package-detail-label';
       labelEl.textContent = f.label;
       row.appendChild(labelEl);
-      row.appendChild(createCopySpan(f.value || '—', f.extraClass));
+
+      if(f.key === 'transporteur' && f.value){
+        // Même style que le badge affiché dans les cartes de la base de données (couleur par
+        // transporteur, voir badgeColorsFor), plutôt qu'un simple texte copiable.
+        const colors = badgeColorsFor(f.value);
+        const badge = document.createElement('span');
+        badge.className = 'carrier-badge';
+        badge.style.background = colors.bg;
+        badge.style.color = colors.fg;
+        badge.textContent = f.value;
+        row.appendChild(badge);
+      }else{
+        row.appendChild(createCopySpan(f.value || '—', f.extraClass));
+      }
       els.packageModalBody.appendChild(row);
     });
 

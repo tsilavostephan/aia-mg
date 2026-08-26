@@ -2211,7 +2211,7 @@
       { label:'Commande Amazon',           value:r.commandeAmazon },
       { label:'Num Suivi',                 value:r.numSuivi },
       { label:'Transporteur',              value:r.transporteur, key:'transporteur' },
-      { label:'Nom',                       value:r.nom },
+      { label:'Nom',                       value:r.nom ? r.nom.toUpperCase() : r.nom },
       { label:'QTE',                       value:r.qteCommande, extraClass: qteClass },
       { label:'QTE_EXPED',                 value:r.qteExpedie,  extraClass: qteClass },
       { label:'Num dernier kilométrique',  value:r.numDernierKm, extraClass: 'package-detail-bold' },

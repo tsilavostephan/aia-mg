@@ -2,3 +2,5 @@ node_modules/
 api/chromium-bin/
 assets/chromium-pack.tar
 assets/version.json
+.vercel
+.env*

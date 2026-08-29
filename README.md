@@ -143,8 +143,9 @@ Le projet est conçu pour être déployé directement sur **Vercel**, connecté 
    particulière n'est nécessaire, tout est en JavaScript zero-config).
 2. Ajouter une base **Postgres** (Neon) depuis l'onglet *Storage* du projet — les variables
    `POSTGRES_URL`/`DATABASE_URL` sont injectées automatiquement.
-3. Exécuter une fois `node scripts/migrate.mjs` (en local, avec les variables tirées via
-   `vercel env pull`) pour créer le schéma (`scripts/schema.sql`) dans cette base.
+3. Exécuter une fois le schéma (`scripts/schema.sql`) dans cette base : en local, `vercel env pull
+   .env --environment=preview --git-branch=test` (les variables Postgres ne sont pas dans
+   l'environnement Development par défaut) puis `node --env-file=.env scripts/migrate.mjs`.
 4. Renseigner les autres [variables d'environnement](#variables-denvironnement) ci-dessous dans
    **Settings → Environment Variables**.
 5. Déployer. Le script `postinstall` télécharge et prépare automatiquement les fichiers Chromium

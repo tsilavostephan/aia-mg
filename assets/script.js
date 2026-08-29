@@ -1635,13 +1635,15 @@
 
         if(updates.length === 0){
           // Ordre de priorité : un vrai problème (blocage anti-bot ou changement de structure)
-          // prime sur une simple absence de données légitime (noDataInfo) — voir
-          // lib/scrapers/parcelsapp.js, qui distingue ces cas selon la réponse réelle de l'API.
+          // prime sur un état légitime et temporaire (noDataInfo, stillProcessingInfo) — voir
+          // lib/scrapers/parcelsapp.js et lib/scrapers/wanbexpress.js, qui distinguent ces cas
+          // selon le contenu réel de la page/réponse API.
           const debug = json.debug || {};
           const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
           if(debug.antiBotBlockWarning) throw new Error(`⚠️ ${debug.antiBotBlockWarning}`);
           if(debug.structureChangeWarning) throw new Error(`⚠️ ${debug.structureChangeWarning}`);
           if(debug.noDataInfo) throw new Error(`ℹ️ ${debug.noDataInfo}`);
+          if(debug.stillProcessingInfo) throw new Error(`ℹ️ ${debug.stillProcessingInfo}`);
           throw new Error(`aucun résultat exploitable (${debugText})`);
         }
         return updates;

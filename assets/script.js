@@ -825,16 +825,38 @@
     return numCommande + '||' + commandeAmazon;
   }
 
-  // Recherche des enregistrements déjà en base par clé unique (N° Commande + Commande Amazon),
-  // pour éviter les doublons à l'import : si une commande avec la même clé existe déjà, on met à
-  // jour ses champs (dont Num Suivi, à titre de référence) au lieu d'ajouter une nouvelle ligne.
+  // Recherche des enregistrements déjà en base par clé unique (N° Commande + Commande Amazon) —
+  // un tableau d'index par clé (pas un seul) : plusieurs colis distincts peuvent désormais
+  // partager la même commande (voir findMatchingIndex ci-dessous, ex. renvoi/remplacement).
   function buildOrderKeyIndex(){
     const idx = new Map();
     database.forEach((r, i)=>{
       const key = buildOrderKey(r);
-      if(key) idx.set(key, i);
+      if(!key) return;
+      if(!idx.has(key)) idx.set(key, []);
+      idx.get(key).push(i);
     });
     return idx;
+  }
+
+  // Parmi les lignes déjà en base partageant la même clé de commande, laquelle correspond
+  // réellement à la ligne importée ? Ce n'est une MISE À JOUR que si le numéro de colis importé
+  // correspond au numéro de colis OU au numéro dernier kilométrique déjà enregistré pour cette
+  // ligne — sinon (numéro différent des deux), c'est un nouveau colis sous la même commande (ex.
+  // renvoi/remplacement après un colis perdu), à ajouter comme une ligne à part plutôt que
+  // d'écraser l'existante. Sans numéro de colis à comparer (import qui n'en fournit pas), on
+  // retombe sur la première ligne trouvée pour cette clé (comportement classique de mise à jour).
+  function findMatchingIndex(orderKeyIndexMap, key, incomingNumSuivi){
+    const candidates = orderKeyIndexMap.get(key);
+    if(!candidates || candidates.length === 0) return undefined;
+    const cleanedIncoming = String(incomingNumSuivi || '').trim().toLowerCase();
+    if(!cleanedIncoming) return candidates[0];
+    return candidates.find(i=>{
+      const existing = database[i];
+      const existingNumSuivi = String(existing.numSuivi || '').trim().toLowerCase();
+      const existingKm = String(existing.numDernierKm || '').trim().toLowerCase();
+      return cleanedIncoming === existingNumSuivi || (existingKm && cleanedIncoming === existingKm);
+    });
   }
 
   // ---------- fenêtre "Options" : numéro de colonne + aperçu ----------
@@ -1004,13 +1026,20 @@
       let added = 0;
       let updated = 0;
       let shortRows = 0;
+      let skippedNoKey = 0;
       rows.forEach(row=>{
         if(!row || row.every(c => c === '' || c === undefined)) return;
         if(row.length < maxColNeeded) shortRows++;
 
         const rec = rowToRecord(row);
         const key = buildOrderKey(rec);
-        const existingIndex = key ? orderKeyIndex.get(key) : undefined;
+        if(!key){
+          // N° Commande ou Commande Amazon manquant : pas de clé possible, on n'enregistre pas
+          // cette ligne (demande explicite — plutôt que de l'ajouter sans pouvoir la dédoublonner).
+          skippedNoKey++;
+          return;
+        }
+        const existingIndex = findMatchingIndex(orderKeyIndex, key, rec.numSuivi);
 
         if(existingIndex !== undefined){
           // Le CSV n'a pas de colonne Num dernier kilométrique (col:null) : on garde la valeur
@@ -1019,12 +1048,13 @@
           updated++;
         }else{
           database.push(rec);
-          if(key) orderKeyIndex.set(key, database.length - 1);
+          if(!orderKeyIndex.has(key)) orderKeyIndex.set(key, []);
+          orderKeyIndex.get(key).push(database.length - 1);
           added++;
         }
       });
 
-      if(added === 0 && updated === 0){
+      if(added === 0 && updated === 0 && skippedNoKey === 0){
         logLine(`${file.name} — 0 ligne ajoutée (toutes les lignes lues étaient vides).`, true);
         continue;
       }
@@ -1034,7 +1064,8 @@
       const parts = [];
       if(added > 0) parts.push(`${added} ajoutée(s)`);
       if(updated > 0) parts.push(`${updated} mise(s) à jour`);
-      logLine(`${file.name} — ${parts.join(', ')}.`);
+      if(skippedNoKey > 0) parts.push(`${skippedNoKey} ignorée(s) (N° Commande ou Commande Amazon manquant)`);
+      logLine(`${file.name} — ${parts.join(', ')}.`, skippedNoKey > 0 && added === 0 && updated === 0);
       if(shortRows > 0){
         logLine(`${file.name} — attention : ${shortRows} ligne(s) ont moins de ${maxColNeeded} colonnes, certains champs ont été laissés vides.`, true);
       }
@@ -2582,6 +2613,7 @@
     let added = 0;
     let updated = 0;
     let skipped = 0;
+    let skippedNoKey = 0;
     const orderKeyIndexJson = buildOrderKeyIndex();
     parsed.forEach(item=>{
       if(item && typeof item === 'object' && !Array.isArray(item)){
@@ -2590,7 +2622,13 @@
         rec.numSuivi = cleanNumSuivi(rec.numSuivi);
 
         const key = buildOrderKey(rec);
-        const existingIndex = key ? orderKeyIndexJson.get(key) : undefined;
+        if(!key){
+          // N° Commande ou Commande Amazon manquant : pas de clé possible, on n'enregistre pas
+          // cette entrée (demande explicite).
+          skippedNoKey++;
+          return;
+        }
+        const existingIndex = findMatchingIndex(orderKeyIndexJson, key, rec.numSuivi);
 
         if(existingIndex !== undefined){
           // Un Num dernier kilométrique déjà en base est désormais impossible à remplacer : priorité
@@ -2602,7 +2640,8 @@
           updated++;
         }else{
           database.push(rec);
-          if(key) orderKeyIndexJson.set(key, database.length - 1);
+          if(!orderKeyIndexJson.has(key)) orderKeyIndexJson.set(key, []);
+          orderKeyIndexJson.get(key).push(database.length - 1);
           added++;
         }
       }else{
@@ -2611,7 +2650,7 @@
     });
 
     if(added === 0 && updated === 0){
-      setDbLog(`${sourceLabel} — aucune entrée valide trouvée dans le tableau JSON (${skipped} élément(s) ignoré(s), format inattendu).`, true);
+      setDbLog(`${sourceLabel} — aucune entrée valide trouvée dans le tableau JSON (${skipped} élément(s) ignoré(s), format inattendu` + (skippedNoKey > 0 ? `, ${skippedNoKey} sans N° Commande/Commande Amazon` : '') + `).`, true);
       return;
     }
 
@@ -2620,6 +2659,7 @@
     const jsonSummary = [];
     if(added > 0) jsonSummary.push(`${added} ajoutée(s)`);
     if(updated > 0) jsonSummary.push(`${updated} mise(s) à jour`);
+    if(skippedNoKey > 0) jsonSummary.push(`${skippedNoKey} ignorée(s) (N° Commande ou Commande Amazon manquant)`);
     setDbLog(`${sourceLabel} — ${jsonSummary.join(', ')}.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
   }
 

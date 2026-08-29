@@ -988,6 +988,11 @@
     let totalAdded = 0;
     let totalUpdated = 0;
 
+    // Première passe : parsing (rapide, local) de tous les fichiers, pour connaître le nombre total
+    // de lots à envoyer avant de commencer — la barre de progression peut ainsi refléter l'avancement
+    // réel de l'enregistrement en base plutôt que juste "en cours" sans indication.
+    const maxColNeeded = Math.max(...COLS.filter(c=>c.col !== null).map(c=>c.col));
+    const parsedFiles = [];
     for(const file of selectedFiles){
       let text;
       try{
@@ -1024,8 +1029,6 @@
         continue;
       }
 
-      const maxColNeeded = Math.max(...COLS.filter(c=>c.col !== null).map(c=>c.col));
-
       let shortRows = 0;
       const recs = [];
       rows.forEach(row=>{
@@ -1039,9 +1042,20 @@
         continue;
       }
 
-      // Le dédoublonnage (clé N° Commande + Commande Amazon, protection du numéro dernier
-      // kilométrique déjà renseigné) est désormais fait côté serveur — voir importBatch dans
-      // lib/db.js — pour ne jamais avoir à recharger toute la base en mémoire ici.
+      parsedFiles.push({ file, recs, shortRows });
+    }
+
+    const totalBatches = parsedFiles.reduce((sum, f) => sum + Math.ceil(f.recs.length / IMPORT_BATCH_SIZE), 0);
+    let batchesDone = 0;
+
+    if(totalBatches > 0){
+      showBackupProgress(0, `Enregistrement en base… 0 / ${totalBatches} lot(s)`);
+    }
+
+    // Le dédoublonnage (clé N° Commande + Commande Amazon, protection du numéro dernier
+    // kilométrique déjà renseigné) est désormais fait côté serveur — voir importBatch dans
+    // lib/db.js — pour ne jamais avoir à recharger toute la base en mémoire ici.
+    for(const { file, recs, shortRows } of parsedFiles){
       let added = 0, updated = 0, skippedNoKey = 0;
       try{
         for(let i=0; i<recs.length; i+=IMPORT_BATCH_SIZE){
@@ -1050,6 +1064,8 @@
           added += result.inserted;
           updated += result.updated;
           skippedNoKey += result.skipped;
+          batchesDone++;
+          showBackupProgress((batchesDone / totalBatches) * 100, `Enregistrement en base… ${batchesDone} / ${totalBatches} lot(s) (${file.name})`);
         }
       }catch(e){
         logLine(`${file.name} — échec de l'enregistrement en base (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
@@ -1068,8 +1084,10 @@
       }
     }
 
+    if(totalBatches > 0) showBackupProgress(100, 'Mise à jour de l\'affichage…');
     currentOffset = 0;
-    await Promise.all([refreshSearch(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+    await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+    hideBackupProgress();
 
     selectedFiles = [];
     els.fileInput.value = '';

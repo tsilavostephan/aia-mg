@@ -2508,6 +2508,8 @@
     els.focusDbBtn.title = exportUnlocked ? 'Déverrouillé — Alt+T pour verrouiller' : 'Verrouillé — Alt+T pour déverrouiller';
     els.exportJsonEncryptedBtn.disabled = !exportUnlocked;
     els.exportJsonEncryptedBtn.title = exportUnlocked ? 'Exporter vers Vercel Blob' : 'Verrouillé — Alt+T pour déverrouiller';
+    els.cleanInvalidBtn.disabled = !exportUnlocked;
+    els.cleanInvalidBtn.title = exportUnlocked ? 'Retire de la base actuellement chargée les colis sans N° Commande ou sans Commande Amazon, puis pensez à cliquer sur Exporter' : 'Verrouillé — Alt+T pour déverrouiller';
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
   }
 
@@ -3008,6 +3010,7 @@
   });
 
   els.cleanInvalidBtn.addEventListener('click', async ()=>{
+    if(!exportUnlocked) return; // bouton normalement désactivé dans ce cas
     const toRemove = database.filter(r => !String(r.numCommande || '').trim() || !String(r.commandeAmazon || '').trim());
     if(toRemove.length === 0){
       setDbLog('Aucun colis sans N° Commande / Commande Amazon dans la base actuelle.', false);

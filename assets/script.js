@@ -1625,11 +1625,15 @@
           : (Array.isArray(json.results) ? json.results : []);
 
         if(updates.length === 0){
-          const structureWarning = json.debug && json.debug.structureChangeWarning;
+          // Ordre de priorité : un vrai problème (blocage anti-bot ou changement de structure)
+          // prime sur une simple absence de données légitime (noDataInfo) — voir
+          // lib/scrapers/parcelsapp.js, qui distingue ces cas selon la réponse réelle de l'API.
+          const debug = json.debug || {};
           const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';
-          throw new Error(structureWarning
-            ? `⚠️ ${structureWarning}`
-            : `aucun résultat exploitable (${debugText})`);
+          if(debug.antiBotBlockWarning) throw new Error(`⚠️ ${debug.antiBotBlockWarning}`);
+          if(debug.structureChangeWarning) throw new Error(`⚠️ ${debug.structureChangeWarning}`);
+          if(debug.noDataInfo) throw new Error(`ℹ️ ${debug.noDataInfo}`);
+          throw new Error(`aucun résultat exploitable (${debugText})`);
         }
         return updates;
       }finally{

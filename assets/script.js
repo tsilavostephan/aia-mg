@@ -1418,9 +1418,14 @@
     const updateMap = new Map();
     updates.forEach(u => updateMap.set(u.trackingNumber, u.lastKm));
 
+    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé (voir le même
+    // principe dans applyScrapedResultsToDb et importParsedJsonArray) : une fois trouvé, il reste
+    // figé tant qu'on ne l'efface pas manuellement (ex. re-coller un texte périmé ne doit pas
+    // faire régresser une commande déjà résolue).
     let matched = 0;
     database.forEach(r=>{
       if(!rowBelongsToCarrierGroup(r, g)) return;
+      if(String(r.numDernierKm || '').trim()) return;
       const key = cleanNumSuivi(r.numSuivi);
       if(updateMap.has(key)){
         r.numDernierKm = updateMap.get(key);
@@ -1515,9 +1520,12 @@
       if(trackingNumber) updateMap.set(trackingNumber, lastKm);
     });
 
+    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé — figé une fois
+    // trouvé (voir le même principe dans le bouton "Importer" et importParsedJsonArray).
     let matched = 0;
     database.forEach(r=>{
       if(!rowBelongsToCarrierGroup(r, g)) return;
+      if(String(r.numDernierKm || '').trim()) return;
       const key = cleanNumSuivi(r.numSuivi);
       if(updateMap.has(key)){
         r.numDernierKm = updateMap.get(key);
@@ -2585,9 +2593,11 @@
         const existingIndex = key ? orderKeyIndexJson.get(key) : undefined;
 
         if(existingIndex !== undefined){
-          // Ne pas effacer le Num dernier kilométrique déjà en base si l'enregistrement importé
-          // n'en a pas (ou en a un vide) : on garde la valeur existante dans ce cas.
-          const numDernierKm = rec.numDernierKm ? rec.numDernierKm : database[existingIndex].numDernierKm;
+          // Un Num dernier kilométrique déjà en base est désormais impossible à remplacer : priorité
+          // systématique à la valeur déjà présente, même si l'enregistrement importé en a une
+          // différente (ex. fusion avec une sauvegarde plus ancienne/périmée) — seul un import sur
+          // une commande encore vide de ce côté-là peut le renseigner.
+          const numDernierKm = database[existingIndex].numDernierKm || rec.numDernierKm;
           database[existingIndex] = { ...database[existingIndex], ...rec, numDernierKm };
           updated++;
         }else{
@@ -2859,6 +2869,15 @@
     return decryptJsonPayload(text, password);
   }
 
+  // Rappel du nombre total de colis et du nombre déjà résolus (numéro dernier kilométrique
+  // renseigné), affiché à chaque étape de la barre de progression d'export — mêmes chiffres que
+  // la légende de la section 3 (#rowCount/#resolvedCount), recalculés à la volée puisque la base
+  // peut grandir en cours d'export (fusion avec la sauvegarde distante avant l'envoi final).
+  function dbStatsLabel(){
+    const resolved = database.filter(r => String(r.numDernierKm || '').trim()).length;
+    return `${database.length} colis, ${resolved} avec numéro dernier kilométrique`;
+  }
+
   els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
     if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
     if(database.length === 0){
@@ -2867,16 +2886,16 @@
     }
     els.exportJsonEncryptedBtn.disabled = true;
     try{
-      showBackupProgress(0, 'Préparation…');
+      showBackupProgress(0, `Préparation… (${dbStatsLabel()})`);
       const password = await getEncryptionPassword();
 
       // Fusionne d'abord avec la sauvegarde déjà présente sur Vercel Blob (si elle existe) : sans
       // ça, exporter depuis une session qui n'a en mémoire qu'une partie des commandes (ex. juste
       // les CSV importés aujourd'hui) écraserait tout l'historique déjà en ligne au lieu de le
       // compléter — l'utilisateur ne retrouverait alors plus les colis des mois précédents.
-      showBackupProgress(0, 'Récupération de la sauvegarde existante…');
+      showBackupProgress(0, `Récupération de la sauvegarde existante… (${dbStatsLabel()})`);
       const remote = await downloadRemoteBackup(password, (pct) =>
-        showBackupProgress(pct * 0.3, `Récupération de la sauvegarde existante… ${Math.round(pct)} %`)
+        showBackupProgress(pct * 0.3, `Récupération de la sauvegarde existante… ${Math.round(pct)} % (${dbStatsLabel()})`)
       );
       if(remote && Array.isArray(remote.records) && remote.records.length > 0){
         await importParsedJsonArray(remote.records, 'fusion avant export');
@@ -2886,10 +2905,10 @@
       const envelope = await encryptJsonPayload(database, password, exportedAt);
 
       // Aucun téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
-      showBackupProgress(0, 'Envoi vers Vercel Blob… 0 %');
+      showBackupProgress(0, `Envoi vers Vercel Blob… 0 % (${dbStatsLabel()})`);
       await withTimeout(
         uploadEnvelopeInChunks(envelope, unlockedExportCode, (percentage, totalChunks) =>
-          showBackupProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} % (${totalChunks} morceau(x))`)
+          showBackupProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} % (${totalChunks} morceau(x)) — ${dbStatsLabel()}`)
         ),
         180000,
         "Délai dépassé (3 min) — vérifiez que le Blob Store est bien connecté au projet, puis réessayez."

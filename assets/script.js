@@ -13,6 +13,7 @@
   const COLS_STORAGE_KEY = 'commandes-cols-config';
 
   const els = {
+    appLoadingOverlay: document.getElementById('appLoadingOverlay'),
     dropzone: document.getElementById('dropzone'),
     fileInput: document.getElementById('fileInput'),
     filelist: document.getElementById('filelist'),
@@ -1121,7 +1122,7 @@
       scrapeEndpoint: '/api/scrape' },
     { key:'sfc',        label:'SFC',        match:['SFC'],                     baseUrl:'https://www.sendfromchina.com/track',                kmColIndex:2, mode:'clipboard', pasteHasHeader:true, matchColIndex:1,
       scrapeEndpoint: '/api/scrape' },
-    { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
+    { key:'landmark',   label:'LANDMARK',   match:['LANDMARK'],                baseUrl:'https://track.landmarkglobal.com/?search=',          kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true, chunkSize:25,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », copiez le résumé des résultats puis collez-le ci-dessous.',
       scrapeEndpoint: '/api/scrape' },
     { key:'topyou',     label:'TopYou',     match:['TOPYOU'],                  baseUrl:'https://track.szty56.com/',                          kmColIndex:1, mode:'clipboard', chunkSize:20,
@@ -2757,9 +2758,24 @@
     }
   });
 
-  fetchAndRenderPage();
-  refreshStats();
-  refreshUnresolvedRows().then(updateCarrierTracking);
+  // Recouvre toute la page pendant le chargement initial (liste + compteurs + section 2
+  // transporteurs) : refreshUnresolvedRows() peut prendre du temps sur une grosse base (récupérée
+  // par lots de 5000), autant empêcher toute interaction avec une page à moitié chargée plutôt que
+  // de laisser cliquer sur des boutons dont l'état dépend de ces données.
+  (async ()=>{
+    try{
+      await Promise.all([
+        fetchAndRenderPage(),
+        refreshStats(),
+        refreshUnresolvedRows().then(updateCarrierTracking),
+      ]);
+    }catch(e){
+      // Échec silencieux ici : chaque fonction gère déjà ses propres erreurs (message dans #dbLog
+      // ou #scrapeAllLog) — on ne bloque jamais l'affichage de la page à cause de ça.
+    }finally{
+      els.appLoadingOverlay.style.display = 'none';
+    }
+  })();
   syncLockUi(); // état verrouillé par défaut à chaque connexion (voir plus haut)
 
   // Enregistrement du service worker (mode PWA installable). On ne le fait que si le contexte

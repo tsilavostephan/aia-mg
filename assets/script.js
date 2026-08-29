@@ -1095,14 +1095,6 @@
       disableManualImport: true,
       compactLinks: true,
       scrapeEndpoint: '/api/scrape' },
-    // Même principe que PARCELSAPP : un seul numéro par lien (chunkSize:1), scrapeChunkSize
-    // regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
-    // lib/scrapers/ordertracker.js). match:['WANB','WANBEXPRESS'] : WanB et WanbExpress sont
-    // scrappés par défaut avec ce transporteur.
-    { key:'ordertracker', label:'OrderTracker', match:['WANB','WANBEXPRESS'],  baseUrl:'https://www.ordertracker.com/fr/track/',             kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
-      disableManualImport: true,
-      compactLinks: true,
-      scrapeEndpoint: '/api/scrape' },
   ];
   const CHUNK_SIZE = 99;
 

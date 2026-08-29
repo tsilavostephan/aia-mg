@@ -87,7 +87,6 @@
       <option value="25">25 lignes</option>
       <option value="50">50 lignes</option>
       <option value="100">100 lignes</option>
-      <option value="all">Toutes les lignes</option>
     </select>
   </div>
   <div id="dbLog"></div>
@@ -95,7 +94,12 @@
   <div class="list-scroll">
     <div id="dbCards" class="db-cards"></div>
   </div>
-  <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer, ou cliquer sur IMPORTER (la base n'est pas conservée automatiquement entre deux visites).</div>
+  <div id="emptyState">Aucune commande en base pour le moment. Importez un CSV pour commencer.</div>
+  <div class="row" id="paginationRow" style="justify-content:center; gap:12px; margin-top:10px;">
+    <button type="button" id="prevPageBtn" class="secondary">◀ Précédent</button>
+    <span id="pageInfo" style="font-size:13px; color:var(--muted);"></span>
+    <button type="button" id="nextPageBtn" class="secondary">Suivant ▶</button>
+  </div>
   <div id="backupProgressWrap" style="display:none; margin:10px 0;">
     <div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden;">
       <div id="backupProgressBar" style="height:100%; width:0%; background:var(--primary); transition:width .15s ease;"></div>
@@ -105,9 +109,8 @@
   <div class="actions actions-bottom">
     <button id="exportJsonEncryptedBtn" class="secondary" title="Verrouillé — Alt+T pour déverrouiller" disabled>📤 Exporter</button>
     <button id="importBackupBtn" class="secondary" title="Récupère automatiquement la dernière sauvegarde stockée sur Vercel Blob">📥 Importer</button>
-    <button id="clearBtn" class="danger">🗑️ Effacer la base de données</button>
+    <button id="clearBtn" class="danger" title="Verrouillé — Alt+T pour déverrouiller" disabled>🗑️ Effacer la base de données</button>
     <button id="cleanInvalidBtn" class="secondary" title="Verrouillé — Alt+T pour déverrouiller" disabled>🧹 Nettoyer les colis sans N°/Amazon</button>
-    <span id="dbVersionInfo" class="db-version-info" title="Date/heure de l'export dont provient la base actuellement chargée"></span>
   </div>
 </fieldset>
 

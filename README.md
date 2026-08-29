@@ -4,8 +4,11 @@ Application web (PWA) pour importer des commandes Amazon/logistique depuis des f
 les stocker dans une base de données consultable et recherchable, et automatiser la récupération
 du **numéro de suivi dernier kilométrique** auprès de plusieurs transporteurs.
 
-Application 100 % statique (HTML/CSS/JS, sans framework), déployée sur **Vercel**. Les seules
-parties « backend » sont quelques fonctions serverless dans `/api` (scraping et authentification).
+Frontend 100 % statique (HTML/CSS/JS, sans framework), déployé sur **Vercel**, avec quelques
+fonctions serverless dans `/api` (scraping, authentification, accès à la base). La base de
+commandes elle-même vit dans **Vercel Postgres** (voir `lib/db.js`/`api/db.js`) — plus dans le
+navigateur ni dans un fichier chiffré sur Vercel Blob, pour pouvoir tenir jusqu'à ~1 million de
+commandes sans ralentissement.
 
 ---
 
@@ -62,9 +65,12 @@ parties « backend » sont quelques fonctions serverless dans `/api` (scraping e
     transforment un numéro collé/scanné (ex. extraction depuis un code-barres) avant de chercher
     une correspondance. Entièrement personnalisable via une fenêtre dédiée (ajout/suppression de
     règles, export/import en XML).
-- Verrouillé par défaut à la connexion : seule cette section est visible, export désactivé.
-  Alt+T (ou le bouton 🔒) déverrouille tout avec un code dédié, pour la session.
-- Export/import chiffrés (`.aiae`) via Vercel Blob — voir section Sauvegarde ci-dessous.
+- Recherche et liste paginées côté serveur (boutons Précédent/Suivant) : seule la page affichée est
+  chargée, jamais toute la base d'un coup.
+- Verrouillé par défaut à la connexion : seule cette section est visible, export/nettoyage/suppression
+  désactivés. Alt+T (ou le bouton 🔒) déverrouille tout avec un code dédié, pour la session.
+- Export en CSV (en clair) de toute la base — voir section Sauvegarde ci-dessous. Import
+  CSV/scraping écrit directement dans Postgres, sans étape d'export manuelle à part.
 
 ### 4. Authentification
 - L'ensemble du site (pages et API) est protégé par un **code d'accès** unique, vérifié par un
@@ -92,8 +98,8 @@ assets/
 api/
   auth.js                   Vérifie le code d'accès et pose le cookie de session
   logout.js                 Efface le cookie de session
-  login-code.js              Renvoie le code d'accès à une session déjà connectée (dérivation du mot de passe de chiffrement .aiae)
-  backup.js                  Sauvegarde/récupère le fichier .aiae chiffré sur Vercel Blob Storage
+  login-code.js              Renvoie le code d'accès à une session déjà connectée
+  db.js                      Point d'entrée unique vers la base Postgres (recherche, import, scraping, nettoyage, export CSV — voir lib/db.js)
   version.js                 Renvoie le numéro de version généré au build (détection de mise à jour)
   scrape.js                  Point d'entrée unique du scraping : dispatche vers lib/scrapers/*.js selon le champ "carrier"
   _scrapeLib.js              Fonctions partagées par les fonctions de scraping (Chromium headless, parsing, CORS…)
@@ -112,13 +118,19 @@ lib/scrapers/                Un module par transporteur (hors de /api : pas comp
   cne.js                     Scraping CNE (un lien par colis, lecture directe du DOM)
   sunyou.js                  Scraping Sunyou (bouton copie détaillé, fenêtre desktop large)
   parcelsapp.js              Scraping PARCELSAPP (un lien par colis, navigateur furtif, "Next tracking numbers")
+  wanbexpress.js             Scraping WANBEXPRESS (un lien par colis, navigateur furtif, via packageradar.com)
+
+lib/
+  db.js                      Accès Postgres (recherche paginée, import/dédoublonnage, application des résultats de scraping, nettoyage, export CSV)
 
 scripts/
   postinstall.mjs            Copie les fichiers Chromium nécessaires au scraping lors du build Vercel
   generate-version.mjs       Génère le numéro de version et tamponne le service worker à chaque build
+  schema.sql                 Schéma Postgres (table colis, index de recherche/dédoublonnage)
+  migrate.mjs                Applique schema.sql contre la base Postgres configurée (à lancer une fois)
 
 vercel.json                  Configuration des fonctions serverless (durée max, fichiers inclus)
-package.json                 Dépendances (puppeteer-core, @sparticuz/chromium-min)
+package.json                 Dépendances (puppeteer-core, @sparticuz/chromium-min, @vercel/postgres)
 ```
 
 ---
@@ -129,15 +141,18 @@ Le projet est conçu pour être déployé directement sur **Vercel**, connecté 
 
 1. Importer le dépôt sur [vercel.com](https://vercel.com) (aucune configuration de build
    particulière n'est nécessaire, tout est en JavaScript zero-config).
-2. Renseigner les [variables d'environnement](#variables-denvironnement) ci-dessous dans
+2. Ajouter une base **Postgres** (Neon) depuis l'onglet *Storage* du projet — les variables
+   `POSTGRES_URL`/`DATABASE_URL` sont injectées automatiquement.
+3. Exécuter une fois `node scripts/migrate.mjs` (en local, avec les variables tirées via
+   `vercel env pull`) pour créer le schéma (`scripts/schema.sql`) dans cette base.
+4. Renseigner les autres [variables d'environnement](#variables-denvironnement) ci-dessous dans
    **Settings → Environment Variables**.
-3. Déployer. Le script `postinstall` télécharge et prépare automatiquement les fichiers Chromium
+5. Déployer. Le script `postinstall` télécharge et prépare automatiquement les fichiers Chromium
    nécessaires au scraping pendant le build.
 
-En local, l'application peut aussi être ouverte directement en tant que fichier statique
-(`index.html`) pour tout ce qui ne dépend pas des fonctions `/api` (import CSV, base de données,
-recherche). Les fonctions de scraping et l'authentification nécessitent en revanche un
-environnement Vercel (ou `vercel dev`).
+Les fonctions de scraping, l'authentification et l'accès à la base (`/api/db`) nécessitent un
+environnement Vercel (ou `vercel dev`) — l'application ne fonctionne pas ouverte en simple fichier
+statique.
 
 ---
 
@@ -148,8 +163,8 @@ environnement Vercel (ou `vercel dev`).
 | `APP_ACCESS_CODE` | Non (mais recommandé) | Code d'accès à saisir sur la page de connexion. Si absente, l'application reste accessible sans code (pour éviter de se retrouver bloqué dehors par erreur). |
 | `APP_AUTH_SECRET` | Non | Secret utilisé pour signer le cookie de session. Si absent, `APP_ACCESS_CODE` est utilisé à la place — il est recommandé d'utiliser une valeur distincte, longue et aléatoire. |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Non (mais recommandé) | Ajoutées automatiquement en connectant une base **Vercel KV** depuis l'onglet *Storage* du projet sur vercel.com. Permettent à `api/auth.js` de verrouiller progressivement une adresse IP après plusieurs échecs de connexion (partagé entre toutes les instances/régions). Sans ces variables, un compteur en mémoire local par instance sert de repli — moins robuste (se réinitialise à froid, non partagé entre régions) mais actif par défaut. |
-| `BLOB_READ_WRITE_TOKEN` | Oui, pour l'export/import `.aiae` | Ajoutée automatiquement en connectant un **Blob Store** depuis l'onglet *Storage* du projet sur vercel.com. Utilisée par `api/backup.js` pour la sauvegarde/récupération du fichier chiffré. |
-| `APP_EXPORT_CODE` | Oui, pour l'export `.aiae` | Code demandé avant d'écraser la sauvegarde existante sur Vercel Blob (distinct du code de connexion). Sans cette variable, l'export échoue avec un message explicite plutôt que d'accepter n'importe quel code. |
+| `POSTGRES_URL` (ou équivalent) | Oui | Ajoutée automatiquement en connectant une base **Postgres** (Neon) depuis l'onglet *Storage* du projet sur vercel.com. Utilisée par `lib/db.js` pour toute la base de commandes. |
+| `APP_EXPORT_CODE` | Oui, pour Exporter/Nettoyer/Effacer | Code demandé pour déverrouiller ces trois actions (distinct du code de connexion). Sans cette variable, elles échouent avec un message explicite plutôt que d'accepter n'importe quel code. |
 
 Aucune autre variable n'est nécessaire : les fonctions de scraping n'utilisent pas de clé API
 externe (elles pilotent un navigateur headless directement).
@@ -171,8 +186,10 @@ externe (elles pilotent un navigateur headless directement).
      transporteurs éligibles d'un coup.
 3. **Rechercher une commande** : utiliser le champ de recherche de la section 3 (scan possible via
    l'icône caméra), ou parcourir/filtrer la liste des commandes.
-4. **Sauvegarder** : Alt+T pour déverrouiller, puis **🔒 Exporter** (envoie sur Vercel Blob,
-   chiffré) ou **🔒 Importer** (récupère la dernière sauvegarde, automatique, sans code).
+4. **Sauvegarder** : chaque import/scraping/nettoyage écrit déjà directement dans Postgres — rien à
+   valider séparément. Alt+T pour déverrouiller, puis **🔒 Exporter** télécharge un CSV de toute la
+   base (sauvegarde/analyse externe), **🔒 Nettoyer** retire les colis sans N° Commande/Amazon, et
+   **🔒 Effacer la base de données** supprime tout (irréversible).
 
 ---
 
@@ -201,9 +218,10 @@ transporteurs connus via le bouton **⚙ Transporteurs**.
 
 ## Notes techniques
 
-- **Stockage** : tout est conservé dans le `localStorage` du navigateur (base de commandes,
-  configuration des colonnes CSV, algorithmes de recherche, association des transporteurs,
-  réglages de scraping). Rien n'est stocké côté serveur en dehors du cookie d'authentification.
+- **Stockage** : la base de commandes vit dans **Vercel Postgres** (`lib/db.js`), interrogée par
+  page (recherche paginée, jamais tout chargé en mémoire). Seules les préférences d'interface
+  (configuration des colonnes CSV, algorithmes de recherche, association des transporteurs,
+  réglages de scraping) restent dans le `localStorage` du navigateur.
 - **Scraping** : les fonctions `/api/scrape-*` utilisent `puppeteer-core` avec
   `@sparticuz/chromium-min` (binaire Chromium embarqué au build, pas de téléchargement à
   l'exécution) pour ouvrir réellement les pages de suivi et en extraire les données.

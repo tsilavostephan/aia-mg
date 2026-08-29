@@ -28,12 +28,14 @@
     emptyState: document.getElementById('emptyState'),
     search: document.getElementById('search'),
     displayLimit: document.getElementById('displayLimit'),
+    prevPageBtn: document.getElementById('prevPageBtn'),
+    nextPageBtn: document.getElementById('nextPageBtn'),
+    pageInfo: document.getElementById('pageInfo'),
     exportJsonEncryptedBtn: document.getElementById('exportJsonEncryptedBtn'),
     importBackupBtn: document.getElementById('importBackupBtn'),
     backupProgressWrap: document.getElementById('backupProgressWrap'),
     backupProgressBar: document.getElementById('backupProgressBar'),
     backupProgressText: document.getElementById('backupProgressText'),
-    dbVersionInfo: document.getElementById('dbVersionInfo'),
     exportCodeModalBg: document.getElementById('exportCodeModalBg'),
     exportCodeInput: document.getElementById('exportCodeInput'),
     exportCodeModalError: document.getElementById('exportCodeModalError'),
@@ -104,7 +106,39 @@
   };
 
   let selectedFiles = [];
-  let database = []; // { numCommande, commandeAmazon, qteCommande, numSuivi, qteExpedie, nom, transporteur, numDernierKm }
+
+  // La base vit désormais dans Vercel Postgres (voir api/db.js / lib/db.js) — plus de tableau
+  // complet en mémoire. `currentPageRows` ne contient que la page actuellement affichée (jusqu'à
+  // displayLimit lignes), et `unresolvedRows` ne contient que les colis non résolus (numSuivi +
+  // transporteur), utilisés par la section scraping/transporteurs (voir computeCarrierGroups plus
+  // bas) — un sous-ensemble bien plus petit que la base entière dans le cas courant.
+  let currentPageRows = [];
+  let currentOffset = 0;
+  let currentSearchTotal = 0;
+  let unresolvedRows = [];
+
+  // ---------- appels à /api/db (recherche/import/scraping/nettoyage — voir api/db.js) ----------
+  async function dbGet(action, params){
+    const qs = new URLSearchParams({ action, ...params });
+    const res = await fetch(`/api/db?${qs.toString()}`, { cache: 'no-store' });
+    if(!res.ok){
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+  async function dbPost(action, body){
+    const res = await fetch('/api/db', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...body }),
+    });
+    if(!res.ok){
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
 
   // ---------- parseur CSV maison (aucune librairie externe) ----------
   function parseCSV(text){
@@ -198,11 +232,16 @@
     return String(str || '').replace(/^[^0-9A-Za-z]+/, '').replace(/[^0-9A-Za-z]+$/, '');
   }
 
-  // Un numéro de suivi calculé correspond-il à une commande déjà présente en base ?
-  function trackingExistsInDb(value){
+  // Un numéro de suivi calculé correspond-il à une commande déjà présente en base ? (requête
+  // serveur — voir action 'exists' dans api/db.js — plus de tableau complet en mémoire à scanner)
+  async function trackingExistsInDb(value){
     if(!value) return false;
-    const v = value.toLowerCase();
-    return database.some(r => cleanNumSuivi(r.numSuivi).toLowerCase() === v);
+    try{
+      const { exists } = await dbGet('exists', { numSuivi: value });
+      return exists;
+    }catch(e){
+      return false;
+    }
   }
 
   // ---------- moteur générique d'algorithmes de recherche (configurable via "Options") ----------
@@ -364,23 +403,24 @@
   // à une commande en base. Si non, on essaie chaque algorithme configuré (dans l'ordre) et on
   // retient le premier résultat qui correspond à une commande en base. Si aucun ne correspond, on
   // garde un ordre de repli par défaut (strip, puis premier algorithme calculable).
-  function computeBestTracking(raw){
+  async function computeBestTracking(raw){
     const stripped = stripSpecialCharsEdges(raw);
-    if(stripped && trackingExistsInDb(stripped)) return stripped;
+    if(stripped && await trackingExistsInDb(stripped)) return stripped;
 
     const results = SEARCH_ALGORITHMS
       .map(algo => runSearchAlgorithm(algo, raw))
       .filter(v => v);
 
-    const matched = results.find(v => trackingExistsInDb(v));
-    if(matched) return matched;
+    for(const v of results){
+      if(await trackingExistsInDb(v)) return v;
+    }
 
     return stripped || results[0] || null;
   }
 
   // Applique la transformation ci-dessus sur le champ de recherche
-  function applyTrackingTransformIfNeeded(){
-    const transformed = computeBestTracking(els.search.value);
+  async function applyTrackingTransformIfNeeded(){
+    const transformed = await computeBestTracking(els.search.value);
     if(transformed){
       els.search.value = transformed;
       render();
@@ -717,18 +757,19 @@
   // À la demande explicite de l'utilisateur, sur tous les appareils (mobile compris) : ni
   // IndexedDB ni localStorage pour la base de commandes elle-même — elle ne vit qu'en mémoire
   // pendant que l'onglet est ouvert, et se reconstitue en réimportant le JSON exporté (boutons
-  // "Exporter en JSON" / "Importer un JSON" de la section 3) au début de chaque session. Ça évite
-  // toute question de quota de stockage (localStorage ~5-10 Mo, IndexedDB parfois restreint ou
-  // évincé sur mobile) puisqu'il n'y a plus rien à stocker durablement côté navigateur.
-  // saveDatabase() reste une fonction (vide) pour ne pas avoir à toucher tous ses appelants
-  // existants (import CSV, scraping, etc., qui font déjà "await saveDatabase()").
-  function loadDatabase(){
-    database = [];
-    render();
-  }
-
-  async function saveDatabase(){
-    // volontairement vide : rien n'est persisté.
+  // Chaque import CSV, résultat de scraping ou nettoyage écrit désormais directement dans Postgres
+  // (voir api/db.js) — il n'y a plus de "base en mémoire" à recharger/sauvegarder au sens propre.
+  // refreshStats() récupère juste les compteurs globaux (total/résolus), indépendamment de la
+  // recherche en cours.
+  async function refreshStats(){
+    try{
+      const { total, resolved } = await dbGet('stats', {});
+      els.rowCount.textContent = total;
+      els.resolvedCount.textContent = resolved;
+      els.resolvedPercent.textContent = total > 0 ? ` (${((resolved / total) * 100).toFixed(2)}%)` : '';
+    }catch(e){
+      // Échec silencieux : les compteurs restent simplement à leur dernière valeur connue.
+    }
   }
 
   // ---------- gestion des fichiers sélectionnés ----------
@@ -814,50 +855,6 @@
       }
     });
     return rec;
-  }
-
-  // Clé unique d'une commande : la combinaison N° Commande + Commande Amazon (il faut que les
-  // deux correspondent pour considérer qu'il s'agit de la même commande). Num Suivi n'entre pas
-  // dans la clé : c'est un champ de référence, il est simplement mis à jour comme les autres.
-  function buildOrderKey(rec){
-    const numCommande = String(rec.numCommande || '').trim().toLowerCase();
-    const commandeAmazon = String(rec.commandeAmazon || '').trim().toLowerCase();
-    if(!numCommande || !commandeAmazon) return null;
-    return numCommande + '||' + commandeAmazon;
-  }
-
-  // Recherche des enregistrements déjà en base par clé unique (N° Commande + Commande Amazon) —
-  // un tableau d'index par clé (pas un seul) : plusieurs colis distincts peuvent désormais
-  // partager la même commande (voir findMatchingIndex ci-dessous, ex. renvoi/remplacement).
-  function buildOrderKeyIndex(){
-    const idx = new Map();
-    database.forEach((r, i)=>{
-      const key = buildOrderKey(r);
-      if(!key) return;
-      if(!idx.has(key)) idx.set(key, []);
-      idx.get(key).push(i);
-    });
-    return idx;
-  }
-
-  // Parmi les lignes déjà en base partageant la même clé de commande, laquelle correspond
-  // réellement à la ligne importée ? Ce n'est une MISE À JOUR que si le numéro de colis importé
-  // correspond au numéro de colis OU au numéro dernier kilométrique déjà enregistré pour cette
-  // ligne — sinon (numéro différent des deux), c'est un nouveau colis sous la même commande (ex.
-  // renvoi/remplacement après un colis perdu), à ajouter comme une ligne à part plutôt que
-  // d'écraser l'existante. Sans numéro de colis à comparer (import qui n'en fournit pas), on
-  // retombe sur la première ligne trouvée pour cette clé (comportement classique de mise à jour).
-  function findMatchingIndex(orderKeyIndexMap, key, incomingNumSuivi){
-    const candidates = orderKeyIndexMap.get(key);
-    if(!candidates || candidates.length === 0) return undefined;
-    const cleanedIncoming = String(incomingNumSuivi || '').trim().toLowerCase();
-    if(!cleanedIncoming) return candidates[0];
-    return candidates.find(i=>{
-      const existing = database[i];
-      const existingNumSuivi = String(existing.numSuivi || '').trim().toLowerCase();
-      const existingKm = String(existing.numDernierKm || '').trim().toLowerCase();
-      return cleanedIncoming === existingNumSuivi || (existingKm && cleanedIncoming === existingKm);
-    });
   }
 
   // ---------- fenêtre "Options" : numéro de colonne + aperçu ----------
@@ -979,12 +976,17 @@
     closeCsvOptionsModal();
   });
 
+  // Nombre de lignes envoyées par requête à /api/db (action=import-batch) — un compromis entre
+  // trop peu de requêtes (gros lots plus longs à traiter dans une seule transaction serverless) et
+  // trop de requêtes (surcoût réseau) ; assez petit pour rester largement sous la limite de 4,5 Mo
+  // d'une requête entrante Vercel même avec des champs longs.
+  const IMPORT_BATCH_SIZE = 500;
+
   els.importBtn.addEventListener('click', async ()=>{
     if(selectedFiles.length === 0) return;
     els.importBtn.disabled = true;
     let totalAdded = 0;
     let totalUpdated = 0;
-    const orderKeyIndex = buildOrderKeyIndex();
 
     for(const file of selectedFiles){
       let text;
@@ -1024,39 +1026,33 @@
 
       const maxColNeeded = Math.max(...COLS.filter(c=>c.col !== null).map(c=>c.col));
 
-      let added = 0;
-      let updated = 0;
       let shortRows = 0;
-      let skippedNoKey = 0;
+      const recs = [];
       rows.forEach(row=>{
         if(!row || row.every(c => c === '' || c === undefined)) return;
         if(row.length < maxColNeeded) shortRows++;
-
-        const rec = rowToRecord(row);
-        const key = buildOrderKey(rec);
-        if(!key){
-          // N° Commande ou Commande Amazon manquant : pas de clé possible, on n'enregistre pas
-          // cette ligne (demande explicite — plutôt que de l'ajouter sans pouvoir la dédoublonner).
-          skippedNoKey++;
-          return;
-        }
-        const existingIndex = findMatchingIndex(orderKeyIndex, key, rec.numSuivi);
-
-        if(existingIndex !== undefined){
-          // Le CSV n'a pas de colonne Num dernier kilométrique (col:null) : on garde la valeur
-          // déjà en base au lieu de l'écraser avec la chaîne vide de rec.
-          database[existingIndex] = { ...database[existingIndex], ...rec, numDernierKm: database[existingIndex].numDernierKm };
-          updated++;
-        }else{
-          database.push(rec);
-          if(!orderKeyIndex.has(key)) orderKeyIndex.set(key, []);
-          orderKeyIndex.get(key).push(database.length - 1);
-          added++;
-        }
+        recs.push(rowToRecord(row));
       });
 
-      if(added === 0 && updated === 0 && skippedNoKey === 0){
+      if(recs.length === 0){
         logLine(`${file.name} — 0 ligne ajoutée (toutes les lignes lues étaient vides).`, true);
+        continue;
+      }
+
+      // Le dédoublonnage (clé N° Commande + Commande Amazon, protection du numéro dernier
+      // kilométrique déjà renseigné) est désormais fait côté serveur — voir importBatch dans
+      // lib/db.js — pour ne jamais avoir à recharger toute la base en mémoire ici.
+      let added = 0, updated = 0, skippedNoKey = 0;
+      try{
+        for(let i=0; i<recs.length; i+=IMPORT_BATCH_SIZE){
+          const batch = recs.slice(i, i + IMPORT_BATCH_SIZE);
+          const result = await dbPost('import-batch', { rows: batch });
+          added += result.inserted;
+          updated += result.updated;
+          skippedNoKey += result.skipped;
+        }
+      }catch(e){
+        logLine(`${file.name} — échec de l'enregistrement en base (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
         continue;
       }
 
@@ -1072,8 +1068,8 @@
       }
     }
 
-    await saveDatabase();
-    render();
+    currentOffset = 0;
+    await Promise.all([refreshSearch(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
 
     selectedFiles = [];
     els.fileInput.value = '';
@@ -1265,13 +1261,14 @@
     return false;
   }
 
+  // unresolvedRows ne contient QUE les colis non résolus (numSuivi + transporteur, voir
+  // refreshUnresolvedRows) — remplace le scan complet de la base, la seule chose dont le
+  // scraping/import manuel a besoin de toute façon (une commande déjà résolue n'a rien à faire ici).
   function computeCarrierGroups(){
     return CARRIERS.map(c=>{
-      // Inutile de rescraper une commande qui a déjà son numéro dernier kilométrique — seules les
-      // commandes encore non résolues sont proposées au scraping automatique/à l'import manuel.
       const nums = Array.from(new Set(
-        database
-          .filter(r => rowBelongsToCarrierGroup(r, c) && !String(r.numDernierKm || '').trim())
+        unresolvedRows
+          .filter(r => rowBelongsToCarrierGroup(r, c))
           .map(r => cleanNumSuivi(r.numSuivi)).filter(v => v.length > 0)
       ));
       return { ...c, nums, chunks: chunkArray(nums, c.chunkSize || CHUNK_SIZE) };
@@ -1279,12 +1276,29 @@
       .sort((a, b) => b.nums.length - a.nums.length); // le plus de colis d'abord
   }
 
+  // Récupère TOUS les colis non résolus (par lots, voir action 'unresolved-rows' dans api/db.js) —
+  // appelé au chargement puis après tout import/scraping/nettoyage qui peut faire évoluer ce
+  // sous-ensemble, PAS à chaque frappe de recherche (contrairement à l'ancien computeCarrierGroups
+  // qui rescannait toute la base à chaque render()).
+  async function refreshUnresolvedRows(){
+    const rows = [];
+    let offset = 0;
+    for(;;){
+      const page = await dbGet('unresolved-rows', { limit: 5000, offset });
+      if(!page.rows || page.rows.length === 0) break;
+      rows.push(...page.rows);
+      offset += page.rows.length;
+      if(page.rows.length < 5000) break;
+    }
+    unresolvedRows = rows;
+  }
+
   // ---------- fenêtre d'association manuelle transporteur ----------
   let draftCarrierMapping = {};
+  let transporteurCounts = []; // [{transporteur, count}] — chargé à l'ouverture de la fenêtre (voir openCarrierMappingModal)
 
   function renderCarrierMappingList(){
-    const rawValues = Array.from(new Set(database.map(r => String(r.transporteur || '').trim()).filter(Boolean)))
-      .sort((a, b) => a.localeCompare(b));
+    const rawValues = transporteurCounts.map(t => t.transporteur).sort((a, b) => a.localeCompare(b));
 
     if(rawValues.length === 0){
       els.carrierMappingList.innerHTML = '<p style="font-size:13px; color:var(--muted);">Aucune valeur de transporteur trouvée en base.</p>';
@@ -1293,7 +1307,7 @@
 
     els.carrierMappingList.innerHTML = rawValues.map(raw=>{
       const rawKey = raw.toUpperCase();
-      const count = database.filter(r => String(r.transporteur || '').trim() === raw).length;
+      const count = (transporteurCounts.find(t => t.transporteur === raw) || {}).count || 0;
 
       // Une valeur brute peut être cochée pour plusieurs transporteurs à la fois (ex. "LANDMARK" est
       // suivi à la fois par son transporteur dédié ET par GOFO, volontairement) — reflète soit une
@@ -1343,10 +1357,17 @@
     return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  function openCarrierMappingModal(){
+  async function openCarrierMappingModal(){
     draftCarrierMapping = { ...carrierMapping };
-    renderCarrierMappingList();
+    els.carrierMappingList.innerHTML = '<p style="font-size:13px; color:var(--muted);">Chargement…</p>';
     els.carrierMappingModalBg.style.display = 'block';
+    try{
+      const { transporteurs } = await dbGet('distinct-transporteurs', {});
+      transporteurCounts = transporteurs;
+    }catch(e){
+      transporteurCounts = [];
+    }
+    renderCarrierMappingList();
   }
 
   function closeCarrierMappingModal(){
@@ -1450,23 +1471,33 @@
     const updateMap = new Map();
     updates.forEach(u => updateMap.set(u.trackingNumber, u.lastKm));
 
-    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé (voir le même
-    // principe dans applyScrapedResultsToDb et importParsedJsonArray) : une fois trouvé, il reste
-    // figé tant qu'on ne l'efface pas manuellement (ex. re-coller un texte périmé ne doit pas
-    // faire régresser une commande déjà résolue).
-    let matched = 0;
-    database.forEach(r=>{
+    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé — protection assurée
+    // côté serveur (voir applyScrapeResults dans lib/db.js), qui ne touche que les colis encore
+    // non résolus. On ne retient ici que les numéros collés qui appartiennent à ce transporteur
+    // parmi les colis non résolus connus côté client (unresolvedRows).
+    const results = [];
+    unresolvedRows.forEach(r=>{
       if(!rowBelongsToCarrierGroup(r, g)) return;
-      if(String(r.numDernierKm || '').trim()) return;
       const key = cleanNumSuivi(r.numSuivi);
-      if(updateMap.has(key)){
-        r.numDernierKm = updateMap.get(key);
-        matched++;
-      }
+      if(updateMap.has(key) && updateMap.get(key)) results.push({ numSuivi: key, numDernierKm: updateMap.get(key) });
     });
 
+    let matched = 0;
+    try{
+      if(results.length > 0){
+        const res = await dbPost('apply-scrape-results', { results });
+        matched = res.updated;
+      }
+    }catch(e){
+      importLogByCarrier[g.key] = { text: `Échec de l'enregistrement en base (${e && e.message ? e.message : 'erreur inconnue'}).`, err: true };
+      renderCarrierPanel();
+      return;
+    }
+
+    const matchedKeys = new Set(results.map(r => r.numSuivi));
+    unresolvedRows = unresolvedRows.filter(r => !matchedKeys.has(cleanNumSuivi(r.numSuivi)));
+
     const notFound = Math.max(0, updates.length - matched);
-    await saveDatabase();
 
     pastedTextByCarrier[g.key] = ''; // vide le champ après un import terminé avec succès
 
@@ -1474,6 +1505,8 @@
       text: `${matched} commande(s) mise(s) à jour dans la base.` + (notFound > 0 ? ` ${notFound} numéro(s) collé(s) sans correspondance dans la base pour ${g.label}.` : ''),
       err: false
     };
+    updateCarrierTracking();
+    refreshStats();
     render();
   }
 
@@ -1552,21 +1585,33 @@
       if(trackingNumber) updateMap.set(trackingNumber, lastKm);
     });
 
-    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé — figé une fois
-    // trouvé (voir le même principe dans le bouton "Importer" et importParsedJsonArray).
-    let matched = 0;
-    database.forEach(r=>{
+    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé — protection assurée
+    // côté serveur (voir applyScrapeResults dans lib/db.js). On ne retient ici que les numéros
+    // scrapés qui appartiennent à ce transporteur parmi les colis non résolus connus côté client
+    // (unresolvedRows).
+    const results = [];
+    unresolvedRows.forEach(r=>{
       if(!rowBelongsToCarrierGroup(r, g)) return;
-      if(String(r.numDernierKm || '').trim()) return;
       const key = cleanNumSuivi(r.numSuivi);
-      if(updateMap.has(key)){
-        r.numDernierKm = updateMap.get(key);
-        matched++;
-      }
+      if(updateMap.has(key) && updateMap.get(key)) results.push({ numSuivi: key, numDernierKm: updateMap.get(key) });
     });
 
+    let matched = 0;
+    try{
+      if(results.length > 0){
+        const res = await dbPost('apply-scrape-results', { results });
+        matched = res.updated;
+      }
+    }catch(e){
+      importLogByCarrier[g.key] = { text: `Échec de l'enregistrement en base (${e && e.message ? e.message : 'erreur inconnue'}).`, err: true };
+      renderCarrierPanel();
+      return 0;
+    }
+
+    const matchedKeys = new Set(results.map(r => r.numSuivi));
+    unresolvedRows = unresolvedRows.filter(r => !matchedKeys.has(cleanNumSuivi(r.numSuivi)));
+
     const notFound = Math.max(0, items.length - matched);
-    await saveDatabase();
 
     let mismatchSample = '';
     if(matched === 0 && items.length > 0){
@@ -1574,7 +1619,7 @@
       // échantillon des deux côtés en JSON.stringify (qui révèle les caractères invisibles, ex.
       // espace insécable/zero-width venant du presse-papier) pour repérer un décalage d'encodage.
       const scrapedKeys = Array.from(updateMap.keys()).slice(0, 3).map(k => JSON.stringify(k));
-      const dbKeys = database
+      const dbKeys = unresolvedRows
         .filter(r => rowBelongsToCarrierGroup(r, g))
         .slice(0, 3)
         .map(r => JSON.stringify(cleanNumSuivi(r.numSuivi)));
@@ -1588,6 +1633,8 @@
       text: `${matched} commande(s) mise(s) à jour via ${sourceLabel}.` + (notFound > 0 ? ` ${notFound} résultat(s) sans correspondance dans la base.` : '') + mismatchSample,
       err: false
     };
+    updateCarrierTracking();
+    refreshStats();
     render();
     return matched;
   }
@@ -2125,7 +2172,7 @@
   // auquel cas on laisse le comportement natif de collage du champ actif. En mode plein écran de
   // la section 3, cette exception saute : tout collage va dans la recherche, quel que soit le
   // champ actif (les seuls champs visibles dans ce mode sont de toute façon liés à cette section).
-  document.addEventListener('paste', (e)=>{
+  document.addEventListener('paste', async (e)=>{
     const active = document.activeElement;
     const isEditable = active && (
       active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
@@ -2137,7 +2184,7 @@
     e.preventDefault();
     els.search.value = text;
     els.search.focus();
-    if(!applyTrackingTransformIfNeeded()) render();
+    if(!(await applyTrackingTransformIfNeeded())) render();
   });
 
   els.copyUrlBtn.addEventListener('click', async ()=>{
@@ -2398,10 +2445,10 @@
       await scannerInstance.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 250, height: 150 } },
-        (decodedText)=>{
+        async (decodedText)=>{
           // une valeur a été détectée : on arrête le scan et on colle la valeur dans la recherche
           stopScanner();
-          const transformed = computeBestTracking(decodedText);
+          const transformed = await computeBestTracking(decodedText);
           els.search.value = transformed || decodedText;
           els.search.dispatchEvent(new Event('input'));
           els.search.focus();
@@ -2420,20 +2467,36 @@
     if(e.target === els.scannerModalBg) stopScanner();
   });
 
-  // ---------- affichage liste ----------
-  function render(){
-    const term = els.search.value.trim().toLowerCase();
-    // Plusieurs critères séparés par des virgules fonctionnent comme un OU : une ligne correspond
-    // dès qu'au moins un des critères est trouvé dans au moins un de ses champs.
-    const terms = term.split(',').map(t => t.trim()).filter(t => t.length > 0);
-    const filtered = terms.length
-      ? database.filter(r => terms.some(t => Object.values(r).some(v => String(v).toLowerCase().includes(t))))
-      : database;
+  // ---------- affichage liste (recherche + pagination côté serveur, voir action 'search' dans
+  // api/db.js) : plus de tableau complet en mémoire à filtrer/trier à chaque frappe, on ne
+  // récupère que la page courante. ----------
+  let searchRequestSeq = 0; // ignore une réponse arrivée en retard si une recherche plus récente a été lancée entre-temps
 
-    if(term && els.autoDetailsCheckbox.checked && document.body.classList.contains('focus-mode') && filtered.length === 1){
-      if(autoOpenedRecord !== filtered[0]){
-        autoOpenedRecord = filtered[0];
-        openPackageModal(filtered[0]);
+  async function fetchAndRenderPage(){
+    const term = els.search.value.trim();
+    const limit = parseInt(els.displayLimit.value, 10) || 10;
+    const mySeq = ++searchRequestSeq;
+
+    let result;
+    try{
+      result = await dbGet('search', { q: term, limit, offset: currentOffset });
+    }catch(e){
+      if(mySeq !== searchRequestSeq) return;
+      els.dbCards.innerHTML = '';
+      els.dbCards.style.display = 'none';
+      els.emptyState.textContent = `Erreur de recherche (${e && e.message ? e.message : 'erreur inconnue'}).`;
+      els.emptyState.style.display = 'block';
+      return;
+    }
+    if(mySeq !== searchRequestSeq) return; // une recherche plus récente a déjà pris le relais
+
+    currentPageRows = result.rows;
+    currentSearchTotal = result.total;
+
+    if(term && els.autoDetailsCheckbox.checked && document.body.classList.contains('focus-mode') && currentSearchTotal === 1 && currentPageRows.length === 1){
+      if(autoOpenedRecord !== currentPageRows[0]){
+        autoOpenedRecord = currentPageRows[0];
+        openPackageModal(currentPageRows[0]);
       }
     }else{
       // La recherche ne correspond plus à un seul colis (0 ou plusieurs résultats) : si une fiche
@@ -2445,40 +2508,43 @@
       autoOpenedRecord = null;
     }
 
-    const limitVal = els.displayLimit.value; // 'all' ou nombre en chaîne
-    const reversedFiltered = filtered.slice().reverse();
-    const rows = limitVal === 'all' ? reversedFiltered : reversedFiltered.slice(0, parseInt(limitVal, 10));
-
     els.dbCards.innerHTML = '';
-    rows.forEach(r=> els.dbCards.appendChild(buildDbCard(r)));
+    currentPageRows.forEach(r=> els.dbCards.appendChild(buildDbCard(r)));
 
-    els.rowCount.textContent = database.length;
-    // Recalculé à chaque rendu à partir de l'état actuel de la base (pas un compteur qui
-    // s'incrémenterait à chaque import/scraping) : relancer plusieurs fois les mêmes imports ou le
-    // scraping ne fausse donc jamais ce total.
-    const resolvedTotal = database.filter(r => String(r.numDernierKm || '').trim()).length;
-    els.resolvedCount.textContent = resolvedTotal;
-    els.resolvedPercent.textContent = database.length > 0
-      ? ` (${((resolvedTotal / database.length) * 100).toFixed(2)}%)`
-      : '';
-
-    if(term && filtered.length < database.length){
-      els.count.textContent = `${rows.length} affichée(s) / ${filtered.length} résultat(s) / ${database.length} commande(s) au total`;
-    }else if(limitVal !== 'all' && database.length > parseInt(limitVal, 10)){
-      els.count.textContent = `${rows.length} affichée(s) sur ${database.length} commande(s) (limite : ${limitVal})`;
-    }else{
-      els.count.textContent = '';
-    }
-
-    els.emptyState.textContent = database.length === 0
-      ? 'Aucune commande en base pour le moment. Importez un CSV pour commencer, ou un fichier .aiae exporté lors d\'une session précédente (la base n\'est pas conservée automatiquement entre deux visites).'
-      : 'Aucun résultat pour cette recherche.';
-    const showList = rows.length > 0;
+    const showList = currentPageRows.length > 0;
     els.dbCards.style.display = showList ? 'flex' : 'none';
     els.emptyState.style.display = showList ? 'none' : 'block';
+    els.emptyState.textContent = term
+      ? 'Aucun résultat pour cette recherche.'
+      : 'Aucune commande en base pour le moment. Importez un CSV pour commencer.';
 
-    updateCarrierTracking();
+    els.count.textContent = currentSearchTotal > 0 ? `${currentSearchTotal} résultat(s) pour cette recherche` : '';
+
+    const totalPages = Math.max(1, Math.ceil(currentSearchTotal / limit));
+    const currentPageNum = Math.floor(currentOffset / limit) + 1;
+    els.pageInfo.textContent = currentSearchTotal > 0 ? `Page ${currentPageNum} / ${totalPages}` : '';
+    els.prevPageBtn.disabled = currentOffset <= 0;
+    els.nextPageBtn.disabled = (currentOffset + limit) >= currentSearchTotal;
   }
+
+  // Débounce léger sur la frappe (recherche) — évite une requête par caractère tapé.
+  let searchDebounceTimer = null;
+  function render(){
+    currentOffset = 0;
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(fetchAndRenderPage, 200);
+  }
+
+  els.prevPageBtn.addEventListener('click', ()=>{
+    const limit = parseInt(els.displayLimit.value, 10) || 10;
+    currentOffset = Math.max(0, currentOffset - limit);
+    fetchAndRenderPage();
+  });
+  els.nextPageBtn.addEventListener('click', ()=>{
+    const limit = parseInt(els.displayLimit.value, 10) || 10;
+    if(currentOffset + limit < currentSearchTotal) currentOffset += limit;
+    fetchAndRenderPage();
+  });
 
   els.search.addEventListener('input', render);
   els.displayLimit.addEventListener('change', render);
@@ -2486,7 +2552,7 @@
   // Transformation du numéro de suivi : au collage (Ctrl+V), à la touche Entrée (bipeur physique)
   // ou en quittant le champ (change).
   els.search.addEventListener('paste', ()=>{
-    setTimeout(()=>{ if(!applyTrackingTransformIfNeeded()) render(); }, 0);
+    setTimeout(async ()=>{ if(!(await applyTrackingTransformIfNeeded())) render(); }, 0);
   });
   els.search.addEventListener('keydown', (e)=>{
     if(e.key === 'Enter') applyTrackingTransformIfNeeded();
@@ -2507,9 +2573,11 @@
     els.focusDbBtn.textContent = exportUnlocked ? '🔓' : '🔒';
     els.focusDbBtn.title = exportUnlocked ? 'Déverrouillé — Alt+T pour verrouiller' : 'Verrouillé — Alt+T pour déverrouiller';
     els.exportJsonEncryptedBtn.disabled = !exportUnlocked;
-    els.exportJsonEncryptedBtn.title = exportUnlocked ? 'Exporter vers Vercel Blob' : 'Verrouillé — Alt+T pour déverrouiller';
+    els.exportJsonEncryptedBtn.title = exportUnlocked ? 'Télécharger un export CSV de toute la base' : 'Verrouillé — Alt+T pour déverrouiller';
     els.cleanInvalidBtn.disabled = !exportUnlocked;
-    els.cleanInvalidBtn.title = exportUnlocked ? 'Retire de la base actuellement chargée les colis sans N° Commande ou sans Commande Amazon, puis pensez à cliquer sur Exporter' : 'Verrouillé — Alt+T pour déverrouiller';
+    els.cleanInvalidBtn.title = exportUnlocked ? 'Retire définitivement de la base les colis sans N° Commande ou sans Commande Amazon' : 'Verrouillé — Alt+T pour déverrouiller';
+    els.clearBtn.disabled = !exportUnlocked;
+    els.clearBtn.title = exportUnlocked ? 'Efface définitivement toute la base de données' : 'Verrouillé — Alt+T pour déverrouiller';
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
   }
 
@@ -2551,7 +2619,7 @@
     els.exportCodeConfirmBtn.disabled = true;
     els.exportCodeCancelBtn.disabled = true;
     try{
-      await postBackupAction('verify-code', { exportCode: code });
+      await dbPost('verify-code', { exportCode: code });
       unlockedExportCode = code;
       exportUnlocked = true;
       syncLockUi();
@@ -2599,255 +2667,11 @@
     dbLogTimer = setTimeout(()=>{ els.dbLog.textContent = ''; }, 60000);
   }
 
-  // Fusionne un tableau déjà décodé (JSON classique ou déchiffré) dans la base, avec la même
-  // logique de dédoublonnage par clé (N° Commande + Commande Amazon) que l'import CSV. Partagée
-  // entre l'import JSON classique et l'import JSON chiffré, pour ne pas dupliquer cette logique.
-  async function importParsedJsonArray(parsed, sourceLabel){
-    if(!Array.isArray(parsed)){
-      setDbLog(`${sourceLabel} — le contenu doit être un tableau de commandes ([...]), pas un objet unique.`, true);
-      return;
-    }
-    if(parsed.length === 0){
-      setDbLog(`${sourceLabel} — le tableau est vide, aucune commande à importer.`, true);
-      return;
-    }
-
-    const keys = COLS.map(c=>c.key);
-    let added = 0;
-    let updated = 0;
-    let skipped = 0;
-    let skippedNoKey = 0;
-    const orderKeyIndexJson = buildOrderKeyIndex();
-    parsed.forEach(item=>{
-      if(item && typeof item === 'object' && !Array.isArray(item)){
-        const rec = {};
-        keys.forEach(k => rec[k] = item[k] !== undefined && item[k] !== null ? String(item[k]) : '');
-        rec.numSuivi = cleanNumSuivi(rec.numSuivi);
-
-        const key = buildOrderKey(rec);
-        if(!key){
-          // N° Commande ou Commande Amazon manquant : pas de clé possible, on n'enregistre pas
-          // cette entrée (demande explicite).
-          skippedNoKey++;
-          return;
-        }
-        const existingIndex = findMatchingIndex(orderKeyIndexJson, key, rec.numSuivi);
-
-        if(existingIndex !== undefined){
-          // Un Num dernier kilométrique déjà en base est désormais impossible à remplacer : priorité
-          // systématique à la valeur déjà présente, même si l'enregistrement importé en a une
-          // différente (ex. fusion avec une sauvegarde plus ancienne/périmée) — seul un import sur
-          // une commande encore vide de ce côté-là peut le renseigner.
-          const numDernierKm = database[existingIndex].numDernierKm || rec.numDernierKm;
-          database[existingIndex] = { ...database[existingIndex], ...rec, numDernierKm };
-          updated++;
-        }else{
-          database.push(rec);
-          if(!orderKeyIndexJson.has(key)) orderKeyIndexJson.set(key, []);
-          orderKeyIndexJson.get(key).push(database.length - 1);
-          added++;
-        }
-      }else{
-        skipped++;
-      }
-    });
-
-    if(added === 0 && updated === 0){
-      setDbLog(`${sourceLabel} — aucune entrée valide trouvée dans le tableau JSON (${skipped} élément(s) ignoré(s), format inattendu` + (skippedNoKey > 0 ? `, ${skippedNoKey} sans N° Commande/Commande Amazon` : '') + `).`, true);
-      return;
-    }
-
-    await saveDatabase();
-    render();
-    const jsonSummary = [];
-    if(added > 0) jsonSummary.push(`${added} ajoutée(s)`);
-    if(updated > 0) jsonSummary.push(`${updated} mise(s) à jour`);
-    if(skippedNoKey > 0) jsonSummary.push(`${skippedNoKey} ignorée(s) (N° Commande ou Commande Amazon manquant)`);
-    setDbLog(`${sourceLabel} — ${jsonSummary.join(', ')}.` + (skipped > 0 ? ` ${skipped} élément(s) ignoré(s) (format invalide).` : ''), false);
-  }
-
-  // ---------- export/import .aiae (CSV chiffré AES-256-GCM via l'API Web Crypto du navigateur) ----------
-  // Unique mécanisme d'export/import de la base (le JSON en clair a été retiré) : un fichier .aiae
-  // sûr à partager (email, drive, clé USB) même intercepté, sans dépendance externe (Web Crypto est
-  // natif à tous les navigateurs modernes). Le mot de passe n'est jamais saisi à la main — voir
-  // getEncryptionPassword() plus bas, qui le dérive automatiquement du code de connexion.
-  //
-  // Le contenu chiffré est du CSV plutôt que du JSON : le JSON répète le nom de chaque champ à
-  // chaque commande (8 clés par colis), ce qui gonfle nettement la taille du fichier sur une grosse
-  // base — le CSV n'écrit ces noms qu'une fois, en en-tête.
-  const ENC_MAGIC = 'AIAENC2'; // v2 = contenu CSV (v1, retiré, était du JSON) — refuse volontairement de désérialiser un ancien fichier v1 comme du CSV
-  const ENC_PBKDF2_ITERATIONS = 250000;
-
-  // Échappe un champ selon les règles CSV standard (entoure de guillemets si le champ contient une
-  // virgule, un guillemet ou un saut de ligne, en doublant les guillemets internes).
-  function csvEscapeField(v){
-    const s = String(v ?? '');
-    if(/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-    return s;
-  }
-
-  // Sérialise les commandes en CSV (en-tête = clés des champs, une ligne par commande) — voir
-  // COLS pour la liste des champs. Symétrique de csvToRecords() ci-dessous.
-  function recordsToCsv(records){
-    const keys = COLS.map(c => c.key);
-    const lines = [keys.map(csvEscapeField).join(',')];
-    records.forEach(r => lines.push(keys.map(k => csvEscapeField(r[k])).join(',')));
-    return lines.join('\r\n');
-  }
-
-  // Reconstruit un tableau de commandes à partir du CSV généré par recordsToCsv() — réutilise le
-  // même analyseur CSV que l'import de fichiers CSV externes (parseCSV), la première ligne étant
-  // ici toujours un en-tête (noms de champs, pas des numéros de colonne à deviner).
-  function csvToRecords(csvText){
-    const rows = parseCSV(csvText);
-    if(!rows || rows.length === 0) return [];
-    const header = rows[0];
-    return rows.slice(1)
-      .filter(row => row && row.some(cell => cell !== '' && cell !== undefined))
-      .map(row => {
-        const rec = {};
-        header.forEach((key, i) => { rec[key] = row[i] !== undefined ? row[i] : ''; });
-        return rec;
-      });
-  }
-
-  // btoa/atob sur un Uint8Array direct plante ou est inexact pour de gros tableaux : on encode par
-  // blocs pour éviter tout dépassement de pile avec une grosse base (ex. 50 Mo).
-  function arrayBufferToBase64(buf){
-    const bytes = new Uint8Array(buf);
-    let binary = '';
-    const chunkSize = 0x8000;
-    for(let i=0; i<bytes.length; i+=chunkSize){
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-    }
-    return btoa(binary);
-  }
-  function base64ToUint8Array(b64){
-    const binary = atob(b64);
-    const bytes = new Uint8Array(binary.length);
-    for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-
-  async function deriveAesKey(password, salt){
-    const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
-    return crypto.subtle.deriveKey(
-      { name:'PBKDF2', salt, iterations: ENC_PBKDF2_ITERATIONS, hash:'SHA-256' },
-      keyMaterial,
-      { name:'AES-GCM', length:256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
-  }
-
-  async function encryptJsonPayload(data, password, exportedAt){
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const key = await deriveAesKey(password, salt);
-    const plaintext = new TextEncoder().encode(recordsToCsv(data));
-    const ciphertext = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, plaintext);
-    return JSON.stringify({
-      magic: ENC_MAGIC,
-      // Horodatage de l'export en clair dans l'enveloppe (pas chiffré) : ça ne révèle aucune donnée
-      // sensible, et ça permet d'afficher "quelle version de la base" a été importée sans avoir à
-      // déchiffrer quoi que ce soit pour ça — voir dbVersionInfo.
-      exportedAt: exportedAt || new Date().toISOString(),
-      salt: arrayBufferToBase64(salt),
-      iv: arrayBufferToBase64(iv),
-      ciphertext: arrayBufferToBase64(ciphertext),
-    });
-  }
-
-  // Renvoie { records, exportedAt } plutôt que juste le tableau de commandes, pour que l'appelant
-  // puisse afficher de quel export provient la base qui vient d'être importée.
-  async function decryptJsonPayload(envelopeText, password){
-    let envelope;
-    try{
-      envelope = JSON.parse(envelopeText);
-    }catch(e){
-      throw new Error("ce n'est pas un fichier .aiae valide.");
-    }
-    if(!envelope || envelope.magic !== ENC_MAGIC){
-      throw new Error("format non reconnu — ce n'est pas un fichier .aiae exporté par cette app (ou il vient d'une version trop ancienne).");
-    }
-    const salt = base64ToUint8Array(envelope.salt);
-    const iv = base64ToUint8Array(envelope.iv);
-    const ciphertext = base64ToUint8Array(envelope.ciphertext);
-    const key = await deriveAesKey(password, salt);
-    let plaintext;
-    try{
-      plaintext = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ciphertext);
-    }catch(e){
-      throw new Error('mot de passe incorrect ou fichier corrompu.');
-    }
-    return { records: csvToRecords(new TextDecoder().decode(plaintext)), exportedAt: envelope.exportedAt || null };
-  }
-
-  // Le mot de passe de chiffrement n'est jamais saisi à la main : il est dérivé automatiquement du
-  // code de connexion de l'app (récupéré via /api/login-code, protégé par le même cookie de
-  // session que le reste du site) suivi d'un suffixe fixe. ⚠️ Contrairement au cookie de session
-  // (un HMAC, jamais le code lui-même), ce endpoint renvoie le vrai code en clair à toute session
-  // déjà connectée — un compromis délibéré pour permettre ce chiffrement "automatique".
-  const ENC_PASSWORD_SUFFIX = 'tsil@v0';
-  let cachedLoginCode = null;
-
-  async function getEncryptionPassword(){
-    if(cachedLoginCode) return cachedLoginCode + ENC_PASSWORD_SUFFIX;
-    const res = await fetch('/api/login-code', { cache: 'no-store' });
-    if(!res.ok) throw new Error("impossible de récupérer le code de connexion (êtes-vous bien connecté ?).");
-    const data = await res.json();
-    if(!data || !data.code) throw new Error('code de connexion indisponible côté serveur.');
-    cachedLoginCode = data.code;
-    return cachedLoginCode + ENC_PASSWORD_SUFFIX;
-  }
-
-  // Découpe l'enveloppe chiffrée en morceaux < 4,5 Mo (limite d'une requête vers une fonction
-  // serverless Vercel) et les envoie un par un à notre propre fonction (voir api/backup.js), qui
-  // les recolle et les stocke elle-même sur Vercel Blob. Remplace le protocole "client upload"
-  // officiel de @vercel/blob/client (upload direct navigateur -> Vercel Blob) : chargé depuis un
-  // CDN dans cette app sans étape de build, il envoyait le fichier avec succès mais la requête vers
-  // vercel.com/api/blob se heurtait systématiquement à un blocage CORS côté navigateur (ce SDK est
-  // conçu pour être empaqueté via Next.js/Webpack) — avec une nouvelle tentative complète à chaque
-  // échec, d'où la progression qui repartait sans cesse de 0 % en boucle. Cette approche maison
-  // reste toujours à l'intérieur de notre propre domaine, jamais directement vers vercel.com.
-  const EXPORT_CHUNK_SIZE = 3 * 1024 * 1024; // 3 Mo par morceau, marge confortable sous 4,5 Mo
-
-  async function postBackupAction(action, extra){
-    const res = await fetch('/api/backup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...extra }),
-    });
-    if(!res.ok){
-      const errData = await res.json().catch(() => null);
-      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
-    }
-    return res.json();
-  }
-
-  async function uploadEnvelopeInChunks(envelope, exportCode, onProgress){
-    const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const totalChunks = Math.max(1, Math.ceil(envelope.length / EXPORT_CHUNK_SIZE));
-    for(let i = 0; i < totalChunks; i++){
-      const chunk = envelope.slice(i * EXPORT_CHUNK_SIZE, (i + 1) * EXPORT_CHUNK_SIZE);
-      await postBackupAction('chunk', { exportCode, uploadId, chunkIndex: i, data: chunk });
-      onProgress(((i + 1) / totalChunks) * 100, totalChunks);
-    }
-    await postBackupAction('finalize', { exportCode, uploadId, totalChunks });
-  }
-
-  // Affiche la date/heure de l'export dont provient la base actuellement chargée, en bas à droite
-  // de la rangée Exporter/Importer/Effacer — pour savoir "quelle version" de la base est active.
-  // Non persistant (comme le reste de la base, voir loadDatabase) : disparaît au rechargement de
-  // la page tant qu'un nouvel import ou export n'a pas eu lieu.
-  function setDbVersionInfo(isoDate){
-    if(!isoDate){ els.dbVersionInfo.textContent = ''; return; }
-    const d = new Date(isoDate);
-    if(Number.isNaN(d.getTime())){ els.dbVersionInfo.textContent = ''; return; }
-    const datePart = d.toLocaleDateString('fr-FR');
-    const timePart = d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
-    els.dbVersionInfo.textContent = `Version du ${datePart} à ${timePart}`;
-  }
+  // ---------- export CSV / rechargement / nettoyage / suppression totale (Postgres) ----------
+  // La base vit entièrement dans Vercel Postgres (voir api/db.js) : plus de fusion "brouillon local
+  // + sauvegarde distante" avant export, chaque import/scraping/nettoyage écrit déjà directement en
+  // base. "Exporter" ne fait plus qu'un export en clair (CSV) pour sauvegarde/analyse externe — la
+  // couche de chiffrement AES n'a plus d'utilité, l'accès à Postgres étant déjà protégé côté serveur.
 
   function showBackupProgress(percentage, label){
     els.backupProgressWrap.style.display = '';
@@ -2860,105 +2684,32 @@
     els.backupProgressText.textContent = '';
   }
 
-  // Rejette avec un message clair si "promise" ne se règle pas dans le délai imparti — filet de
-  // sécurité pour ne jamais rester bloqué en silence (ex. upload() qui ne résoudrait/rejetterait
-  // jamais suite à un problème réseau ou serveur imprévu).
-  function withTimeout(promise, ms, message){
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(message)), ms);
-      promise.then(
-        (v) => { clearTimeout(timer); resolve(v); },
-        (e) => { clearTimeout(timer); reject(e); }
-      );
-    });
-  }
-
-  // Télécharge et déchiffre la sauvegarde actuellement sur Vercel Blob. Renvoie null s'il n'y en a
-  // encore aucune (404, avant le premier export). Partagée entre l'import manuel et la fusion
-  // automatique avant chaque export (voir plus bas) — pour ne jamais dupliquer cette logique de
-  // lecture par flux/déchiffrement.
-  async function downloadRemoteBackup(password, onProgress){
-    const res = await withTimeout(fetch('/api/backup', { cache: 'no-store' }), 30000, 'Délai dépassé (30s) en attendant Vercel Blob.');
-    if(res.status === 404) return null;
-    if(!res.ok){
-      const errData = await res.json().catch(() => null);
-      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
-    }
-
-    // fetch() n'a pas d'événement de progression natif : on lit le flux de réponse par morceaux
-    // et on compare les octets reçus au total annoncé par Content-Length pour estimer le %.
-    const totalBytes = Number(res.headers.get('content-length')) || 0;
-    let text;
-    if(totalBytes > 0 && res.body && res.body.getReader){
-      const reader = res.body.getReader();
-      const chunks = [];
-      let received = 0;
-      for(;;){
-        const { done, value } = await reader.read();
-        if(done) break;
-        chunks.push(value);
-        received += value.length;
-        if(onProgress) onProgress((received / totalBytes) * 100);
-      }
-      const merged = new Uint8Array(received);
-      let offset = 0;
-      chunks.forEach(c => { merged.set(c, offset); offset += c.length; });
-      text = new TextDecoder().decode(merged);
-    }else{
-      if(onProgress) onProgress(50);
-      text = await res.text();
-    }
-
-    return decryptJsonPayload(text, password);
-  }
-
-  // Rappel du nombre total de colis et du nombre déjà résolus (numéro dernier kilométrique
-  // renseigné), affiché à chaque étape de la barre de progression d'export — mêmes chiffres que
-  // la légende de la section 3 (#rowCount/#resolvedCount), recalculés à la volée puisque la base
-  // peut grandir en cours d'export (fusion avec la sauvegarde distante avant l'envoi final).
-  function dbStatsLabel(){
-    const resolved = database.filter(r => String(r.numDernierKm || '').trim()).length;
-    return `${database.length} colis, ${resolved} avec numéro dernier kilométrique`;
-  }
-
   els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
     if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
-    if(database.length === 0){
-      setDbLog('Rien à exporter : la base de données est vide.', true);
-      return;
-    }
     els.exportJsonEncryptedBtn.disabled = true;
     try{
-      showBackupProgress(0, `Préparation… (${dbStatsLabel()})`);
-      const password = await getEncryptionPassword();
-
-      // Fusionne d'abord avec la sauvegarde déjà présente sur Vercel Blob (si elle existe) : sans
-      // ça, exporter depuis une session qui n'a en mémoire qu'une partie des commandes (ex. juste
-      // les CSV importés aujourd'hui) écraserait tout l'historique déjà en ligne au lieu de le
-      // compléter — l'utilisateur ne retrouverait alors plus les colis des mois précédents.
-      showBackupProgress(0, `Récupération de la sauvegarde existante… (${dbStatsLabel()})`);
-      const remote = await downloadRemoteBackup(password, (pct) =>
-        showBackupProgress(pct * 0.3, `Récupération de la sauvegarde existante… ${Math.round(pct)} % (${dbStatsLabel()})`)
-      );
-      if(remote && Array.isArray(remote.records) && remote.records.length > 0){
-        await importParsedJsonArray(remote.records, 'fusion avant export');
+      showBackupProgress(0, 'Préparation du CSV…');
+      // Le code d'export passe en en-tête (pas dans l'URL) pour ne jamais apparaître dans
+      // l'historique du navigateur ni les journaux d'accès serveur.
+      const res = await fetch('/api/db?action=export-csv', {
+        headers: { 'X-Export-Code': unlockedExportCode },
+        cache: 'no-store',
+      });
+      if(!res.ok){
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
       }
-
-      const exportedAt = new Date().toISOString();
-      const envelope = await encryptJsonPayload(database, password, exportedAt);
-
-      // Aucun téléchargement local : la sauvegarde vit uniquement sur Vercel Blob désormais.
-      showBackupProgress(0, `Envoi vers Vercel Blob… 0 % (${dbStatsLabel()})`);
-      await withTimeout(
-        uploadEnvelopeInChunks(envelope, unlockedExportCode, (percentage, totalChunks) =>
-          showBackupProgress(percentage, `Envoi vers Vercel Blob… ${Math.round(percentage)} % (${totalChunks} morceau(x)) — ${dbStatsLabel()}`)
-        ),
-        180000,
-        "Délai dépassé (3 min) — vérifiez que le Blob Store est bien connecté au projet, puis réessayez."
-      );
-
-      setDbVersionInfo(exportedAt);
-      setDbLog(`Export réussi — ${database.length} commande(s) envoyée(s) sur Vercel Blob.`, false);
+      showBackupProgress(60, 'Téléchargement du fichier CSV…');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `aia-mg-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setDbLog('Export CSV téléchargé.', false);
     }catch(e){
       setDbLog(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
@@ -2970,60 +2721,57 @@
   els.importBackupBtn.addEventListener('click', async ()=>{
     els.importBackupBtn.disabled = true;
     try{
-      const password = await getEncryptionPassword();
-      showBackupProgress(0, 'Téléchargement depuis Vercel Blob… 0 %');
-      const remote = await downloadRemoteBackup(password, (pct) =>
-        showBackupProgress(pct, `Téléchargement depuis Vercel Blob… ${Math.round(pct)} %`)
-      );
-      if(!remote){
-        setDbLog('Aucune sauvegarde trouvée sur Vercel Blob — exportez au moins une fois avant de pouvoir importer.', true);
-        return;
-      }
-      showBackupProgress(100, 'Téléchargement terminé, déchiffrement…');
-
-      await importParsedJsonArray(remote.records, 'data-mg.aiae (Vercel Blob)');
-      setDbVersionInfo(remote.exportedAt);
-    }catch(err){
-      const msg = err && err.message ? err.message : 'erreur inconnue';
-      // Message dédié pour l'erreur de mot de passe (déchiffrement AES échoué) plutôt que noyé dans
-      // un message générique — c'est presque toujours parce que le code de connexion a changé
-      // depuis l'export (le mot de passe en dépend automatiquement, voir getEncryptionPassword).
-      if(msg.indexOf('mot de passe incorrect') !== -1){
-        setDbLog("Échec de l'import : mot de passe incorrect — le code de connexion actuel ne correspond pas à celui utilisé lors de l'export (ou le fichier est corrompu).", true);
-      }else{
-        setDbLog(`Échec de l'import depuis Vercel Blob (${msg}).`, true);
-      }
+      currentOffset = 0;
+      await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+      setDbLog('Base rechargée depuis Postgres.', false);
+    }catch(e){
+      setDbLog(`Échec du rechargement (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
-      hideBackupProgress();
       els.importBackupBtn.disabled = false;
     }
   });
 
   els.clearBtn.addEventListener('click', async ()=>{
-    if(database.length === 0) return;
-    if(!confirm('Voulez-vous vraiment effacer toute la base de données de commandes ? Cette action est irréversible.')) return;
-    database = [];
-    await saveDatabase();
-    render();
-    setDbVersionInfo(null);
-    setDbLog('Base de données effacée.', false);
+    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
+    if(!confirm('Voulez-vous vraiment effacer TOUTE la base de données de commandes ? Cette action est irréversible et supprime réellement les données de Postgres.')) return;
+    els.clearBtn.disabled = true;
+    try{
+      await dbPost('clear-all', { exportCode: unlockedExportCode });
+      unresolvedRows = [];
+      currentOffset = 0;
+      await Promise.all([fetchAndRenderPage(), refreshStats()]);
+      updateCarrierTracking();
+      setDbLog('Base de données effacée.', false);
+    }catch(e){
+      setDbLog(`Échec de la suppression (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+    }finally{
+      els.clearBtn.disabled = !exportUnlocked;
+    }
   });
 
   els.cleanInvalidBtn.addEventListener('click', async ()=>{
-    if(!exportUnlocked) return; // bouton normalement désactivé dans ce cas
-    const toRemove = database.filter(r => !String(r.numCommande || '').trim() || !String(r.commandeAmazon || '').trim());
-    if(toRemove.length === 0){
-      setDbLog('Aucun colis sans N° Commande / Commande Amazon dans la base actuelle.', false);
-      return;
+    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
+    if(!confirm('Retirer définitivement de la base tous les colis sans N° Commande ou sans Commande Amazon ?')) return;
+    els.cleanInvalidBtn.disabled = true;
+    try{
+      const { removed } = await dbPost('clean-invalid', { exportCode: unlockedExportCode });
+      if(removed === 0){
+        setDbLog('Aucun colis sans N° Commande / Commande Amazon dans la base actuelle.', false);
+      }else{
+        currentOffset = 0;
+        await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+        setDbLog(`${removed} colis retiré(s) (sans N° Commande / Commande Amazon).`, false);
+      }
+    }catch(e){
+      setDbLog(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+    }finally{
+      els.cleanInvalidBtn.disabled = !exportUnlocked;
     }
-    if(!confirm(`${toRemove.length} colis sans N° Commande ou sans Commande Amazon vont être retirés de la base chargée. Pensez à cliquer sur Exporter ensuite pour appliquer ce nettoyage à la sauvegarde. Continuer ?`)) return;
-    database = database.filter(r => String(r.numCommande || '').trim() && String(r.commandeAmazon || '').trim());
-    await saveDatabase();
-    render();
-    setDbLog(`${toRemove.length} colis retirés (sans N° Commande / Commande Amazon). Pensez à cliquer sur Exporter pour sauvegarder ce nettoyage.`, false);
   });
 
-  loadDatabase();
+  fetchAndRenderPage();
+  refreshStats();
+  refreshUnresolvedRows().then(updateCarrierTracking);
   syncLockUi(); // état verrouillé par défaut à chaque connexion (voir plus haut)
 
   // Enregistrement du service worker (mode PWA installable). On ne le fait que si le contexte

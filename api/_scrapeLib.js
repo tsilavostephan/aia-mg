@@ -44,14 +44,22 @@ async function launchBrowser(binDir) {
   return cachedBrowser;
 }
 
-// À utiliser dans le bloc catch (au lieu de browser.close() directement) : ferme le navigateur ET
-// invalide le cache s'il s'agit bien du navigateur actuellement mis en cache, pour ne jamais
-// retenter de réutiliser une instance potentiellement corrompue après une erreur.
+// À utiliser dans le bloc catch (au lieu de browser.close() directement). Le navigateur est mis en
+// cache et potentiellement PARTAGÉ entre plusieurs invocations concurrentes de la même instance de
+// fonction Vercel "chaude" (plusieurs liens scrapés en parallèle, voir MAX_CONCURRENT_SCRAPES côté
+// client) — fermer ce navigateur simplement parce que CETTE requête a échoué (ex. timeout de
+// navigation sur un seul lien) détruit aussi les pages des autres invocations en train de l'utiliser
+// en parallèle, provoquant des "Attempted to use detached Frame" en cascade sur des liens qui
+// n'avaient eux-mêmes rien de cassé (constaté en prod : 6 liens en échec d'un coup après un seul
+// timeout). On ne ferme donc réellement le navigateur que s'il est confirmé déconnecté/invalide —
+// sinon on laisse les autres invocations en cours continuer tranquillement dessus.
 async function discardBrowser(browser) {
+  if (!browser) return;
+  let stillConnected = false;
+  try { stillConnected = browser.isConnected(); } catch (e) { /* considéré déconnecté */ }
+  if (stillConnected) return; // le navigateur va bien : seule cette requête a échoué, rien à faire
   if (cachedBrowser === browser) cachedBrowser = null;
-  if (browser) {
-    try { await browser.close(); } catch (e) { /* déjà fermé */ }
-  }
+  try { await browser.close(); } catch (e) { /* déjà fermé */ }
 }
 
 // Nettoie une valeur comme cleanNumSuivi() dans assets/script.js (retire =, ", ', \, trim)

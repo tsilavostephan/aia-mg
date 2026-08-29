@@ -1091,13 +1091,15 @@
     // scrapeChunkSize regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
     // lib/scrapers/parcelsapp.js, même principe que CNE). match:['SF EXPRESS'] : SF Express est
     // scrappé par défaut avec ce transporteur.
-    // maxConcurrentScrapes réduit à 2 (au lieu de 6 par défaut) : constaté en prod, trop
-    // d'invocations Vercel simultanées (jusqu'à 6 lots x plusieurs onglets chacun) sature le CPU
-    // partagé de la fonction et/ou ralentit fortement les réponses du site cible — chaque
-    // page.goto() passait de quelques secondes à 20-30s+ (voir lib/scrapers/parcelsapp.js,
-    // PAGE_POOL_SIZE).
+    // maxConcurrentScrapes relevé à 4 (6 par défaut faisait échouer trop de lots au départ,
+    // quand PAGE_POOL_SIZE valait encore 2 — plusieurs onglets PARTAGEANT le CPU d'une même
+    // invocation Vercel se ralentissaient mutuellement, un même page.goto() passant de quelques
+    // secondes à 20-30s+). Ce n'est plus le cas : PAGE_POOL_SIZE est maintenant à 1 (voir
+    // lib/scrapers/parcelsapp.js) — chaque invocation ici est un process Vercel SÉPARÉ avec son
+    // propre CPU dédié, donc plusieurs invocations en parallèle ne se font pas concurrence de la
+    // même façon. 4 reste un compromis prudent plutôt que de revenir directement à 6.
     { key:'parcelsapp', label:'PARCELSAPP', match:['SF EXPRESS'],              baseUrl:'https://parcelsapp.com/en/tracking/',                kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
-      maxConcurrentScrapes: 2,
+      maxConcurrentScrapes: 4,
       disableManualImport: true,
       compactLinks: true,
       scrapeEndpoint: '/api/scrape' },
@@ -1105,8 +1107,10 @@
     // regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
     // lib/scrapers/wanbexpress.js). match:['WANBEXPRESS'] : uniquement ce transporteur précis
     // (pas 'WANB' — contrairement à l'ancien OrderTracker, retiré).
+    // maxConcurrentScrapes à 4 par prudence (voir le même raisonnement sur l'entrée 'parcelsapp'
+    // juste au-dessus) plutôt que 6 par défaut — PAGE_POOL_SIZE reste à 1 (lib/scrapers/wanbexpress.js).
     { key:'wanbexpress', label:'WanbExpress', match:['WANBEXPRESS'],           baseUrl:'https://packageradar.com/courier/wanbexpress/tracking/', kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
-      maxConcurrentScrapes: 2,
+      maxConcurrentScrapes: 4,
       disableManualImport: true,
       compactLinks: true,
       scrapeEndpoint: '/api/scrape' },

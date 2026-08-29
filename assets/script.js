@@ -41,6 +41,7 @@
     exportCodeCancelBtn: document.getElementById('exportCodeCancelBtn'),
     dbLog: document.getElementById('dbLog'),
     clearBtn: document.getElementById('clearBtn'),
+    cleanInvalidBtn: document.getElementById('cleanInvalidBtn'),
     carrierSection: document.getElementById('carrierSection'),
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
@@ -3004,6 +3005,19 @@
     render();
     setDbVersionInfo(null);
     setDbLog('Base de données effacée.', false);
+  });
+
+  els.cleanInvalidBtn.addEventListener('click', async ()=>{
+    const toRemove = database.filter(r => !String(r.numCommande || '').trim() || !String(r.commandeAmazon || '').trim());
+    if(toRemove.length === 0){
+      setDbLog('Aucun colis sans N° Commande / Commande Amazon dans la base actuelle.', false);
+      return;
+    }
+    if(!confirm(`${toRemove.length} colis sans N° Commande ou sans Commande Amazon vont être retirés de la base chargée. Pensez à cliquer sur Exporter ensuite pour appliquer ce nettoyage à la sauvegarde. Continuer ?`)) return;
+    database = database.filter(r => String(r.numCommande || '').trim() && String(r.commandeAmazon || '').trim());
+    await saveDatabase();
+    render();
+    setDbLog(`${toRemove.length} colis retirés (sans N° Commande / Commande Amazon). Pensez à cliquer sur Exporter pour sauvegarder ce nettoyage.`, false);
   });
 
   loadDatabase();

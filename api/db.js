@@ -115,6 +115,16 @@ module.exports = async function handler(req, res) {
         return;
       }
 
+      if (body.action === 'clean-invalid-km') {
+        const err = checkExportCode(body.exportCode);
+        if (err) {
+          res.status(401).json({ error: err });
+          return;
+        }
+        res.status(200).json(await db.cleanInvalidKm());
+        return;
+      }
+
       if (body.action === 'clear-all') {
         const err = checkExportCode(body.exportCode);
         if (err) {
@@ -126,7 +136,7 @@ module.exports = async function handler(req, res) {
         return;
       }
 
-      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'verify-code', 'import-batch', 'apply-scrape-results', 'clean-invalid' ou 'clear-all')." });
+      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'verify-code', 'import-batch', 'apply-scrape-results', 'clean-invalid', 'clean-invalid-km' ou 'clear-all')." });
       return;
     }
 

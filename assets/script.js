@@ -44,6 +44,7 @@
     dbLog: document.getElementById('dbLog'),
     clearBtn: document.getElementById('clearBtn'),
     cleanInvalidBtn: document.getElementById('cleanInvalidBtn'),
+    cleanInvalidKmBtn: document.getElementById('cleanInvalidKmBtn'),
     carrierSection: document.getElementById('carrierSection'),
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
@@ -1474,6 +1475,48 @@
     return updates;
   }
 
+  // Avant d'enregistrer un numéro dernier kilométrique (scraping automatique ou import manuel) :
+  // uniquement alphanumérique, doit contenir au moins un chiffre, et si des lettres sont présentes
+  // il en faut au moins deux (une seule lettre isolée est presque toujours du bruit de scraping,
+  // ex. un caractère invisible mal nettoyé). Même règle appliquée côté serveur (voir
+  // applyScrapeResults dans lib/db.js) pour ne pas dépendre uniquement de la validation client.
+  function isValidNumDernierKm(v){
+    const s = String(v || '').trim();
+    if(!s) return false;
+    if(!/^[A-Za-z0-9]+$/.test(s)) return false;
+    if(!/\d/.test(s)) return false;
+    const letterCount = (s.match(/[A-Za-z]/g) || []).length;
+    return letterCount !== 1;
+  }
+
+  // Partagé entre l'import manuel (handleImportPaste) et le scraping automatique
+  // (scrapeCarrierViaVercel, appelé lot par lot) : ne retient que les numéros appartenant à ce
+  // transporteur parmi les colis non résolus connus côté client (unresolvedRows), valides (voir
+  // isValidNumDernierKm), puis les enregistre en base (protection numDernierKm assurée
+  // côté serveur, qui ne touche que les colis encore non résolus) et met à jour l'état local.
+  async function applyUpdatesToUnresolved(g, updates){
+    const updateMap = new Map();
+    updates.forEach(u => { if(u.trackingNumber) updateMap.set(cleanNumSuivi(u.trackingNumber), u.lastKm); });
+
+    const results = [];
+    unresolvedRows.forEach(r=>{
+      if(!rowBelongsToCarrierGroup(r, g)) return;
+      const key = cleanNumSuivi(r.numSuivi);
+      if(updateMap.has(key) && isValidNumDernierKm(updateMap.get(key))){
+        results.push({ numSuivi: key, numDernierKm: updateMap.get(key) });
+      }
+    });
+
+    let matched = 0;
+    if(results.length > 0){
+      const res = await dbPost('apply-scrape-results', { results });
+      matched = res.updated;
+      const matchedKeys = new Set(results.map(r => r.numSuivi));
+      unresolvedRows = unresolvedRows.filter(r => !matchedKeys.has(cleanNumSuivi(r.numSuivi)));
+    }
+    return matched;
+  }
+
   async function handleImportPaste(g){
     const pasteArea = document.getElementById('pasteArea');
     const text = pasteArea ? pasteArea.value : '';
@@ -1491,34 +1534,14 @@
       return;
     }
 
-    const updateMap = new Map();
-    updates.forEach(u => updateMap.set(u.trackingNumber, u.lastKm));
-
-    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé — protection assurée
-    // côté serveur (voir applyScrapeResults dans lib/db.js), qui ne touche que les colis encore
-    // non résolus. On ne retient ici que les numéros collés qui appartiennent à ce transporteur
-    // parmi les colis non résolus connus côté client (unresolvedRows).
-    const results = [];
-    unresolvedRows.forEach(r=>{
-      if(!rowBelongsToCarrierGroup(r, g)) return;
-      const key = cleanNumSuivi(r.numSuivi);
-      if(updateMap.has(key) && updateMap.get(key)) results.push({ numSuivi: key, numDernierKm: updateMap.get(key) });
-    });
-
     let matched = 0;
     try{
-      if(results.length > 0){
-        const res = await dbPost('apply-scrape-results', { results });
-        matched = res.updated;
-      }
+      matched = await applyUpdatesToUnresolved(g, updates);
     }catch(e){
       importLogByCarrier[g.key] = { text: `Échec de l'enregistrement en base (${e && e.message ? e.message : 'erreur inconnue'}).`, err: true };
       renderCarrierPanel();
       return;
     }
-
-    const matchedKeys = new Set(results.map(r => r.numSuivi));
-    unresolvedRows = unresolvedRows.filter(r => !matchedKeys.has(cleanNumSuivi(r.numSuivi)));
 
     const notFound = Math.max(0, updates.length - matched);
 
@@ -1555,12 +1578,6 @@
     }catch(e){ /* stockage indisponible, la config ne sera pas persistée */ }
   }
 
-  // Lit une valeur imbriquée dans un objet à partir d'un chemin "a.b.c" (chaîne vide = objet racine)
-  function readByPath(obj, path){
-    if(!path) return obj;
-    return path.split('.').reduce((acc, key) => (acc && acc[key] !== undefined) ? acc[key] : undefined, obj);
-  }
-
   function openScrapeConfigModal(){
     const config = loadScrapeConfig();
     els.fourPxPageLoadWaitMs.value = config.pageLoadWaitMs || 4000;
@@ -1583,84 +1600,6 @@
     });
     closeScrapeConfigModal();
   });
-
-  // Extrait le tableau de résultats d'une réponse JSON (selon le mapping configuré), met à jour
-  // numDernierKm pour les commandes du transporteur correspondant, sauvegarde et journalise le
-  // résultat. Partagé par tous les transporteurs pris en charge pour le scraping (4PX, YANWEN, ...).
-  // Renvoie le nombre de commandes mises à jour (matched), utilisé par scrapeAllCarriers() pour
-  // afficher le total dans le titre de la section une fois tous les transporteurs traités.
-  async function applyScrapedResultsToDb(g, json, config, sourceLabel){
-    const items = readByPath(json, config.respArrayField);
-    if(!Array.isArray(items)){
-      const preview = JSON.stringify(json).slice(0, 500);
-      importLogByCarrier[g.key] = {
-        text: `Réponse de ${sourceLabel} reçue mais le champ « ${config.respArrayField || '(racine)'} » ne contient pas de tableau exploitable — ajustez le mapping des champs. Aperçu brut de la réponse : ${preview}`,
-        err: true
-      };
-      renderCarrierPanel();
-      return 0;
-    }
-
-    const updateMap = new Map();
-    items.forEach(item=>{
-      const trackingNumber = cleanNumSuivi(item[config.respTrackingField]);
-      const lastKm = String(item[config.respLastMileField] ?? '').trim();
-      if(trackingNumber) updateMap.set(trackingNumber, lastKm);
-    });
-
-    // Un numéro dernier kilométrique déjà renseigné n'est plus jamais écrasé — protection assurée
-    // côté serveur (voir applyScrapeResults dans lib/db.js). On ne retient ici que les numéros
-    // scrapés qui appartiennent à ce transporteur parmi les colis non résolus connus côté client
-    // (unresolvedRows).
-    const results = [];
-    unresolvedRows.forEach(r=>{
-      if(!rowBelongsToCarrierGroup(r, g)) return;
-      const key = cleanNumSuivi(r.numSuivi);
-      if(updateMap.has(key) && updateMap.get(key)) results.push({ numSuivi: key, numDernierKm: updateMap.get(key) });
-    });
-
-    let matched = 0;
-    try{
-      if(results.length > 0){
-        const res = await dbPost('apply-scrape-results', { results });
-        matched = res.updated;
-      }
-    }catch(e){
-      importLogByCarrier[g.key] = { text: `Échec de l'enregistrement en base (${e && e.message ? e.message : 'erreur inconnue'}).`, err: true };
-      renderCarrierPanel();
-      return 0;
-    }
-
-    const matchedKeys = new Set(results.map(r => r.numSuivi));
-    unresolvedRows = unresolvedRows.filter(r => !matchedKeys.has(cleanNumSuivi(r.numSuivi)));
-
-    const notFound = Math.max(0, items.length - matched);
-
-    let mismatchSample = '';
-    if(matched === 0 && items.length > 0){
-      // Aucune correspondance alors que la commande existe visiblement en base : on affiche un
-      // échantillon des deux côtés en JSON.stringify (qui révèle les caractères invisibles, ex.
-      // espace insécable/zero-width venant du presse-papier) pour repérer un décalage d'encodage.
-      const scrapedKeys = Array.from(updateMap.keys()).slice(0, 3).map(k => JSON.stringify(k));
-      const dbKeys = unresolvedRows
-        .filter(r => rowBelongsToCarrierGroup(r, g))
-        .slice(0, 3)
-        .map(r => JSON.stringify(cleanNumSuivi(r.numSuivi)));
-      mismatchSample = ` Échantillon scrapé : ${scrapedKeys.join(', ')} — Échantillon base : ${dbKeys.join(', ')}`;
-      if(json.debug){
-        mismatchSample += ` Diagnostic scraping : ${JSON.stringify(json.debug).slice(0, 600)}`;
-      }
-    }
-
-    importLogByCarrier[g.key] = {
-      text: `${matched} commande(s) mise(s) à jour via ${sourceLabel}.` + (notFound > 0 ? ` ${notFound} résultat(s) sans correspondance dans la base.` : '') + mismatchSample,
-      err: false
-    };
-    updateCarrierTracking();
-    refreshStats();
-    render();
-    return matched;
-  }
 
   // ---------- scraping via une fonction backend Vercel (4PX, YANWEN, ...) ----------
   // Un unique endpoint /api/scrape (voir g.scrapeEndpoint dans CARRIERS) dispatche vers le module
@@ -1724,6 +1663,14 @@
     };
     renderCarrierPanel();
 
+    // Chaque lot est appliqué et enregistré en base DÈS qu'il termine (au lieu d'accumuler tous les
+    // résultats et de tout écrire une seule fois à la toute fin) : sur un transporteur avec des
+    // milliers de lots, attendre la fin complète avant la moindre écriture retardait beaucoup trop
+    // les compteurs (#rowCount/#resolvedCount restaient à 0% pendant des heures) et risquait de
+    // perdre tout le travail déjà scrapé si l'onglet était fermé avant la fin.
+    let totalMatched = 0;
+    const chunkErrors = [];
+
     const chunkOutcomes = await runWithConcurrencyLimit(chunks, concurrencyLimit, async (chunk) => {
       try{
         const res = await fetch(scrapeEndpoint, {
@@ -1760,31 +1707,38 @@
           if(debug.stillProcessingInfo) throw new Error(`ℹ️ ${debug.stillProcessingInfo}`);
           throw new Error(`aucun résultat exploitable (${debugText})`);
         }
-        return updates;
+
+        const matched = await applyUpdatesToUnresolved(g, updates);
+        totalMatched += matched;
+        return matched;
       }finally{
-        // Un lot vient de se terminer (succès ou échec) : on avance la barre de progression.
+        // Un lot vient de se terminer (succès ou échec) : on avance la barre de progression et on
+        // rafraîchit les compteurs globaux + la liste des transporteurs restants, en direct.
         const progress = scrapeProgressByCarrier[g.key];
         if(progress){
           progress.done++;
+          importLogByCarrier[g.key] = {
+            text: `Scraping ${g.label} (via Vercel) en cours — ${progress.done} / ${progress.total} lien(s) traité(s), ${totalMatched} colis mis à jour jusqu'ici…`,
+            err: false
+          };
           renderCarrierPanel();
+          refreshStats();
         }
       }
     });
 
     scrapeProgressByCarrier[g.key] = null;
+    updateCarrierTracking();
+    render();
 
-    const allResults = [];
-    const chunkErrors = [];
     chunkOutcomes.forEach((outcome, idx)=>{
-      if(outcome.status === 'fulfilled'){
-        allResults.push(...outcome.value);
-      }else{
+      if(outcome.status === 'rejected'){
         const reason = outcome.reason && outcome.reason.message ? outcome.reason.message : 'échec inconnu';
         chunkErrors.push(`lien ${idx + 1}/${chunks.length} : ${reason}`);
       }
     });
 
-    if(allResults.length === 0){
+    if(totalMatched === 0 && chunkErrors.length === chunks.length){
       importLogByCarrier[g.key] = {
         text: `Le scraping n'a renvoyé aucun résultat exploitable.` + (chunkErrors.length > 0 ? ` ${chunkErrors.join(' | ')}` : ''),
         err: true
@@ -1793,23 +1747,14 @@
       return 0;
     }
 
-    const matched = await applyScrapedResultsToDb(
-      g,
-      { results: allResults },
-      { respArrayField: 'results', respTrackingField: 'trackingNumber', respLastMileField: 'lastKm' },
-      `${g.sourceLabel || 'le scraping Vercel'}${chunks.length > 1 ? ` (${chunks.length} liens)` : ''}`
-    );
+    importLogByCarrier[g.key] = {
+      text: `${totalMatched} commande(s) mise(s) à jour via ${g.sourceLabel || 'le scraping Vercel'}${chunks.length > 1 ? ` (${chunks.length} liens)` : ''}.`
+        + (chunkErrors.length > 0 ? ` ⚠️ ${chunkErrors.length} lien(s) en échec : ${chunkErrors.join(' | ')}` : ''),
+      err: false
+    };
+    renderCarrierPanel();
 
-    if(chunkErrors.length > 0){
-      const current = importLogByCarrier[g.key];
-      importLogByCarrier[g.key] = {
-        text: `${current.text} ⚠️ ${chunkErrors.length} lien(s) en échec : ${chunkErrors.join(' | ')}`,
-        err: current.err
-      };
-      renderCarrierPanel();
-    }
-
-    return matched;
+    return totalMatched;
   }
 
   // Lance scrapeCarrierViaVercel() pour tous les transporteurs pris en charge (ceux ayant des colis
@@ -2095,7 +2040,7 @@
     { code:'KeyQ', label:'Rechercher (curseur dans le champ)',  run: () => { els.search.focus(); els.search.select(); } },
     { code:'KeyS', label:'Scanner un code-barres / QR code',    run: () => els.scanBtn.click() },
     { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click() },
-    { code:'KeyJ', label:'Importer une base (.aiae)',           run: () => els.importBackupBtn.click() },
+    { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click() },
     { code:'KeyX', label:'Effacer la base de données',          run: () => els.clearBtn.click() },
     { code:'KeyT', label:'Verrouiller / déverrouiller',         run: () => els.focusDbBtn.click() },
   ];
@@ -2599,6 +2544,8 @@
     els.exportJsonEncryptedBtn.title = exportUnlocked ? 'Télécharger un export CSV de toute la base' : 'Verrouillé — Alt+T pour déverrouiller';
     els.cleanInvalidBtn.disabled = !exportUnlocked;
     els.cleanInvalidBtn.title = exportUnlocked ? 'Retire définitivement de la base les colis sans N° Commande ou sans Commande Amazon' : 'Verrouillé — Alt+T pour déverrouiller';
+    els.cleanInvalidKmBtn.disabled = !exportUnlocked;
+    els.cleanInvalidKmBtn.title = exportUnlocked ? 'Vide définitivement les numéros dernier kilométrique invalides (non alphanumériques, sans au moins 2 chiffres et 2 lettres, ou mots parasites connus)' : 'Verrouillé — Alt+T pour déverrouiller';
     els.clearBtn.disabled = !exportUnlocked;
     els.clearBtn.title = exportUnlocked ? 'Efface définitivement toute la base de données' : 'Verrouillé — Alt+T pour déverrouiller';
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
@@ -2789,6 +2736,26 @@
       setDbLog(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
       els.cleanInvalidBtn.disabled = !exportUnlocked;
+    }
+  });
+
+  els.cleanInvalidKmBtn.addEventListener('click', async ()=>{
+    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
+    if(!confirm('Vider définitivement le numéro dernier kilométrique de tous les colis où cette valeur ne serait pas alphanumérique avec au moins 2 chiffres et 2 lettres, ou correspondrait à un mot parasite connu ?')) return;
+    els.cleanInvalidKmBtn.disabled = true;
+    try{
+      const { removed } = await dbPost('clean-invalid-km', { exportCode: unlockedExportCode });
+      if(removed === 0){
+        setDbLog('Aucun numéro dernier kilométrique invalide trouvé dans la base actuelle.', false);
+      }else{
+        currentOffset = 0;
+        await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+        setDbLog(`${removed} numéro(s) dernier kilométrique invalide(s) vidé(s).`, false);
+      }
+    }catch(e){
+      setDbLog(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+    }finally{
+      els.cleanInvalidKmBtn.disabled = !exportUnlocked;
     }
   });
 

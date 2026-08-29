@@ -1091,7 +1091,13 @@
     // scrapeChunkSize regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
     // lib/scrapers/parcelsapp.js, même principe que CNE). match:['SF EXPRESS'] : SF Express est
     // scrappé par défaut avec ce transporteur.
+    // maxConcurrentScrapes réduit à 2 (au lieu de 6 par défaut) : constaté en prod, trop
+    // d'invocations Vercel simultanées (jusqu'à 6 lots x plusieurs onglets chacun) sature le CPU
+    // partagé de la fonction et/ou ralentit fortement les réponses du site cible — chaque
+    // page.goto() passait de quelques secondes à 20-30s+ (voir lib/scrapers/parcelsapp.js,
+    // PAGE_POOL_SIZE).
     { key:'parcelsapp', label:'PARCELSAPP', match:['SF EXPRESS'],              baseUrl:'https://parcelsapp.com/en/tracking/',                kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
+      maxConcurrentScrapes: 2,
       disableManualImport: true,
       compactLinks: true,
       scrapeEndpoint: '/api/scrape' },
@@ -1583,13 +1589,19 @@
       : ((g.chunks && g.chunks.length > 0) ? g.chunks : [g.nums]);
 
     scrapeProgressByCarrier[g.key] = { done: 0, total: chunks.length };
+    // g.maxConcurrentScrapes permet à un transporteur de réduire cette limite par défaut (voir
+    // l'entrée 'parcelsapp' dans CARRIERS) quand trop d'invocations Vercel simultanées finissent
+    // par saturer le CPU partagé de la fonction (plusieurs onglets Chromium lents à charger en
+    // même temps) ou par déclencher un ralentissement du site cible face à trop de requêtes
+    // concurrentes depuis la même origine.
+    const concurrencyLimit = g.maxConcurrentScrapes || MAX_CONCURRENT_SCRAPES;
     importLogByCarrier[g.key] = {
-      text: `Scraping ${g.label} (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités par vagues de ${MAX_CONCURRENT_SCRAPES}` : '') + ` (peut prendre du temps pour un grand nombre de colis)…`,
+      text: `Scraping ${g.label} (via Vercel) en cours` + (chunks.length > 1 ? ` — ${chunks.length} liens traités par vagues de ${concurrencyLimit}` : '') + ` (peut prendre du temps pour un grand nombre de colis)…`,
       err: false
     };
     renderCarrierPanel();
 
-    const chunkOutcomes = await runWithConcurrencyLimit(chunks, MAX_CONCURRENT_SCRAPES, async (chunk) => {
+    const chunkOutcomes = await runWithConcurrencyLimit(chunks, concurrencyLimit, async (chunk) => {
       try{
         const res = await fetch(scrapeEndpoint, {
           method: 'POST',

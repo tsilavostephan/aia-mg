@@ -19,6 +19,7 @@ const SCRAPERS = {
   sfc: require('../lib/scrapers/sfc'),
   sunyou: require('../lib/scrapers/sunyou'),
   topyou: require('../lib/scrapers/topyou'),
+  wanbexpress: require('../lib/scrapers/wanbexpress'),
   yanwen: require('../lib/scrapers/yanwen'),
   yunexpress: require('../lib/scrapers/yunexpress'),
 };

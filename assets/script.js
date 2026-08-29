@@ -1101,6 +1101,15 @@
       disableManualImport: true,
       compactLinks: true,
       scrapeEndpoint: '/api/scrape' },
+    // Même principe que PARCELSAPP : un seul numéro par lien (chunkSize:1), scrapeChunkSize
+    // regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
+    // lib/scrapers/wanbexpress.js). match:['WANBEXPRESS'] : uniquement ce transporteur précis
+    // (pas 'WANB' — contrairement à l'ancien OrderTracker, retiré).
+    { key:'wanbexpress', label:'WanbExpress', match:['WANBEXPRESS'],           baseUrl:'https://packageradar.com/courier/wanbexpress/tracking/', kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
+      maxConcurrentScrapes: 2,
+      disableManualImport: true,
+      compactLinks: true,
+      scrapeEndpoint: '/api/scrape' },
   ];
   const CHUNK_SIZE = 99;
 

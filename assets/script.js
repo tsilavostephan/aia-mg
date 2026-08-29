@@ -1476,17 +1476,15 @@
   }
 
   // Avant d'enregistrer un numéro dernier kilométrique (scraping automatique ou import manuel) :
-  // uniquement alphanumérique, doit contenir au moins un chiffre, et si des lettres sont présentes
-  // il en faut au moins deux (une seule lettre isolée est presque toujours du bruit de scraping,
-  // ex. un caractère invisible mal nettoyé). Même règle appliquée côté serveur (voir
-  // applyScrapeResults dans lib/db.js) pour ne pas dépendre uniquement de la validation client.
+  // uniquement alphanumérique, doit contenir au moins un chiffre. Pas de contrainte sur le nombre
+  // de lettres — des formats réels à une seule lettre existent (ex. "S7650086988394310" chez 4PX),
+  // rejetés à tort par une version précédente de cette règle qui exigeait au moins 2 lettres. Même
+  // règle appliquée côté serveur (voir applyScrapeResults dans lib/db.js).
   function isValidNumDernierKm(v){
     const s = String(v || '').trim();
     if(!s) return false;
     if(!/^[A-Za-z0-9]+$/.test(s)) return false;
-    if(!/\d/.test(s)) return false;
-    const letterCount = (s.match(/[A-Za-z]/g) || []).length;
-    return letterCount !== 1;
+    return /\d/.test(s);
   }
 
   // Partagé entre l'import manuel (handleImportPaste) et le scraping automatique
@@ -2545,7 +2543,7 @@
     els.cleanInvalidBtn.disabled = !exportUnlocked;
     els.cleanInvalidBtn.title = exportUnlocked ? 'Retire définitivement de la base les colis sans N° Commande ou sans Commande Amazon' : 'Verrouillé — Alt+T pour déverrouiller';
     els.cleanInvalidKmBtn.disabled = !exportUnlocked;
-    els.cleanInvalidKmBtn.title = exportUnlocked ? 'Vide définitivement les numéros dernier kilométrique invalides (non alphanumériques, sans au moins 2 chiffres et 2 lettres, ou mots parasites connus)' : 'Verrouillé — Alt+T pour déverrouiller';
+    els.cleanInvalidKmBtn.title = exportUnlocked ? 'Vide définitivement les numéros dernier kilométrique invalides (non alphanumériques, sans aucun chiffre, ou mots parasites connus)' : 'Verrouillé — Alt+T pour déverrouiller';
     els.clearBtn.disabled = !exportUnlocked;
     els.clearBtn.title = exportUnlocked ? 'Efface définitivement toute la base de données' : 'Verrouillé — Alt+T pour déverrouiller';
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
@@ -2741,7 +2739,7 @@
 
   els.cleanInvalidKmBtn.addEventListener('click', async ()=>{
     if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
-    if(!confirm('Vider définitivement le numéro dernier kilométrique de tous les colis où cette valeur ne serait pas alphanumérique avec au moins 2 chiffres et 2 lettres, ou correspondrait à un mot parasite connu ?')) return;
+    if(!confirm('Vider définitivement le numéro dernier kilométrique de tous les colis où cette valeur ne serait pas alphanumérique, ne contiendrait aucun chiffre, ou correspondrait à un mot parasite connu ?')) return;
     els.cleanInvalidKmBtn.disabled = true;
     try{
       const { removed } = await dbPost('clean-invalid-km', { exportCode: unlockedExportCode });

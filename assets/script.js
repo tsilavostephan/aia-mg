@@ -1097,6 +1097,11 @@
     if(totalAdded > 0) summaryParts.push(`${totalAdded} ajoutée(s)`);
     if(totalUpdated > 0) summaryParts.push(`${totalUpdated} mise(s) à jour`);
     logLine(`Import terminé — ${summaryParts.join(', ') || '0 commande'} au total.`);
+
+    // Lance automatiquement le scraping AUTO juste après l'import, sans attendre un clic manuel sur
+    // "Récupérer AUTO" — carrierGroups vient d'être recalculé juste au-dessus (updateCarrierTracking),
+    // scrapeAllCarriers() se contente de ne rien faire s'il n'y a aucun colis non résolu à traiter.
+    if(totalBatches > 0) scrapeAllCarriers();
   });
 
   // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------

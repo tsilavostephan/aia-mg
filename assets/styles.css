@@ -248,6 +248,10 @@
   }
   select:focus{ outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 
+  /* Colonnes communes à l'en-tête de tableau (desktop) et aux lignes de colis, pour un alignement
+     parfait entre les deux — voir le bloc "tableau desktop" plus bas pour son utilisation. */
+  :root{ --db-grid: 130px 1fr 1fr 90px 1.3fr 1fr 160px; }
+
   .list-scroll{
     max-height: min(640px, 65vh);
     overflow-y: auto;
@@ -258,20 +262,37 @@
   }
   .db-cards{ display: flex; flex-direction: column; }
 
+  .db-table-head{ display: none; }
+
+  /* Mobile par défaut : chaque colis est une grille à 2 colonnes (étiquette : valeur), les 7 champs
+     s'empilant verticalement. `.db-cell` en display:contents laisse son étiquette et sa valeur
+     rejoindre directement la grille de `.db-card` (pas de conteneur intermédiaire à mettre en page). */
   .db-card{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 10px 16px;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 5px 14px;
+    padding: 12px 16px;
     border-bottom: 1px dashed var(--border);
     cursor: pointer;
   }
   .db-card:last-child{ border-bottom: none; }
   .db-card:hover{ background: #f8faff; }
 
-  .db-card-info{ min-width: 0; }
-  .db-card-title{ display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .db-cell{ display: contents; }
+  .db-cell > *{ align-self: center; min-width: 0; }
+  .db-cell-label{
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .db-cell-empty{ color: var(--muted); }
+  .db-cell-bold{ font-weight: 700; }
+  .db-cell-mono, .db-cell-mono .copy-field{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
 
   .carrier-badge{
     display: inline-block;
@@ -285,16 +306,34 @@
     letter-spacing: 0.02em;
   }
 
-  .db-card-meta{ font-size: 12.5px; color: var(--muted); }
-
-  .db-card-right{
-    font-size: 13px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    color: var(--text);
-    white-space: nowrap;
-    flex-shrink: 0;
+  /* ---------- tableau desktop : mêmes cartes, ré-agencées en 7 colonnes alignées ---------- */
+  @media (min-width: 721px){
+    .db-table-head{
+      display: grid;
+      grid-template-columns: var(--db-grid);
+      gap: 12px;
+      padding: 9px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .db-card{
+      grid-template-columns: var(--db-grid);
+      gap: 12px;
+      align-items: center;
+      padding: 10px 16px;
+    }
+    .db-cell{ display: block; min-width: 0; overflow: hidden; }
+    .db-cell-label{ display: none; }
+    .db-cell .copy-field{ max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
   }
-  .db-card-right.empty{ color: var(--muted); font-family: inherit; }
 
   .copy-field{ position: relative; display: inline-block; padding-right: 18px; }
   .copy-field .copy-icon{
@@ -604,9 +643,6 @@
 
     .scan-btn{ width: 100%; height: 44px; }
     .focus-toggle-btn{ width: 36px; height: 36px; font-size: 17px; }
-
-    .db-card{ flex-direction: column; align-items: stretch; gap: 8px; }
-    .db-card-right{ white-space: normal; }
 
     .tabs{ gap: 6px; }
     .tabs button{ flex: 1 1 auto; width: auto; min-height: 40px; }

@@ -2194,67 +2194,9 @@
     return wrap;
   }
 
-  function buildMetaItem(label, value){
-    const item = document.createElement('span');
-    item.className = 'meta-item';
-    item.textContent = `${label}: ${value || '—'}`;
-    return item;
-  }
-
-  function buildDbCard(r){
-    const card = document.createElement('div');
-    card.className = 'db-card';
-    card.addEventListener('click', ()=> openPackageModal(r));
-
-    const info = document.createElement('div');
-    info.className = 'db-card-info';
-
-    const title = document.createElement('div');
-    title.className = 'db-card-title';
-    if(r.transporteur){
-      const colors = badgeColorsFor(r.transporteur);
-      const badge = document.createElement('span');
-      badge.className = 'carrier-badge';
-      badge.style.background = colors.bg;
-      badge.style.color = colors.fg;
-      badge.textContent = r.transporteur;
-      title.appendChild(badge);
-    }
-    const numSuiviSpan = document.createElement('span');
-    numSuiviSpan.textContent = r.numSuivi || '—';
-    title.appendChild(numSuiviSpan);
-    info.appendChild(title);
-
-    const meta = document.createElement('div');
-    meta.className = 'db-card-meta';
-    const metaItems = [
-      buildMetaItem('Amazon', r.commandeAmazon),
-      buildMetaItem('Cmd', r.numCommande),
-      buildMetaItem('Qté', r.qteCommande),
-      buildMetaItem('Exp', r.qteExpedie),
-    ];
-    metaItems.forEach((el, idx)=>{
-      meta.appendChild(el);
-      if(idx < metaItems.length - 1) meta.appendChild(document.createTextNode(' · '));
-    });
-    info.appendChild(meta);
-
-    card.appendChild(info);
-
-    const right = document.createElement('div');
-    right.className = 'db-card-right';
-    if(!r.numDernierKm) right.classList.add('empty');
-    right.textContent = r.numDernierKm || '–';
-    card.appendChild(right);
-
-    return card;
-  }
-
-  // ---------- fenêtre de détails d'un colis (clic sur une carte) ----------
-  function openPackageModal(r){
-    // QTE et QTE_EXPED sont comparées (numériquement si possible, sinon en texte) pour les colorer :
-    // vert si elles correspondent, rouge sinon.
-    const qteRaw = r.qteCommande, qteExpRaw = r.qteExpedie;
+  // QTE et QTE_EXPED sont comparées (numériquement si possible, sinon en texte) pour les colorer :
+  // vert si elles correspondent, rouge sinon. Partagé entre la liste et la fiche détaillée.
+  function computeQtyMatchClass(qteRaw, qteExpRaw){
     const qteNum = Number(String(qteRaw ?? '').trim());
     const qteExpNum = Number(String(qteExpRaw ?? '').trim());
     const bothNumeric = String(qteRaw ?? '').trim() !== '' && String(qteExpRaw ?? '').trim() !== ''
@@ -2262,7 +2204,71 @@
     const qteMatch = bothNumeric
       ? qteNum === qteExpNum
       : String(qteRaw ?? '').trim() === String(qteExpRaw ?? '').trim() && String(qteRaw ?? '').trim() !== '';
-    const qteClass = qteMatch ? 'qty-match' : 'qty-mismatch';
+    return qteMatch ? 'qty-match' : 'qty-mismatch';
+  }
+
+  // Une cellule = étiquette (visible en mobile, masquée en tableau desktop) + contenu. `display:contents`
+  // en CSS mobile laisse les deux rejoindre directement la grille à 2 colonnes de `.db-card` ; en
+  // desktop, `.db-cell` redevient une colonne du tableau et l'étiquette est masquée (voir styles.css).
+  function buildDbCell(label, contentEl, extraClass){
+    const cell = document.createElement('div');
+    cell.className = 'db-cell' + (extraClass ? ' ' + extraClass : '');
+    const labelEl = document.createElement('span');
+    labelEl.className = 'db-cell-label';
+    labelEl.textContent = label;
+    cell.appendChild(labelEl);
+    cell.appendChild(contentEl);
+    return cell;
+  }
+
+  function buildDbCard(r){
+    const card = document.createElement('div');
+    card.className = 'db-card';
+    card.addEventListener('click', ()=> openPackageModal(r));
+
+    let carrierContent;
+    if(r.transporteur){
+      const colors = badgeColorsFor(r.transporteur);
+      const badge = document.createElement('span');
+      badge.className = 'carrier-badge';
+      badge.style.background = colors.bg;
+      badge.style.color = colors.fg;
+      badge.textContent = r.transporteur;
+      carrierContent = badge;
+    }else{
+      carrierContent = document.createElement('span');
+      carrierContent.className = 'db-cell-empty';
+      carrierContent.textContent = '—';
+    }
+    card.appendChild(buildDbCell('Transporteur', carrierContent));
+
+    card.appendChild(buildDbCell('N° Commande', createCopySpan(r.numCommande || '—')));
+    card.appendChild(buildDbCell('Commande Amazon', createCopySpan(r.commandeAmazon || '—')));
+
+    const qty = document.createElement('span');
+    qty.className = computeQtyMatchClass(r.qteCommande, r.qteExpedie);
+    qty.textContent = `${r.qteCommande || '—'} / ${r.qteExpedie || '—'}`;
+    card.appendChild(buildDbCell('Qté / Exp.', qty));
+
+    card.appendChild(buildDbCell('Num Suivi', createCopySpan(r.numSuivi || '—'), 'db-cell-mono'));
+
+    const nom = document.createElement('span');
+    nom.textContent = r.nom ? r.nom.toUpperCase() : '—';
+    if(!r.nom) nom.className = 'db-cell-empty';
+    card.appendChild(buildDbCell('Nom', nom));
+
+    card.appendChild(buildDbCell(
+      'Num dernier km',
+      createCopySpan(r.numDernierKm || '—', r.numDernierKm ? 'db-cell-bold' : 'db-cell-empty'),
+      'db-cell-mono'
+    ));
+
+    return card;
+  }
+
+  // ---------- fenêtre de détails d'un colis (clic sur une carte) ----------
+  function openPackageModal(r){
+    const qteClass = computeQtyMatchClass(r.qteCommande, r.qteExpedie);
 
     const fields = [
       { label:'N° Commande',               value:r.numCommande },

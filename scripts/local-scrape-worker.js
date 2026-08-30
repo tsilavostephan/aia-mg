@@ -181,11 +181,24 @@ async function scrapeCarrier(browser, key, numSuivis) {
   puppeteer.use(StealthPlugin());
 
   const launchOptions = {
-    headless: true,
+    // HEADFUL=1 force une fenêtre visible — utile pour diagnostiquer un blocage silencieux au
+    // démarrage (ex. dialogue "Restaurer les pages ?" après une fermeture non propre, un
+    // avertissement de mise à jour, etc.) qu'un lancement headless ne peut pas laisser passer.
+    headless: !process.env.HEADFUL,
     executablePath: CHROME_PATH,
     // Pas de --no-sandbox ici : c'est justement ce qui bloque parcelsapp.com/packageradar.com sur
     // Vercel — un Chrome normal sur une machine classique n'en a pas besoin.
-    args: ['--disable-blink-features=AutomationControlled'],
+    // --no-first-run/--no-default-browser-check/--disable-session-crashed-bubble : suppriment les
+    // dialogues de première exécution / de restauration après fermeture non propre, qui bloqueraient
+    // silencieusement un lancement headless (rien ne peut cliquer dessus) — constaté en usage réel
+    // avec le vrai profil Chrome (timeout de 120s en attendant l'endpoint WS sans autre indice).
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-session-crashed-bubble',
+      '--disable-restore-session-state',
+    ],
     // Délai par défaut de Puppeteer (30s) parfois trop court pour démarrer avec un VRAI profil
     // Chrome (beaucoup d'historique/extensions/cache à charger au premier lancement) — constaté en
     // usage réel ("Timed out ... waiting for the WS endpoint URL").

@@ -2253,7 +2253,7 @@
     card.appendChild(buildDbCell('Num Suivi', createCopySpan(r.numSuivi || '—'), 'db-cell-mono'));
 
     const nom = document.createElement('span');
-    nom.textContent = r.nom ? r.nom.toUpperCase() : '—';
+    nom.textContent = r.nom || '—';
     if(!r.nom) nom.className = 'db-cell-empty';
     card.appendChild(buildDbCell('Nom', nom));
 

@@ -40,8 +40,8 @@ module.exports = async function handler(req, res) {
       }
 
       if (action === 'unresolved-rows') {
-        const { limit, offset } = req.query;
-        res.status(200).json({ rows: await db.unresolvedRows(limit, offset) });
+        const { limit, afterId } = req.query;
+        res.status(200).json({ rows: await db.unresolvedRows(limit, afterId) });
         return;
       }
 

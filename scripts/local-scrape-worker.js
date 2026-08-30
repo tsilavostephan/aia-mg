@@ -92,13 +92,15 @@ async function dbPost(cookie, action, body) {
 }
 
 async function fetchAllUnresolved(cookie) {
+  // Pagination par curseur (id > afterId), pas par offset — voir le même principe dans
+  // assets/script.js (refreshUnresolvedRows) et lib/db.js (unresolvedRows).
   const rows = [];
-  let offset = 0;
+  let afterId = 0;
   for (;;) {
-    const page = await dbGet(cookie, 'unresolved-rows', { limit: 5000, offset });
+    const page = await dbGet(cookie, 'unresolved-rows', { limit: 5000, afterId });
     if (!page.rows || page.rows.length === 0) break;
     rows.push(...page.rows);
-    offset += page.rows.length;
+    afterId = page.rows[page.rows.length - 1].id;
     if (page.rows.length < 5000) break;
   }
   return rows;

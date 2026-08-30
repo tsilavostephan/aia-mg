@@ -40,6 +40,20 @@ function waitForEnter(question) {
     'Acceptez le bandeau de consentement (bouton "Autoriser") s\'il apparaît, puis revenez ici et appuyez sur Entrée...\n'
   );
 
+  // Vérifie tout de suite que le cookie attendu est bien là, AVANT de fermer — évite un aller-retour
+  // inutile vers extract-parcelsapp-cookies.js pour découvrir l'échec après coup.
+  const client = await page.target().createCDPSession();
+  const { cookies } = await client.send('Network.getAllCookies');
+  const hasConsent = cookies.some((c) => c.name === 'FCCDCF' && /parcelsapp\.com$/i.test(c.domain.replace(/^\./, '')));
+
   await browser.close();
-  console.log(`\nTerminé. Ce profil (${PROFILE_DIR}) sera réutilisé automatiquement par scripts/local-scrape-worker.js.`);
+
+  if (hasConsent) {
+    console.log(`\n✅ Cookie de consentement (FCCDCF) trouvé — profil prêt (${PROFILE_DIR}).`);
+    console.log('Lancez maintenant : node scripts/extract-parcelsapp-cookies.js "' + PROFILE_DIR + '"');
+  } else {
+    console.log(`\n⚠️ Cookie de consentement (FCCDCF) INTROUVABLE dans ce profil.`);
+    console.log('Le bandeau de consentement n\'a probablement pas été accepté (pas affiché, ou clic manqué).');
+    console.log('Relancez ce script et, cette fois, vérifiez bien qu\'un bandeau apparaît en bas/au centre de la page et cliquez explicitement sur "Autoriser" avant d\'appuyer sur Entrée ici.');
+  }
 })().catch((e) => { console.error('ERREUR', e); process.exit(1); });

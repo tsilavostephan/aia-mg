@@ -4,3 +4,4 @@ assets/chromium-pack.tar
 assets/version.json
 .vercel
 .env*
+!.env.local-worker.example

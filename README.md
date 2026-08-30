@@ -209,6 +209,26 @@ externe (elles pilotent un navigateur headless directement).
 | Sunyou | ✅ | ✅ |
 | PARCELSAPP | ❌ | ✅ |
 
+### Scraping local (PARCELSAPP/WANBEXPRESS) en secours
+
+`parcelsapp.com` et `packageradar.com` (WanbExpress) refusent les vraies données à une session
+lancée avec les flags `--no-sandbox`/`--disable-setuid-sandbox` qu'impose l'environnement Vercel
+(`@sparticuz/chromium-min`) — un Chrome installé normalement sur un ordinateur classique n'a pas ce
+problème. `scripts/local-scrape-worker.js` permet de scraper ces deux transporteurs **depuis votre
+machine** en secours du scraping automatique sur Vercel (qui continue de tourner normalement pour
+tous les autres transporteurs, et retente aussi ces deux-là périodiquement) :
+
+```
+cp .env.local-worker.example .env.local-worker   # puis remplir APP_BASE_URL et APP_ACCESS_CODE
+node --env-file=.env.local-worker scripts/local-scrape-worker.js
+```
+
+Lancement manuel uniquement (pas un service en continu) — ne traite que les colis PARCELSAPP/
+WANBEXPRESS encore non résolus au moment où vous le lancez, écrit directement les résultats trouvés
+en base via `/api/db`, puis se termine. Voir `.env.local-worker.example` pour les options
+(transporteurs à traiter, concurrence, cookies de consentement pour PARCELSAPP — voir le commentaire
+`getParcelsappCookies` dans `lib/scrapers/parcelsapp.js`).
+
 N'importe lequel de ces transporteurs peut aussi servir d'étape de vérification finale pour les
 colis d'autres transporteurs (case à cocher « Inclure aussi les colis sans numéro dernier
 kilométrique des autres transporteurs », voir section 2 ci-dessus) — et de nouvelles valeurs de

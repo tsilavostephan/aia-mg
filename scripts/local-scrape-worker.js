@@ -114,25 +114,57 @@ async function runWithConcurrencyLimit(items, limit, worker) {
   return results;
 }
 
-async function scrapeWanbexpress(browser, numSuivis) {
+// Envoie les résultats en base par lots de FLUSH_THRESHOLD dès qu'ils s'accumulent, plutôt que
+// d'attendre la toute fin du scraping — sur 1000+ colis, une interruption (Ctrl+C, coupure réseau,
+// PC qui s'endort) en cours de route ne fait alors perdre que le dernier lot partiel, pas tout le
+// travail déjà accompli.
+const FLUSH_THRESHOLD = 50;
+
+async function scrapeWanbexpress(cookie, browser, numSuivis) {
   console.log(`\n[${CARRIER_LABEL}] ${numSuivis.length} colis non résolu(s) à traiter (concurrence=${CONCURRENCY})...`);
 
+  let pending = [];
+  let totalUpdated = 0;
+  // Les lots sont envoyés dans l'ordre où ils se remplissent, mais jamais deux envois en même
+  // temps (POST /api/db) — chaque appel à scheduleFlush s'enchaîne après le précédent.
+  let flushChain = Promise.resolve();
+
+  function scheduleFlush(batch) {
+    flushChain = flushChain
+      .then(() => dbPost(cookie, 'apply-scrape-results', { results: batch }))
+      .then((res) => {
+        totalUpdated += res.updated;
+        console.log(`  [${CARRIER_LABEL}] → lot de ${batch.length} envoyé en base (${res.updated} mis à jour, ${totalUpdated} au total jusqu'ici).`);
+      })
+      .catch((e) => console.error(`  [${CARRIER_LABEL}] échec d'envoi d'un lot de ${batch.length} résultat(s) :`, e && e.message ? e.message : e));
+  }
+
   let done = 0;
-  const found = [];
   await runWithConcurrencyLimit(numSuivis, CONCURRENCY, async (num) => {
     const deadline = new wanbexpress.Deadline(PER_NUMBER_BUDGET_MS);
     const outcome = await wanbexpress.scrapeOne(browser, num, deadline, PAGE_LOAD_WAIT_MS, () => {});
     done++;
     if (outcome.found) {
-      found.push({ numSuivi: outcome.trackingNumber, numDernierKm: outcome.lastKm });
+      pending.push({ numSuivi: outcome.trackingNumber, numDernierKm: outcome.lastKm });
       console.log(`  [${CARRIER_LABEL}] ${done}/${numSuivis.length} — ${num} -> ${outcome.lastKm}`);
+      // Découpage synchrone (pas d'await entre la vérification et la remise à zéro) : sûr même
+      // avec plusieurs numéros traités en parallèle (CONCURRENCY), aucun résultat ne peut être
+      // compté deux fois ni oublié entre deux lots.
+      if (pending.length >= FLUSH_THRESHOLD) {
+        const batch = pending;
+        pending = [];
+        scheduleFlush(batch);
+      }
     } else {
       const reason = outcome.error || (outcome.domDebug && outcome.domDebug.bodyTextPreview ? outcome.domDebug.bodyTextPreview.slice(0, 150) : '(aucun détail)');
       console.log(`  [${CARRIER_LABEL}] ${done}/${numSuivis.length} — ${num} : pas de résultat — ${reason}`);
     }
   });
 
-  return found;
+  if (pending.length > 0) scheduleFlush(pending);
+  await flushChain;
+
+  return totalUpdated;
 }
 
 (async () => {
@@ -169,12 +201,7 @@ async function scrapeWanbexpress(browser, numSuivis) {
 
   let totalUpdated = 0;
   try {
-    const found = await scrapeWanbexpress(browser, numSuivis);
-    if (found.length > 0) {
-      const res = await dbPost(cookie, 'apply-scrape-results', { results: found });
-      totalUpdated += res.updated;
-      console.log(`[${CARRIER_LABEL}] ${res.updated} colis mis à jour en base.`);
-    }
+    totalUpdated = await scrapeWanbexpress(cookie, browser, numSuivis);
   } finally {
     await browser.close();
   }

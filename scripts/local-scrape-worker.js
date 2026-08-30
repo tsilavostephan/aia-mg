@@ -142,7 +142,8 @@ async function scrapeCarrier(browser, key, numSuivis) {
       found.push({ numSuivi: outcome.trackingNumber, numDernierKm: outcome.lastKm });
       console.log(`  [${label}] ${done}/${numSuivis.length} — ${num} -> ${outcome.lastKm}`);
     } else {
-      console.log(`  [${label}] ${done}/${numSuivis.length} — ${num} : pas de résultat`);
+      const reason = outcome.apiResponseBody || outcome.error || (outcome.domDebug && outcome.domDebug.bodyTextPreview ? outcome.domDebug.bodyTextPreview.slice(0, 150) : '(aucun détail)');
+      console.log(`  [${label}] ${done}/${numSuivis.length} — ${num} : pas de résultat — ${reason}`);
     }
   });
 

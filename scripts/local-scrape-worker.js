@@ -186,6 +186,10 @@ async function scrapeCarrier(browser, key, numSuivis) {
     // Pas de --no-sandbox ici : c'est justement ce qui bloque parcelsapp.com/packageradar.com sur
     // Vercel — un Chrome normal sur une machine classique n'en a pas besoin.
     args: ['--disable-blink-features=AutomationControlled'],
+    // Délai par défaut de Puppeteer (30s) parfois trop court pour démarrer avec un VRAI profil
+    // Chrome (beaucoup d'historique/extensions/cache à charger au premier lancement) — constaté en
+    // usage réel ("Timed out ... waiting for the WS endpoint URL").
+    timeout: 120000,
   };
 
   // CHROME_USER_DATA_DIR pointe directement sur le VRAI profil Chrome de l'utilisateur (pas une

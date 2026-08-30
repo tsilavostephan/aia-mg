@@ -164,7 +164,7 @@ statique.
 | `APP_AUTH_SECRET` | Non | Secret utilisé pour signer le cookie de session. Si absent, `APP_ACCESS_CODE` est utilisé à la place — il est recommandé d'utiliser une valeur distincte, longue et aléatoire. |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Non (mais recommandé) | Ajoutées automatiquement en connectant une base **Vercel KV** depuis l'onglet *Storage* du projet sur vercel.com. Permettent à `api/auth.js` de verrouiller progressivement une adresse IP après plusieurs échecs de connexion (partagé entre toutes les instances/régions). Sans ces variables, un compteur en mémoire local par instance sert de repli — moins robuste (se réinitialise à froid, non partagé entre régions) mais actif par défaut. |
 | `POSTGRES_URL` (ou équivalent) | Oui | Ajoutée automatiquement en connectant une base **Postgres** (Neon) depuis l'onglet *Storage* du projet sur vercel.com. Utilisée par `lib/db.js` pour toute la base de commandes. |
-| `APP_EXPORT_CODE` | Oui, pour Exporter/Nettoyer/Effacer | Code demandé pour déverrouiller ces trois actions (distinct du code de connexion). Sans cette variable, elles échouent avec un message explicite plutôt que d'accepter n'importe quel code. |
+| `APP_EXPORT_CODE` | Oui, pour Exporter/Nettoyer | Code demandé pour déverrouiller ces actions (distinct du code de connexion). Sans cette variable, elles échouent avec un message explicite plutôt que d'accepter n'importe quel code. |
 
 Aucune autre variable n'est nécessaire : les fonctions de scraping n'utilisent pas de clé API
 externe (elles pilotent un navigateur headless directement).
@@ -187,9 +187,11 @@ externe (elles pilotent un navigateur headless directement).
 3. **Rechercher une commande** : utiliser le champ de recherche de la section 3 (scan possible via
    l'icône caméra), ou parcourir/filtrer la liste des commandes.
 4. **Sauvegarder** : chaque import/scraping/nettoyage écrit déjà directement dans Postgres — rien à
-   valider séparément. Alt+T pour déverrouiller, puis **🔒 Exporter** télécharge un CSV de toute la
-   base (sauvegarde/analyse externe), **🔒 Nettoyer** retire les colis sans N° Commande/Amazon, et
-   **🔒 Effacer la base de données** supprime tout (irréversible).
+   valider séparément. Alt+T pour déverrouiller (les boutons de nettoyage restent masqués tant que
+   ce n'est pas fait), puis **📤 Exporter** télécharge un CSV de toute la base (sauvegarde/analyse
+   externe), et les deux boutons **🧹 Nettoyer** retirent respectivement les colis sans N° Commande/
+   Amazon et les numéros dernier kilométrique invalides. Il n'y a volontairement plus de bouton pour
+   effacer toute la base d'un coup (retiré après un incident de perte de données).
 
 ---
 

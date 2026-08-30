@@ -43,7 +43,6 @@
     exportCodeConfirmBtn: document.getElementById('exportCodeConfirmBtn'),
     exportCodeCancelBtn: document.getElementById('exportCodeCancelBtn'),
     dbLog: document.getElementById('dbLog'),
-    clearBtn: document.getElementById('clearBtn'),
     cleanInvalidBtn: document.getElementById('cleanInvalidBtn'),
     cleanInvalidKmBtn: document.getElementById('cleanInvalidKmBtn'),
     carrierSection: document.getElementById('carrierSection'),
@@ -2023,7 +2022,6 @@
     { code:'KeyS', label:'Scanner un code-barres / QR code',    run: () => els.scanBtn.click() },
     { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click() },
     { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click() },
-    { code:'KeyX', label:'Effacer la base de données',          run: () => els.clearBtn.click() },
     { code:'KeyT', label:'Verrouiller / déverrouiller',         run: () => els.focusDbBtn.click() },
   ];
 
@@ -2389,12 +2387,35 @@
 
     els.scannerError.style.display = 'none';
     els.scannerModalBg.style.display = 'block';
-    scannerInstance = new Html5Qrcode('scannerReaderContainer', { formatsToSupport: scannerFormats(), verbose: false });
+    scannerInstance = new Html5Qrcode('scannerReaderContainer', {
+      formatsToSupport: scannerFormats(),
+      verbose: false,
+      // Utilise l'API native BarcodeDetector du navigateur quand disponible (Chrome/Edge Android
+      // notamment) au lieu du décodeur JS (ZXing) — bien plus rapide et fiable, en particulier sur
+      // les codes-barres 1D abîmés/reflétants, puisqu'il s'appuie sur l'accélération matérielle du
+      // téléphone plutôt que sur du traitement d'image pur JS.
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    });
 
     try{
       await scannerInstance.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
+        {
+          fps: 15,
+          // Zone de scan plus large (surtout en largeur) : un code-barres 1D est souvent bien plus
+          // large que haut, une zone carrée de 250x150 le recadrait inutilement et faisait échouer
+          // la lecture si le code ne rentrait pas entièrement dedans.
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const size = Math.min(viewfinderWidth, viewfinderHeight);
+            return { width: Math.round(size * 0.85), height: Math.round(size * 0.5) };
+          },
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            advanced: [{ focusMode: 'continuous' }],
+          },
+        },
         async (decodedText)=>{
           // une valeur a été détectée : on arrête le scan et on colle la valeur dans la recherche
           stopScanner();
@@ -2524,12 +2545,12 @@
     els.focusDbBtn.title = exportUnlocked ? 'Déverrouillé — Alt+T pour verrouiller' : 'Verrouillé — Alt+T pour déverrouiller';
     els.exportJsonEncryptedBtn.disabled = !exportUnlocked;
     els.exportJsonEncryptedBtn.title = exportUnlocked ? 'Télécharger un export CSV de toute la base' : 'Verrouillé — Alt+T pour déverrouiller';
-    els.cleanInvalidBtn.disabled = !exportUnlocked;
-    els.cleanInvalidBtn.title = exportUnlocked ? 'Retire définitivement de la base les colis sans N° Commande ou sans Commande Amazon' : 'Verrouillé — Alt+T pour déverrouiller';
-    els.cleanInvalidKmBtn.disabled = !exportUnlocked;
-    els.cleanInvalidKmBtn.title = exportUnlocked ? 'Vide définitivement les numéros dernier kilométrique invalides (non alphanumériques, sans aucun chiffre, ou mots parasites connus)' : 'Verrouillé — Alt+T pour déverrouiller';
-    els.clearBtn.disabled = !exportUnlocked;
-    els.clearBtn.title = exportUnlocked ? 'Efface définitivement toute la base de données' : 'Verrouillé — Alt+T pour déverrouiller';
+    // Masqués (pas juste désactivés) tant que non déverrouillé : ces actions sont destructrices,
+    // autant ne même pas les montrer avant Alt+T plutôt que de les laisser visibles mais grisées.
+    els.cleanInvalidBtn.style.display = exportUnlocked ? '' : 'none';
+    els.cleanInvalidBtn.title = 'Retire définitivement de la base les colis sans N° Commande ou sans Commande Amazon';
+    els.cleanInvalidKmBtn.style.display = exportUnlocked ? '' : 'none';
+    els.cleanInvalidKmBtn.title = 'Vide définitivement les numéros dernier kilométrique invalides (non alphanumériques, sans aucun chiffre, ou mots parasites connus)';
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
   }
 
@@ -2683,24 +2704,6 @@
     }
   });
 
-  els.clearBtn.addEventListener('click', async ()=>{
-    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
-    if(!confirm('Voulez-vous vraiment effacer TOUTE la base de données de commandes ? Cette action est irréversible et supprime réellement les données de Postgres.')) return;
-    els.clearBtn.disabled = true;
-    try{
-      await dbPost('clear-all', { exportCode: unlockedExportCode });
-      unresolvedRows = [];
-      currentOffset = 0;
-      await Promise.all([fetchAndRenderPage(), refreshStats()]);
-      updateCarrierTracking();
-      setDbLog('Base de données effacée.', false);
-    }catch(e){
-      setDbLog(`Échec de la suppression (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
-    }finally{
-      els.clearBtn.disabled = !exportUnlocked;
-    }
-  });
-
   els.cleanInvalidBtn.addEventListener('click', async ()=>{
     if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
     if(!confirm('Retirer définitivement de la base tous les colis sans N° Commande ou sans Commande Amazon ?')) return;
@@ -2717,7 +2720,7 @@
     }catch(e){
       setDbLog(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
-      els.cleanInvalidBtn.disabled = !exportUnlocked;
+      els.cleanInvalidBtn.disabled = false;
     }
   });
 
@@ -2737,7 +2740,7 @@
     }catch(e){
       setDbLog(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
-      els.cleanInvalidKmBtn.disabled = !exportUnlocked;
+      els.cleanInvalidKmBtn.disabled = false;
     }
   });
 

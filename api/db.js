@@ -125,18 +125,7 @@ module.exports = async function handler(req, res) {
         return;
       }
 
-      if (body.action === 'clear-all') {
-        const err = checkExportCode(body.exportCode);
-        if (err) {
-          res.status(401).json({ error: err });
-          return;
-        }
-        await db.clearAll();
-        res.status(200).json({ ok: true });
-        return;
-      }
-
-      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'verify-code', 'import-batch', 'apply-scrape-results', 'clean-invalid', 'clean-invalid-km' ou 'clear-all')." });
+      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'verify-code', 'import-batch', 'apply-scrape-results', 'clean-invalid' ou 'clean-invalid-km')." });
       return;
     }
 

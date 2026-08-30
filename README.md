@@ -117,7 +117,6 @@ lib/scrapers/                Un module par transporteur (hors de /api : pas comp
   topyou.js                  Scraping TopYou (éditeur CodeMirror + lecture directe du DOM)
   cne.js                     Scraping CNE (un lien par colis, lecture directe du DOM)
   sunyou.js                  Scraping Sunyou (bouton copie détaillé, fenêtre desktop large)
-  parcelsapp.js              Scraping PARCELSAPP (un lien par colis, navigateur furtif, "Next tracking numbers")
   wanbexpress.js             Scraping WANBEXPRESS (un lien par colis, navigateur furtif, via packageradar.com)
 
 lib/
@@ -207,46 +206,27 @@ externe (elles pilotent un navigateur headless directement).
 | TopYou | ✅ | ✅ |
 | CNE | ✅ | ✅ |
 | Sunyou | ✅ | ✅ |
-| PARCELSAPP | ❌ | ✅ |
 
-### Scraping local (PARCELSAPP/WANBEXPRESS) en secours
+> PARCELSAPP a été retiré : le site s'est révélé bloquer systématiquement les sessions automatisées
+> sans historique de navigation réel, sans contournement fiable trouvé (voir l'historique git pour
+> le détail de ce qui a été tenté).
 
-`parcelsapp.com` et `packageradar.com` (WanbExpress) refusent les vraies données à une session
-lancée avec les flags `--no-sandbox`/`--disable-setuid-sandbox` qu'impose l'environnement Vercel
-(`@sparticuz/chromium-min`) — un Chrome installé normalement sur un ordinateur classique n'a pas ce
-problème. `scripts/local-scrape-worker.js` permet de scraper ces deux transporteurs **depuis votre
-machine** en secours du scraping automatique sur Vercel (qui continue de tourner normalement pour
-tous les autres transporteurs, et retente aussi ces deux-là périodiquement) :
+### Scraping local WANBEXPRESS en secours
+
+`scripts/local-scrape-worker.js` permet de scraper WANBEXPRESS **depuis votre machine**, en secours
+du scraping automatique sur Vercel (qui continue de tourner normalement, et retente aussi ces colis
+périodiquement) — utile par exemple après un CAPTCHA intermittent lié à la réputation de l'IP
+datacenter Vercel :
 
 ```
 cp .env.local-worker.example .env.local-worker   # puis remplir APP_BASE_URL et APP_ACCESS_CODE
 node --env-file=.env.local-worker scripts/local-scrape-worker.js
 ```
 
-Lancement manuel uniquement (pas un service en continu) — ne traite que les colis PARCELSAPP/
-WANBEXPRESS encore non résolus au moment où vous le lancez, écrit directement les résultats trouvés
-en base via `/api/db`, puis se termine. Voir `.env.local-worker.example` pour les options
-(transporteurs à traiter, concurrence, cookies de consentement pour PARCELSAPP — voir le commentaire
-`getParcelsappCookies` dans `lib/scrapers/parcelsapp.js`).
-
-**PARCELSAPP ne renvoie aucun résultat sans un profil Chrome ayant un véritable historique de
-navigation** — ni un profil neuf, ni une copie de profil, ni même les bons cookies injectés seuls ne
-suffisent de façon fiable (constaté en usage réel : ça n'a marché qu'une fois, avec le vrai profil).
-La seule option fiable : pointer le worker directement sur **votre vrai profil Chrome**, avec Chrome
-complètement fermé pendant que le script tourne (le profil est verrouillé sinon). Dans
-`.env.local-worker` :
-
-```
-CHROME_USER_DATA_DIR=C:\Users\VOTRE_NOM\AppData\Local\Google\Chrome\User Data
-```
-
-(remplacez `VOTRE_NOM` par votre nom d'utilisateur Windows). Fermez Chrome, puis lancez le worker
-normalement — le script vérifie lui-même qu'aucune instance Chrome n'est encore ouverte sur ce
-profil et refuse de démarrer sinon.
-
-`scripts/setup-scraper-profile.js` + `scripts/extract-parcelsapp-cookies.js` (profil dédié séparé +
-`PARCELSAPP_COOKIES_JSON`) restent disponibles en alternative si vous préférez ne pas exposer votre
-vrai profil au script, mais se sont révélés moins fiables en pratique pour PARCELSAPP.
+Lancement manuel uniquement (pas un service en continu) — ne traite que les colis WANBEXPRESS encore
+non résolus au moment où vous le lancez, écrit directement les résultats trouvés en base via
+`/api/db`, puis se termine. Voir `.env.local-worker.example` pour les options (concurrence, délai
+d'attente par page).
 
 N'importe lequel de ces transporteurs peut aussi servir d'étape de vérification finale pour les
 colis d'autres transporteurs (case à cocher « Inclure aussi les colis sans numéro dernier

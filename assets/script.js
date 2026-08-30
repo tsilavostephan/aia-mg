@@ -1138,30 +1138,11 @@
     { key:'sunyou',     label:'Sunyou',     match:['SUNYOU'],                  baseUrl:'https://www.sypost.net/search?orderNo=',             kmColIndex:1, mode:'url', numsSeparator:', ', urlEncodeNums:true,
       pasteHint: 'Sur la page de suivi ouverte via « Ouvrir », cliquez sur l\'icône de copie des résultats puis collez le texte copié ci-dessous.',
       scrapeEndpoint: '/api/scrape' },
-    // Scraping uniquement (disableManualImport) : ce site n'accepte qu'un seul numéro par lien
-    // (chunkSize:1) et il peut y avoir des centaines de colis, donc les liens "Ouvrir" sont affichés
-    // en petits boutons numérotés (compactLinks) plutôt qu'une ligne complète par lien.
-    // scrapeChunkSize regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
-    // lib/scrapers/parcelsapp.js, même principe que CNE). match:['SF EXPRESS'] : SF Express est
-    // scrappé par défaut avec ce transporteur.
-    // maxConcurrentScrapes relevé à 4 (6 par défaut faisait échouer trop de lots au départ,
-    // quand PAGE_POOL_SIZE valait encore 2 — plusieurs onglets PARTAGEANT le CPU d'une même
-    // invocation Vercel se ralentissaient mutuellement, un même page.goto() passant de quelques
-    // secondes à 20-30s+). Ce n'est plus le cas : PAGE_POOL_SIZE est maintenant à 1 (voir
-    // lib/scrapers/parcelsapp.js) — chaque invocation ici est un process Vercel SÉPARÉ avec son
-    // propre CPU dédié, donc plusieurs invocations en parallèle ne se font pas concurrence de la
-    // même façon. 4 reste un compromis prudent plutôt que de revenir directement à 6.
-    { key:'parcelsapp', label:'PARCELSAPP', match:['SF EXPRESS'],              baseUrl:'https://parcelsapp.com/en/tracking/',                kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
-      maxConcurrentScrapes: 4,
-      disableManualImport: true,
-      compactLinks: true,
-      scrapeEndpoint: '/api/scrape' },
-    // Même principe que PARCELSAPP : un seul numéro par lien (chunkSize:1), scrapeChunkSize
-    // regroupe malgré tout plusieurs numéros par appel de fonction Vercel (voir
-    // lib/scrapers/wanbexpress.js). match:['WANBEXPRESS'] : uniquement ce transporteur précis
-    // (pas 'WANB' — contrairement à l'ancien OrderTracker, retiré).
-    // maxConcurrentScrapes à 4 par prudence (voir le même raisonnement sur l'entrée 'parcelsapp'
-    // juste au-dessus) plutôt que 6 par défaut — PAGE_POOL_SIZE reste à 1 (lib/scrapers/wanbexpress.js).
+    // Un seul numéro par lien (chunkSize:1), scrapeChunkSize regroupe malgré tout plusieurs
+    // numéros par appel de fonction Vercel (voir lib/scrapers/wanbexpress.js). match:['WANBEXPRESS']
+    // : uniquement ce transporteur précis (pas 'WANB' — contrairement à l'ancien OrderTracker,
+    // retiré). maxConcurrentScrapes à 4 par prudence plutôt que 6 par défaut — PAGE_POOL_SIZE reste
+    // à 1 (lib/scrapers/wanbexpress.js).
     { key:'wanbexpress', label:'WanbExpress', match:['WANBEXPRESS'],           baseUrl:'https://packageradar.com/courier/wanbexpress/tracking/', kmColIndex:1, mode:'url', chunkSize:1, scrapeChunkSize:10,
       maxConcurrentScrapes: 4,
       disableManualImport: true,
@@ -1616,7 +1597,7 @@
   // numéros pris en compte par requête, et une URL avec des centaines de numéros peut poser
   // problème. Les lots sont scrapés en parallèle (un appel de fonction Vercel par lien), puis fusionnés.
   // Limite le nombre de requêtes de scraping en vol simultanément. Avec des transporteurs à des
-  // milliers de lots (PARCELSAPP : un lien par colis, regroupés seulement par 10 — voir
+  // milliers de lots (WANBEXPRESS : un lien par colis, regroupés seulement par 10 — voir
   // scrapeChunkSize), envoyer toutes les requêtes d'une seule salve dépasse largement la limite de
   // connexions simultanées par origine du navigateur (~6) et sature les fonctions Vercel, faisant
   // échouer une grande partie en timeout au lieu de les traiter par vagues.
@@ -1653,7 +1634,7 @@
 
     scrapeProgressByCarrier[g.key] = { done: 0, total: chunks.length };
     // g.maxConcurrentScrapes permet à un transporteur de réduire cette limite par défaut (voir
-    // l'entrée 'parcelsapp' dans CARRIERS) quand trop d'invocations Vercel simultanées finissent
+    // l'entrée 'wanbexpress' dans CARRIERS) quand trop d'invocations Vercel simultanées finissent
     // par saturer le CPU partagé de la fonction (plusieurs onglets Chromium lents à charger en
     // même temps) ou par déclencher un ralentissement du site cible face à trop de requêtes
     // concurrentes depuis la même origine.
@@ -1698,7 +1679,7 @@
         if(updates.length === 0){
           // Ordre de priorité : un vrai problème (blocage anti-bot ou changement de structure)
           // prime sur un état légitime et temporaire (noDataInfo, stillProcessingInfo) — voir
-          // lib/scrapers/parcelsapp.js et lib/scrapers/wanbexpress.js, qui distinguent ces cas
+          // lib/scrapers/wanbexpress.js, qui distingue ces cas
           // selon le contenu réel de la page/réponse API.
           const debug = json.debug || {};
           const debugText = json.debug ? JSON.stringify(json.debug).slice(0, 300) : '(pas de diagnostic disponible)';

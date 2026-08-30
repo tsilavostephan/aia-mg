@@ -39,6 +39,9 @@
   @media (min-width: 1400px){
     body{ max-width: 1180px; }
   }
+  @media (min-width: 1800px){
+    body{ max-width: 1360px; }
+  }
   h1{ font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
   h2{ font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--primary); margin: 0 0 16px; }
   #scrapeAllBtn.scrape-all-success{ background: var(--success); color:#fff; border-color: var(--success); }
@@ -246,7 +249,7 @@
   select:focus{ outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 
   .list-scroll{
-    max-height: 500px;
+    max-height: min(640px, 65vh);
     overflow-y: auto;
     overflow-x: hidden;
     border: 1px solid var(--border);
@@ -260,7 +263,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 13px 16px;
+    padding: 10px 16px;
     border-bottom: 1px dashed var(--border);
     cursor: pointer;
   }

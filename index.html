@@ -26,7 +26,7 @@
 <div class="app-header">
   <img class="app-logo" src="assets/logo-aia.png" alt="AIA">
   <div class="app-header-text">
-    <p class="desc">Importez plusieurs fichiers CSV pour alimenter la base de données ou cliquer sur IMPORTER pour avoir la sauvegarde.</p>
+    <p class="desc">Importez vos fichiers CSV pour alimenter la base, puis recherchez, suivez et scannez vos colis.</p>
     <p class="app-version" id="appVersion">v1.2 &middot; &copy; TSLV</p>
   </div>
   <button type="button" id="updateAvailableBtn" class="update-btn" style="display:none;" title="Une nouvelle version de l'application est disponible">⟳ MAJ</button>
@@ -34,11 +34,11 @@
 </div>
 
 <fieldset id="csvSection">
-  <h2>Importer les fichiers CSV (Import tout pour aia)</h2>
+  <h2>Importer des fichiers CSV</h2>
   <div class="row">
     <div id="dropzone" class="dropzone">
-      <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers IMPORT CSV ici</div>
-      <div class="dropzone-sub">Plusieurs fichiers peuvent être sélectionnés en même temps</div>
+      <div class="dropzone-text"><strong>Cliquez pour choisir</strong> ou glissez-déposez vos fichiers CSV ici</div>
+      <div class="dropzone-sub">Plusieurs fichiers à la fois sont acceptés</div>
       <input type="file" id="fileInput" accept=".csv,text/csv" multiple style="display:none;">
     </div>
   </div>
@@ -56,7 +56,7 @@
 
 <fieldset id="carrierSection" style="display:none;">
   <h2 class="section-title">
-    <span>Détection du Numéro dernier kilomètre de Suivi<span id="carrierSectionUpdatedCount" style="color:var(--card);"></span></span>
+    <span>Numéros dernier kilomètre<span id="carrierSectionUpdatedCount" style="color:var(--card);"></span></span>
     <span class="section-title-actions">
       <button type="button" id="carrierMappingBtn" class="secondary" title="Associer manuellement les valeurs de transporteur">⚙️ Transporteurs</button>
       <button type="button" id="scrapeAllBtn" class="secondary">🔄 Récupérer AUTO</button>
@@ -74,7 +74,7 @@
 
 <fieldset id="dbSection">
   <h2 class="section-title">
-    <span>Base de données (<span id="rowCount">0</span> colis enregistrées, <span id="resolvedCount">0</span> colis mis à jour<span id="resolvedPercent"></span>)</span>
+    <span>Colis (<span id="rowCount">0</span> enregistrés, <span id="resolvedCount">0</span> à jour<span id="resolvedPercent"></span>)</span>
     <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Verrouillé — Alt+T pour déverrouiller">🔒</button>
   </h2>
   <div class="row search-row">
@@ -88,8 +88,8 @@
     </label>
     <label for="displayLimit" style="font-size:13px; color:var(--muted);">Afficher</label>
     <select id="displayLimit">
-      <option value="10" selected>10 lignes</option>
-      <option value="25">25 lignes</option>
+      <option value="10">10 lignes</option>
+      <option value="25" selected>25 lignes</option>
       <option value="50">50 lignes</option>
       <option value="100">100 lignes</option>
     </select>

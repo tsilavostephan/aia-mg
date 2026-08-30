@@ -12,9 +12,14 @@
 //   APP_BASE_URL          URL de l'app déployée (ex. https://aia-mg-test-xxxx.vercel.app)
 //   APP_ACCESS_CODE       Code d'accès (identique à celui utilisé sur /login.html)
 //   CHROME_PATH           Chemin vers chrome.exe (optionnel, sinon emplacement standard Windows)
-//   PARCELSAPP_COOKIES_JSON  Cookies de consentement pub pour parcelsapp.com (optionnel mais
-//                            recommandé — voir le commentaire dans lib/scrapers/parcelsapp.js pour
-//                            comment les obtenir).
+//   PARCELSAPP_COOKIES_JSON  Cookies de consentement pub pour parcelsapp.com (optionnel — voir le
+//                            commentaire dans lib/scrapers/parcelsapp.js). Ne suffit pas toujours à
+//                            lui seul avec un profil neuf (constaté en usage réel) — voir
+//                            CHROME_USER_DATA_DIR ci-dessous pour l'option fiable.
+//   CHROME_USER_DATA_DIR  Chemin vers VOTRE VRAI dossier de profil Chrome (ex.
+//                         "C:\Users\<vous>\AppData\Local\Google\Chrome\User Data") — seule option
+//                         constatée fiable pour PARCELSAPP (réputation/historique réel du profil).
+//                         Chrome doit être COMPLÈTEMENT fermé pendant que ce script tourne.
 //   CARRIERS              Transporteurs à traiter, séparés par des virgules (défaut : les deux)
 //   CONCURRENCY           Onglets en parallèle (défaut 2 — modéré, pas d'agressivité inutile)
 
@@ -175,14 +180,37 @@ async function scrapeCarrier(browser, key, numSuivis) {
   const puppeteer = addExtra(puppeteerCore);
   puppeteer.use(StealthPlugin());
 
-  console.log(`\nLancement de Chrome (${CHROME_PATH})...`);
-  const browser = await puppeteer.launch({
+  const launchOptions = {
     headless: true,
     executablePath: CHROME_PATH,
     // Pas de --no-sandbox ici : c'est justement ce qui bloque parcelsapp.com/packageradar.com sur
     // Vercel — un Chrome normal sur une machine classique n'en a pas besoin.
     args: ['--disable-blink-features=AutomationControlled'],
-  });
+  };
+
+  // CHROME_USER_DATA_DIR pointe directement sur le VRAI profil Chrome de l'utilisateur (pas une
+  // copie, pas un profil dédié) — bénéficie de sa réputation/historique de navigation réel, seul
+  // moyen constaté fiable pour PARCELSAPP (un profil neuf ou copié ne suffit pas, même avec les bons
+  // cookies présents). Nécessite que Chrome soit COMPLÈTEMENT fermé (le dossier de profil est
+  // verrouillé par une instance en cours) et désactive le nettoyage des cookies après chaque colis
+  // (voir PARCELSAPP_KEEP_COOKIES dans lib/scrapers/parcelsapp.js) pour ne pas supprimer le cookie
+  // de consentement du vrai profil dès le premier colis traité.
+  if (process.env.CHROME_USER_DATA_DIR) {
+    const fs = require('node:fs');
+    const lockPath = path.join(process.env.CHROME_USER_DATA_DIR, 'SingletonLock');
+    if (fs.existsSync(lockPath)) {
+      console.error(`\nChrome semble encore ouvert sur ce profil (${lockPath} présent).`);
+      console.error('Fermez complètement Chrome (toutes les fenêtres, y compris en arrière-plan) avant de relancer ce script.');
+      process.exit(1);
+    }
+    launchOptions.userDataDir = process.env.CHROME_USER_DATA_DIR;
+    launchOptions.args.push(`--profile-directory=${process.env.CHROME_PROFILE_DIRECTORY || 'Default'}`);
+    process.env.PARCELSAPP_KEEP_COOKIES = '1';
+    console.log(`\n⚠️  Utilisation du profil Chrome réel (${process.env.CHROME_USER_DATA_DIR}) — ne rouvrez pas Chrome tant que ce script tourne.`);
+  }
+
+  console.log(`\nLancement de Chrome (${CHROME_PATH})...`);
+  const browser = await puppeteer.launch(launchOptions);
 
   let totalUpdated = 0;
   try {

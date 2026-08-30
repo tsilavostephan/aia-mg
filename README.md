@@ -229,19 +229,24 @@ en base via `/api/db`, puis se termine. Voir `.env.local-worker.example` pour le
 (transporteurs à traiter, concurrence, cookies de consentement pour PARCELSAPP — voir le commentaire
 `getParcelsappCookies` dans `lib/scrapers/parcelsapp.js`).
 
-**PARCELSAPP ne renvoie aucun résultat sans `PARCELSAPP_COOKIES_JSON`**, même depuis ce script (le
-site exige des cookies de consentement publicitaire déjà acceptés, indépendamment du sandbox). Pour
-les obtenir de façon fiable, sans toucher à votre profil Chrome personnel (copier un profil réel
-s'est révélé fragile en pratique — cookies pas toujours chargés correctement depuis une copie) :
+**PARCELSAPP ne renvoie aucun résultat sans un profil Chrome ayant un véritable historique de
+navigation** — ni un profil neuf, ni une copie de profil, ni même les bons cookies injectés seuls ne
+suffisent de façon fiable (constaté en usage réel : ça n'a marché qu'une fois, avec le vrai profil).
+La seule option fiable : pointer le worker directement sur **votre vrai profil Chrome**, avec Chrome
+complètement fermé pendant que le script tourne (le profil est verrouillé sinon). Dans
+`.env.local-worker` :
 
-1. `node scripts/setup-scraper-profile.js` — ouvre une fenêtre Chrome **dédiée au scraping**
-   (nouveau profil, séparé du vôtre) sur parcelsapp.com. Acceptez le consentement (bouton
-   "Autoriser") si affiché, puis revenez au terminal et appuyez sur Entrée.
-2. `node scripts/extract-parcelsapp-cookies.js "%USERPROFILE%\.aia-scraper-chrome-profile"` — affiche
-   la ligne `PARCELSAPP_COOKIES_JSON=...` à coller dans `.env.local-worker`.
+```
+CHROME_USER_DATA_DIR=C:\Users\VOTRE_NOM\AppData\Local\Google\Chrome\User Data
+```
 
-Ce profil dédié peut être réutilisé/régénéré si les cookies finissent par expirer (relancez
-simplement l'étape 1 puis l'étape 2).
+(remplacez `VOTRE_NOM` par votre nom d'utilisateur Windows). Fermez Chrome, puis lancez le worker
+normalement — le script vérifie lui-même qu'aucune instance Chrome n'est encore ouverte sur ce
+profil et refuse de démarrer sinon.
+
+`scripts/setup-scraper-profile.js` + `scripts/extract-parcelsapp-cookies.js` (profil dédié séparé +
+`PARCELSAPP_COOKIES_JSON`) restent disponibles en alternative si vous préférez ne pas exposer votre
+vrai profil au script, mais se sont révélés moins fiables en pratique pour PARCELSAPP.
 
 N'importe lequel de ces transporteurs peut aussi servir d'étape de vérification finale pour les
 colis d'autres transporteurs (case à cocher « Inclure aussi les colis sans numéro dernier

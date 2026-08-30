@@ -25,9 +25,13 @@ const wanbexpress = require('../lib/scrapers/wanbexpress');
 const BASE_URL = (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
 const ACCESS_CODE = process.env.APP_ACCESS_CODE;
 const CHROME_PATH = process.env.CHROME_PATH || path.join('C:', 'Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe');
-const CONCURRENCY = Math.max(1, parseInt(process.env.CONCURRENCY, 10) || 2);
+// Valeur par défaut plus agressive qu'en production Vercel (2) : sur un PC de bureau, plusieurs
+// onglets en parallèle ne se font pas concurrence de la même façon que dans un conteneur serverless
+// à CPU partagé et limité (voir le même raisonnement historique dans lib/scrapers/parcelsapp.js sur
+// PAGE_POOL_SIZE) — ajustez CONCURRENCY selon les performances réelles constatées sur votre machine.
+const CONCURRENCY = Math.max(1, parseInt(process.env.CONCURRENCY, 10) || 6);
 const CARRIER_KEYS = (process.env.CARRIERS || 'parcelsapp,wanbexpress').split(',').map(s => s.trim()).filter(Boolean);
-const PAGE_LOAD_WAIT_MS = 4000;
+const PAGE_LOAD_WAIT_MS = parseInt(process.env.PAGE_LOAD_WAIT_MS, 10) || 4000;
 const PER_NUMBER_BUDGET_MS = 45000;
 
 // Reproduit resolveCarrierKeysForRow/CARRIERS.match (assets/script.js) pour les deux transporteurs

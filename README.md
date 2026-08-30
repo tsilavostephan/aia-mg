@@ -231,18 +231,17 @@ en base via `/api/db`, puis se termine. Voir `.env.local-worker.example` pour le
 
 **PARCELSAPP ne renvoie aucun résultat sans `PARCELSAPP_COOKIES_JSON`**, même depuis ce script (le
 site exige des cookies de consentement publicitaire déjà acceptés, indépendamment du sandbox). Pour
-les obtenir depuis votre profil Chrome réel (une seule fois, à refaire si le site finit par les faire
-expirer) :
+les obtenir de façon fiable, sans toucher à votre profil Chrome personnel (copier un profil réel
+s'est révélé fragile en pratique — cookies pas toujours chargés correctement depuis une copie) :
 
-1. Ouvrez `https://parcelsapp.com` dans votre navigateur **normal** et acceptez le consentement si
-   demandé (une seule fois suffit).
-2. Fermez complètement Chrome, puis copiez `Local State` et le dossier `Default` depuis
-   `%LOCALAPPDATA%\Google\Chrome\User Data` vers un dossier temporaire (`<dossier>\User Data\...`) —
-   jamais un script automatisé ne doit pointer directement sur votre profil réel en cours d'usage.
-3. `node scripts/extract-parcelsapp-cookies.js "<dossier>\User Data"` — affiche la ligne
-   `PARCELSAPP_COOKIES_JSON=...` à coller dans `.env.local-worker`.
-4. Supprimez le dossier temporaire une fois la valeur récupérée (ce sont des cookies génériques
-   d'identité publicitaire, pas des données personnelles, mais autant nettoyer derrière soi).
+1. `node scripts/setup-scraper-profile.js` — ouvre une fenêtre Chrome **dédiée au scraping**
+   (nouveau profil, séparé du vôtre) sur parcelsapp.com. Acceptez le consentement (bouton
+   "Autoriser") si affiché, puis revenez au terminal et appuyez sur Entrée.
+2. `node scripts/extract-parcelsapp-cookies.js "%USERPROFILE%\.aia-scraper-chrome-profile"` — affiche
+   la ligne `PARCELSAPP_COOKIES_JSON=...` à coller dans `.env.local-worker`.
+
+Ce profil dédié peut être réutilisé/régénéré si les cookies finissent par expirer (relancez
+simplement l'étape 1 puis l'étape 2).
 
 N'importe lequel de ces transporteurs peut aussi servir d'étape de vérification finale pour les
 colis d'autres transporteurs (case à cocher « Inclure aussi les colis sans numéro dernier

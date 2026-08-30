@@ -216,13 +216,17 @@
     return String(v ?? '').replace(/[="'\\]/g, '').trim();
   }
 
-  // Extrait le Nom depuis la colonne 7 : le texte trouvé entre "CART'IN" et la première virgule qui
-  // suit (apostrophe droite ou typographique acceptée), ex. "CART'IN Giovany Salomon, AEIC - ..."
-  // -> "Giovany Salomon". Si le motif n'est pas trouvé, renvoie ''.
+  // Extrait le Nom depuis la colonne 7 : le texte trouvé entre le premier "-" et la virgule qui
+  // suit, puis on retire "CART'IN" s'il y est (apostrophe droite ou typographique acceptée) —
+  // deux formats rencontrés dans ce champ :
+  //   "RE2336077 - CART'IN Giovany Salomon, AEIC - ..." -> "Giovany Salomon"
+  //   "RE1314927 - Gwenaelle Eleonore, AEIC - ..."       -> "Gwenaelle Eleonore"
+  // Si le motif n'est pas trouvé, renvoie ''.
   function extractNomFromCol7(v){
     const str = String(v ?? '');
-    const m = str.match(/CART['’]IN(.*?),/i);
-    return m ? m[1].trim() : '';
+    const m = str.match(/-(.*?),/);
+    if (!m) return '';
+    return m[1].replace(/CART['’]IN\s*/i, '').trim();
   }
 
   // ---------- reconnaissance du numéro de suivi collé / scanné ----------

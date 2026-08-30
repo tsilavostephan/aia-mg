@@ -248,9 +248,11 @@
   }
   select:focus{ outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 
-  /* Colonnes communes à l'en-tête de tableau (desktop) et aux lignes de colis, pour un alignement
-     parfait entre les deux — voir le bloc "tableau desktop" plus bas pour son utilisation. */
-  :root{ --db-grid: 130px 1fr 1fr 90px 1.3fr 1fr 160px; }
+  /* Colonnes communes à l'en-tête de tableau et aux lignes de colis (desktop uniquement), pour un
+     alignement parfait entre les deux — voir le bloc "tableau desktop" plus bas.
+     Num Suivi et Num dernier km reprennent la largeur (1fr) de Nom ; Commande Amazon est un peu
+     plus étroite que N° Commande. */
+  :root{ --db-grid: 130px 1fr 0.8fr 90px 1fr 1fr 1fr; }
 
   .list-scroll{
     max-height: min(640px, 65vh);
@@ -264,35 +266,34 @@
 
   .db-table-head{ display: none; }
 
-  /* Mobile par défaut : chaque colis est une grille à 2 colonnes (étiquette : valeur), les 7 champs
-     s'empilant verticalement. `.db-cell` en display:contents laisse son étiquette et sa valeur
-     rejoindre directement la grille de `.db-card` (pas de conteneur intermédiaire à mettre en page). */
   .db-card{
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 5px 14px;
-    padding: 12px 16px;
     border-bottom: 1px dashed var(--border);
     cursor: pointer;
   }
   .db-card:last-child{ border-bottom: none; }
   .db-card:hover{ background: #f8faff; }
 
-  .db-cell{ display: contents; }
-  .db-cell > *{ align-self: center; min-width: 0; }
-  .db-cell-label{
-    font-size: 10.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
+  /* ---------- affichage mobile (<721px) : ancienne carte (badge + Num Suivi en titre, ligne de
+     méta-infos, Num dernier km à droite) ---------- */
+  .db-row-desktop{ display: none; }
+  .db-row-mobile{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 13px 16px;
   }
-  .db-cell-empty{ color: var(--muted); }
-  .db-cell-bold{ font-weight: 700; }
-  .db-cell-mono, .db-cell-mono .copy-field{
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  .db-row-mobile-info{ min-width: 0; }
+  .db-row-mobile-title{ display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .db-row-mobile-meta{ font-size: 12.5px; color: var(--muted); }
+  .db-row-mobile-right{
     font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--text);
+    white-space: nowrap;
+    flex-shrink: 0;
   }
+  .db-row-mobile-right.empty{ color: var(--muted); font-family: inherit; }
 
   .carrier-badge{
     display: inline-block;
@@ -306,8 +307,9 @@
     letter-spacing: 0.02em;
   }
 
-  /* ---------- tableau desktop : mêmes cartes, ré-agencées en 7 colonnes alignées ---------- */
+  /* ---------- tableau desktop (>=721px) : 7 colonnes alignées ---------- */
   @media (min-width: 721px){
+    .db-row-mobile{ display: none; }
     .db-table-head{
       display: grid;
       grid-template-columns: var(--db-grid);
@@ -324,14 +326,20 @@
       letter-spacing: 0.04em;
       color: var(--muted);
     }
-    .db-card{
+    .db-row-desktop{
+      display: grid;
       grid-template-columns: var(--db-grid);
       gap: 12px;
       align-items: center;
       padding: 10px 16px;
     }
-    .db-cell{ display: block; min-width: 0; overflow: hidden; }
-    .db-cell-label{ display: none; }
+    .db-cell{ min-width: 0; overflow: hidden; }
+    .db-cell-empty{ color: var(--muted); }
+    .db-cell-bold{ font-weight: 700; }
+    .db-cell-mono, .db-cell-mono .copy-field{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
     .db-cell .copy-field{ max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
   }
 

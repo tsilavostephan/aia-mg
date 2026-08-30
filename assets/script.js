@@ -2211,24 +2211,74 @@
     return qteMatch ? 'qty-match' : 'qty-mismatch';
   }
 
-  // Une cellule = étiquette (visible en mobile, masquée en tableau desktop) + contenu. `display:contents`
-  // en CSS mobile laisse les deux rejoindre directement la grille à 2 colonnes de `.db-card` ; en
-  // desktop, `.db-cell` redevient une colonne du tableau et l'étiquette est masquée (voir styles.css).
-  function buildDbCell(label, contentEl, extraClass){
+  function buildDbCell(contentEl, extraClass){
     const cell = document.createElement('div');
     cell.className = 'db-cell' + (extraClass ? ' ' + extraClass : '');
-    const labelEl = document.createElement('span');
-    labelEl.className = 'db-cell-label';
-    labelEl.textContent = label;
-    cell.appendChild(labelEl);
     cell.appendChild(contentEl);
     return cell;
   }
 
-  function buildDbCard(r){
-    const card = document.createElement('div');
-    card.className = 'db-card';
-    card.addEventListener('click', ()=> openPackageModal(r));
+  function buildMetaItem(label, value){
+    const item = document.createElement('span');
+    item.className = 'meta-item';
+    item.textContent = `${label}: ${value || '—'}`;
+    return item;
+  }
+
+  // Ancien affichage en carte (badge + Num Suivi en titre, ligne de méta-infos, Num dernier km à
+  // droite) — repris uniquement sur mobile (<721px), voir styles.css. Le tableau à colonnes
+  // (buildDesktopRow) reste utilisé à partir de 721px.
+  function buildMobileRow(r){
+    const row = document.createElement('div');
+    row.className = 'db-row-mobile';
+
+    const info = document.createElement('div');
+    info.className = 'db-row-mobile-info';
+
+    const title = document.createElement('div');
+    title.className = 'db-row-mobile-title';
+    if(r.transporteur){
+      const colors = badgeColorsFor(r.transporteur);
+      const badge = document.createElement('span');
+      badge.className = 'carrier-badge';
+      badge.style.background = colors.bg;
+      badge.style.color = colors.fg;
+      badge.textContent = r.transporteur;
+      title.appendChild(badge);
+    }
+    const numSuiviSpan = document.createElement('span');
+    numSuiviSpan.textContent = r.numSuivi || '—';
+    title.appendChild(numSuiviSpan);
+    info.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'db-row-mobile-meta';
+    const metaItems = [
+      buildMetaItem('Amazon', r.commandeAmazon),
+      buildMetaItem('Cmd', r.numCommande),
+      buildMetaItem('Qté', r.qteCommande),
+      buildMetaItem('Exp', r.qteExpedie),
+    ];
+    metaItems.forEach((el, idx)=>{
+      meta.appendChild(el);
+      if(idx < metaItems.length - 1) meta.appendChild(document.createTextNode(' · '));
+    });
+    info.appendChild(meta);
+    row.appendChild(info);
+
+    const right = document.createElement('div');
+    right.className = 'db-row-mobile-right';
+    if(!r.numDernierKm) right.classList.add('empty');
+    right.textContent = r.numDernierKm || '–';
+    row.appendChild(right);
+
+    return row;
+  }
+
+  // Tableau à 7 colonnes alignées (voir --db-grid dans styles.css) — utilisé à partir de 721px.
+  function buildDesktopRow(r){
+    const row = document.createElement('div');
+    row.className = 'db-row-desktop';
 
     let carrierContent;
     if(r.transporteur){
@@ -2244,29 +2294,37 @@
       carrierContent.className = 'db-cell-empty';
       carrierContent.textContent = '—';
     }
-    card.appendChild(buildDbCell('Transporteur', carrierContent));
+    row.appendChild(buildDbCell(carrierContent));
 
-    card.appendChild(buildDbCell('N° Commande', createCopySpan(r.numCommande || '—')));
-    card.appendChild(buildDbCell('Commande Amazon', createCopySpan(r.commandeAmazon || '—')));
+    row.appendChild(buildDbCell(createCopySpan(r.numCommande || '—')));
+    row.appendChild(buildDbCell(createCopySpan(r.commandeAmazon || '—')));
 
     const qty = document.createElement('span');
     qty.className = computeQtyMatchClass(r.qteCommande, r.qteExpedie);
     qty.textContent = `${r.qteCommande || '—'} / ${r.qteExpedie || '—'}`;
-    card.appendChild(buildDbCell('Qté / Exp.', qty));
+    row.appendChild(buildDbCell(qty));
 
-    card.appendChild(buildDbCell('Num Suivi', createCopySpan(r.numSuivi || '—'), 'db-cell-mono'));
+    row.appendChild(buildDbCell(createCopySpan(r.numSuivi || '—'), 'db-cell-mono'));
 
     const nom = document.createElement('span');
     nom.textContent = r.nom || '—';
     if(!r.nom) nom.className = 'db-cell-empty';
-    card.appendChild(buildDbCell('Nom', nom));
+    row.appendChild(buildDbCell(nom));
 
-    card.appendChild(buildDbCell(
-      'Num dernier km',
+    row.appendChild(buildDbCell(
       createCopySpan(r.numDernierKm || '—', r.numDernierKm ? 'db-cell-bold' : 'db-cell-empty'),
       'db-cell-mono'
     ));
 
+    return row;
+  }
+
+  function buildDbCard(r){
+    const card = document.createElement('div');
+    card.className = 'db-card';
+    card.addEventListener('click', ()=> openPackageModal(r));
+    card.appendChild(buildMobileRow(r));
+    card.appendChild(buildDesktopRow(r));
     return card;
   }
 

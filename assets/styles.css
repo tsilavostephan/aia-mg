@@ -33,6 +33,11 @@
     margin: 32px auto;
     padding: 0 20px 60px;
     line-height: 1.5;
+    /* La section colis en pleine largeur (#dbSection, voir plus bas) utilise width:100vw, qui —
+       contrairement à un pourcentage — inclut la place réservée à la barre de défilement
+       verticale du navigateur : sans ce overflow-x:hidden, ce léger dépassement fait apparaître
+       une barre de défilement horizontale parasite sur toute la page. */
+    overflow-x: hidden;
   }
 
   /* Grands écrans : profite un peu plus de la largeur disponible sans devenir trop étiré */
@@ -250,9 +255,10 @@
 
   /* Colonnes communes à l'en-tête de tableau et aux lignes de colis (desktop uniquement), pour un
      alignement parfait entre les deux — voir le bloc "tableau desktop" plus bas.
-     Num Suivi et Num dernier km reprennent la largeur (1fr) de Nom ; Commande Amazon est un peu
-     plus étroite que N° Commande. */
-  :root{ --db-grid: 130px 1fr 0.8fr 90px 1fr 1fr 1fr; }
+     N° Commande est en largeur automatique (s'ajuste à son contenu, généralement court) ;
+     Commande Amazon est un peu plus large ; Num Suivi et Num dernier km reprennent la largeur
+     (1fr) de Nom. */
+  :root{ --db-grid: 130px auto 1.3fr 90px 1fr 1fr 1fr; }
 
   .list-scroll{
     max-height: min(640px, 65vh);

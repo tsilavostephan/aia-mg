@@ -1151,6 +1151,12 @@
       disableManualImport: true,
       compactLinks: true,
       scrapeEndpoint: '/api/scrape' },
+    // Pas de scraping automatique (pas de scrapeEndpoint) : uniquement manuel. Le tableau de
+    // résultats copié depuis tms.trackmeeasy.com est du HTML brut (balises <tr>/<td> littérales,
+    // pas des colonnes séparées par tabulation) — voir htmlTableRows, traité à part de
+    // parseTrackingPaste dans handleImportPaste.
+    { key:'sfexpress',  label:'SF Express', match:['SF EXPRESS'],              baseUrl:'https://tms.trackmeeasy.com/home', mode:'clipboard', chunkSize:500, htmlTableRows:true,
+      pasteHint: 'Sur la page ouverte via « Copier + Ouvrir », collez les numéros copiés puis lancez la recherche ; une fois les résultats affichés, copiez le tableau obtenu et collez-le ci-dessous tel quel (y compris son code HTML si c\'est ce que le site copie).' },
   ];
   const CHUNK_SIZE = 99;
 
@@ -1474,6 +1480,34 @@
     return /\d/.test(s);
   }
 
+  // Analyse dédiée SF Express : le tableau copié depuis tms.trackmeeasy.com est du HTML brut collé
+  // tel quel (balises <tr>/<td> littérales), pas des colonnes tabulées comme parseTrackingPaste
+  // attend des autres transporteurs. Une ligne <tr> = un colis ; son premier <td> = SF tracking
+  // number (clé de correspondance), son second <td> = numéro dernier kilométrique. La ligne d'en-tête
+  // utilise des <th>, donc sans <td> : elle est ignorée naturellement (aucune capture).
+  function parseSfExpressHtmlPaste(text){
+    const updates = [];
+    const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let rowMatch;
+    while((rowMatch = rowRe.exec(text))){
+      const cells = [];
+      const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let cellMatch;
+      while((cellMatch = cellRe.exec(rowMatch[1]))){
+        cells.push(cellMatch[1].replace(/<[^>]*>/g, '').replace(/&#10;/g, ' ').trim());
+      }
+      if(cells.length < 2) continue;
+
+      const trackingNumber = cleanNumSuivi(cells[0]);
+      if(!trackingNumber) continue;
+
+      let lastKm = cells[1];
+      if(!lastKm || /^\(?unknown\)?$/i.test(lastKm)) lastKm = '';
+      updates.push({ trackingNumber, lastKm });
+    }
+    return updates;
+  }
+
   // Partagé entre l'import manuel (handleImportPaste) et le scraping automatique
   // (scrapeCarrierViaVercel, appelé lot par lot) : ne retient que les numéros appartenant à ce
   // transporteur parmi les colis non résolus connus côté client (unresolvedRows), valides (voir
@@ -1512,7 +1546,9 @@
       return;
     }
 
-    const updates = parseTrackingPaste(text, g.kmColIndex, g.pasteHasHeader, g.matchColIndex);
+    const updates = g.htmlTableRows
+      ? parseSfExpressHtmlPaste(text)
+      : parseTrackingPaste(text, g.kmColIndex, g.pasteHasHeader, g.matchColIndex);
     if(updates.length === 0){
       importLogByCarrier[g.key] = { text: 'Aucune ligne exploitable trouvée dans le texte collé.', err: true };
       renderCarrierPanel();
@@ -2166,6 +2202,7 @@
     'YUN EXPRESS': { bg:'#eafbf1', fg:'#0f8a4c' },
     'SFC': { bg:'#f3e8ff', fg:'#7e22ce' },
     'LANDMARK': { bg:'#eef2ff', fg:'#4338ca' },
+    'SF EXPRESS': { bg:'#fdeaea', fg:'#b91c1c' },
   };
   function badgeColorsFor(transporteur){
     const norm = normCarrierName(transporteur);

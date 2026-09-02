@@ -332,13 +332,16 @@
       gap: 12px;
       align-items: center;
       padding: 10px 16px;
+      font-size: 13.5px;
     }
+    /* Le badge Transporteur a sa propre taille ailleurs (carte mobile, fiche détail) ; dans le
+       tableau desktop uniquement, on l'aligne sur la taille des autres colonnes. */
+    .db-row-desktop .carrier-badge{ font-size: 13.5px; }
     .db-cell{ min-width: 0; overflow: hidden; }
     .db-cell-empty{ color: var(--muted); }
     .db-cell-bold{ font-weight: 700; }
     .db-cell-mono, .db-cell-mono .copy-field{
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 13px;
     }
     .db-cell .copy-field{ max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
   }

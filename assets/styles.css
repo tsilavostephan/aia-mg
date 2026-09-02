@@ -310,6 +310,21 @@
   /* ---------- tableau desktop (>=721px) : 7 colonnes alignées ---------- */
   @media (min-width: 721px){
     .db-row-mobile{ display: none; }
+
+    /* Sort la section colis de la colonne centrée (max-width du body) pour occuper toute la
+       largeur de la fenêtre — seul ce fieldset est concerné, le reste de l'app garde sa largeur
+       de lecture habituelle. Repose sur le fait que #dbSection est un enfant direct de <body>,
+       lui-même centré : "50% - 50vw" annule alors exactement la marge de centrage du body. */
+    #dbSection{
+      width: 100vw;
+      max-width: 100vw;
+      margin-left: calc(50% - 50vw);
+      margin-right: calc(50% - 50vw);
+      border-left: none;
+      border-right: none;
+      border-radius: 0;
+      box-sizing: border-box;
+    }
     .db-table-head{
       display: grid;
       grid-template-columns: var(--db-grid);
@@ -332,11 +347,11 @@
       gap: 12px;
       align-items: center;
       padding: 10px 16px;
-      font-size: 13.5px;
+      font-size: 12px;
     }
     /* Le badge Transporteur a sa propre taille ailleurs (carte mobile, fiche détail) ; dans le
        tableau desktop uniquement, on l'aligne sur la taille des autres colonnes. */
-    .db-row-desktop .carrier-badge{ font-size: 13.5px; }
+    .db-row-desktop .carrier-badge{ font-size: 12px; }
     .db-cell{ min-width: 0; overflow: hidden; }
     .db-cell-empty{ color: var(--muted); }
     .db-cell-bold{ font-weight: 700; }
@@ -576,6 +591,14 @@
   }
   .modal-box-narrow{ max-width: 480px; }
   .modal-box-wide{ max-width: 960px; max-height: 88vh; }
+
+  /* Fiche détail d'un colis : pas de plafond de hauteur interne ni de barre de défilement propre —
+     tout le contenu (champs + QR code) doit être visible d'un coup. Si la fenêtre est trop petite,
+     c'est la page (.modal-bg, déjà en overflow-y:auto) qui défile, pas la fiche elle-même. */
+  #packageModalBg .modal-box{
+    max-height: none;
+    overflow: visible;
+  }
   .modal-title{ margin-top: 0; }
   .modal-subtext{ color: var(--muted); font-size: 13px; }
   .modal-label{ font-size: 13px; }

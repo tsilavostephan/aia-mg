@@ -1893,12 +1893,15 @@
         </div>`
       : '';
 
+    // Pas de limite de longueur pour SF Express (htmlTableRows) : le tableau collé est du HTML brut,
+    // bien plus verbeux que les colonnes tabulées des autres transporteurs, et peut largement dépasser
+    // 10000 caractères pour un lot de 500 colis.
     const manualImportHtml = g.disableManualImport ? '' : `
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border);">
-        <label style="font-size:13px;">Coller les données de suivi ${g.label} (max 10000 caractères) puis cliquer sur Importer</label>
+        <label style="font-size:13px;">Coller les données de suivi ${g.label}${g.htmlTableRows ? '' : ' (max 10000 caractères)'} puis cliquer sur Importer</label>
         ${pasteHintHtml}
         <div class="row">
-          <textarea id="pasteArea" maxlength="10000" rows="5" style="width:100%; font-size:12px; padding:8px;" placeholder="Collez ici les données copiées depuis la page de suivi ${g.label}…"></textarea>
+          <textarea id="pasteArea" ${g.htmlTableRows ? '' : 'maxlength="10000"'} rows="5" style="width:100%; font-size:12px; padding:8px;" placeholder="Collez ici les données copiées depuis la page de suivi ${g.label}…"></textarea>
         </div>
         <div class="actions"><button id="importPasteBtn">📋 Importer</button></div>
       </div>`;

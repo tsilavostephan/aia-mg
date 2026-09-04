@@ -2244,17 +2244,19 @@
   // clavier (AZERTY, QWERTY…). Chaque raccourci réutilise le bouton déjà câblé correspondant
   // (.click()) plutôt que de dupliquer sa logique — s'il est désactivé/masqué, le clic ne fait
   // simplement rien.
+  // `el` : élément sur lequel poser le badge du raccourci (voir positionShortcutBadges) — le bouton
+  // réellement à appuyer, pas un élément arbitraire, pour que "Alt" montre littéralement où cliquer.
   const KEYBOARD_SHORTCUTS = [
-    { code:'KeyO', label:'Ouvrir le sélecteur de fichiers CSV', run: () => els.dropzone.click() },
-    { code:'KeyA', label:'Ajouter à la base de données',        run: () => els.importBtn.click() },
-    { code:'KeyR', label:'Tout récupérer (scraping)',           run: () => els.scrapeAllBtn.click() },
-    { code:'KeyQ', label:'Rechercher (curseur dans le champ)',  run: () => { els.search.focus(); els.search.select(); } },
-    { code:'KeyS', label:'Scanner un code-barres / QR code',    run: () => els.scanBtn.click() },
-    { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click() },
-    { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click() },
-    { code:'KeyT', label:'Verrouiller / déverrouiller',         run: () => els.focusDbBtn.click() },
-    { code:'ArrowUp',   label:'Onglet transporteur précédent',  run: () => switchCarrierTab(-1), displayKey:'↑' },
-    { code:'ArrowDown', label:'Onglet transporteur suivant',    run: () => switchCarrierTab(1),  displayKey:'↓' },
+    { code:'KeyO', label:'Ouvrir le sélecteur de fichiers CSV', run: () => els.dropzone.click(), el: els.dropzone },
+    { code:'KeyA', label:'Ajouter à la base de données',        run: () => els.importBtn.click(), el: els.importBtn },
+    { code:'KeyR', label:'Tout récupérer (scraping)',           run: () => els.scrapeAllBtn.click(), el: els.scrapeAllBtn },
+    { code:'KeyQ', label:'Rechercher (curseur dans le champ)',  run: () => { els.search.focus(); els.search.select(); }, el: els.search },
+    { code:'KeyS', label:'Scanner un code-barres / QR code',    run: () => els.scanBtn.click(), el: els.scanBtn },
+    { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click(), el: els.exportJsonEncryptedBtn },
+    { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click(), el: els.importBackupBtn },
+    { code:'KeyT', label:'Verrouiller / déverrouiller',         run: () => els.focusDbBtn.click(), el: els.focusDbBtn },
+    { code:'ArrowUp',   label:'Onglet transporteur précédent',  run: () => switchCarrierTab(-1), displayKey:'↑', el: els.carrierTabs },
+    { code:'ArrowDown', label:'Onglet transporteur suivant',    run: () => switchCarrierTab(1),  displayKey:'↓', el: els.carrierTabs },
   ];
 
   // Étiquette affichée par défaut (position QWERTY de la touche, ex. "KeyQ" -> "Q") — mise à jour
@@ -2266,21 +2268,31 @@
 
   // Affiche un rappel des raccourcis disponibles tant que la touche Alt est maintenue seule —
   // comme les indices de touche d'accès de Windows — pour qu'ils restent découvrables sans avoir
-  // à les mémoriser à l'avance.
-  function renderShortcutsOverlay(){
-    els.shortcutsOverlay.innerHTML = `
-      <div class="shortcuts-overlay-title">Raccourcis clavier (maintenez Alt)</div>
-      <div class="shortcuts-overlay-list">
-        ${KEYBOARD_SHORTCUTS.map(s => `
-          <div class="shortcuts-overlay-item">
-            <span class="shortcuts-kbd"><kbd class="shortcut-key">Alt</kbd>+<kbd class="shortcut-key">${shortcutDisplayKeys[s.code]}</kbd></span>
-            <span>${s.label}</span>
-          </div>
-        `).join('')}
-      </div>
-    `;
+  // à les mémoriser à l'avance. Un badge par raccourci, posé directement sur le bouton concerné
+  // (coin haut-gauche de son rectangle réel, recalculé à chaque affichage) plutôt qu'une liste texte
+  // séparée : on voit tout de suite où appuyer. Les raccourcis dont le bouton est actuellement cité
+  // (masqué/hors écran) n'affichent simplement pas de badge.
+  function positionShortcutBadges(){
+    els.shortcutsOverlay.innerHTML = '';
+    const stackCountByEl = new Map(); // plusieurs raccourcis peuvent partager le même élément (ex. ArrowUp/ArrowDown -> carrierTabs)
+    KEYBOARD_SHORTCUTS.forEach(s=>{
+      const anchor = s.el;
+      if(!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      if(rect.width === 0 && rect.height === 0) return; // display:none ou retiré du DOM
+
+      const stackIndex = stackCountByEl.get(anchor) || 0;
+      stackCountByEl.set(anchor, stackIndex + 1);
+
+      const badge = document.createElement('div');
+      badge.className = 'shortcut-badge';
+      badge.textContent = shortcutDisplayKeys[s.code];
+      badge.title = s.label;
+      badge.style.top = `${Math.max(2, rect.top - 10)}px`;
+      badge.style.left = `${Math.max(2, rect.left - 10 + stackIndex * 26)}px`;
+      els.shortcutsOverlay.appendChild(badge);
+    });
   }
-  renderShortcutsOverlay();
 
   // Les raccourcis restent liés à la position physique de la touche (e.code) pour fonctionner
   // quelle que soit la disposition, mais la LETTRE AFFICHÉE doit correspondre à ce qui est
@@ -2297,7 +2309,7 @@
             changed = true;
           }
         });
-        if(changed) renderShortcutsOverlay();
+        if(changed && shortcutsOverlayVisible) positionShortcutBadges();
       })
       .catch(() => { /* API indisponible/refusée : on garde les lettres QWERTY par défaut */ });
   }
@@ -2306,6 +2318,7 @@
   function showShortcutsOverlay(){
     if(shortcutsOverlayVisible) return;
     shortcutsOverlayVisible = true;
+    positionShortcutBadges();
     els.shortcutsOverlay.classList.add('visible');
     els.shortcutsOverlay.setAttribute('aria-hidden', 'false');
   }
@@ -2333,7 +2346,7 @@
     // réellement d'appuyer nous dit elle-même quelle lettre y est imprimée sur cette disposition.
     if(/^[a-zA-Z]$/.test(e.key) && e.key.toUpperCase() !== shortcutDisplayKeys[shortcut.code]){
       shortcutDisplayKeys[shortcut.code] = e.key.toUpperCase();
-      renderShortcutsOverlay();
+      if(shortcutsOverlayVisible) positionShortcutBadges();
     }
     shortcut.run();
   });
@@ -2347,6 +2360,11 @@
   // Défensif : si la fenêtre perd le focus pendant qu'Alt est maintenu (ex. Alt+Tab), aucun
   // keyup n'est reçu — sans ça le rappel resterait affiché indéfiniment.
   window.addEventListener('blur', hideShortcutsOverlay);
+
+  // Les badges sont positionnés en coordonnées d'écran (getBoundingClientRect) : les repositionner
+  // si la fenêtre est redimensionnée ou la page défilée pendant qu'Alt est encore maintenu.
+  window.addEventListener('resize', () => { if(shortcutsOverlayVisible) positionShortcutBadges(); });
+  window.addEventListener('scroll', () => { if(shortcutsOverlayVisible) positionShortcutBadges(); }, true);
 
   // Coller n'importe où sur la page colle directement dans le champ de recherche, sauf si on a
   // déjà le focus sur un champ éditable (recherche elle-même, zone de collage transporteur, etc.),

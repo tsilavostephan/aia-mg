@@ -29,9 +29,14 @@ commandes sans ralentissement.
 ### 1. Import CSV
 - Glisser-déposer ou sélection de plusieurs fichiers CSV à la fois.
 - Chaque ligne est mappée vers un enregistrement de commande (numéro de commande, quantité,
-  numéro de suivi, transporteur, etc.).
+  numéro de suivi, transporteur, nom du destinataire, etc.).
 - Bouton **Options** : permet de changer le numéro de colonne associé à chaque champ, avec un
   aperçu en direct basé sur les 100 premières lignes du fichier sélectionné le plus léger.
+- Le **Nom** du destinataire est extrait automatiquement de la colonne 7 : le texte entre le
+  premier `-` et la virgule qui suit, débarrassé du préfixe `CART'IN` s'il est présent (ex.
+  `"RE2336077 - CART'IN Giovany Salomon, AEIC - ..."` → `"Giovany Salomon"`). Un ré-import met à
+  jour le Nom avec la nouvelle valeur extraite, sans jamais l'effacer si l'extraction échoue cette
+  fois-ci (même protection que le numéro dernier kilométrique).
 
 ### 2. Détection du LastMile Tracking Number (suivi par transporteur)
 - Les commandes importées sont automatiquement regroupées par transporteur.
@@ -57,8 +62,12 @@ commandes sans ralentissement.
   à aucun transporteur reconnu automatiquement). Sauvegardé dans le navigateur (localStorage).
 
 ### 3. Base de données
-- Liste des commandes sous forme de cartes, avec code transporteur coloré, statut de quantité
-  (correspondance commandée/expédiée), et numéro dernier kilométrique une fois trouvé.
+- Affichage adapté à l'écran : un vrai tableau à colonnes sur desktop (Transporteur, N°
+  Commande, Commande Amazon, Qté/Qté expédiée, Num Suivi, Nom, Num dernier km, occupant toute la
+  largeur de la fenêtre), et des cartes compactes empilées sur mobile. N° Commande, Commande
+  Amazon, Num Suivi et Num dernier km sont copiables en un clic (icône au survol).
+- Code transporteur coloré, statut de quantité (correspondance commandée/expédiée en vert/rouge),
+  et numéro dernier kilométrique une fois trouvé.
 - Recherche par numéro de commande, transporteur ou numéro de suivi, avec :
   - **Scanner un code-barres / QR code** (caméra du téléphone/ordinateur).
   - **Algorithmes de recherche** (bouton ⚙️ à côté du champ) : règles configurables qui
@@ -208,10 +217,26 @@ externe (elles pilotent un navigateur headless directement).
 | TopYou | ✅ | ✅ |
 | CNE | ✅ | ✅ |
 | Sunyou | ✅ | ✅ |
+| SF Express | ✅ | ❌ (manuel uniquement) |
 
 > PARCELSAPP a été retiré : le site s'est révélé bloquer systématiquement les sessions automatisées
 > sans historique de navigation réel, sans contournement fiable trouvé (voir l'historique git pour
 > le détail de ce qui a été tenté).
+
+### SF Express : suivi 100 % manuel
+
+Aucun scraping automatique pour ce transporteur — le site de suivi
+([tms.trackmeeasy.com](https://tms.trackmeeasy.com/home)) n'est accessible qu'en s'y connectant
+manuellement :
+1. Bouton **Copier + Ouvrir** (par lot de 500 numéros) : copie les numéros de suivi dans le
+   presse-papier et ouvre le site.
+2. Coller les numéros sur le site, lancer la recherche.
+3. Copier le tableau de résultats obtenu et le coller dans la zone d'import de l'application (pas
+   de limite de longueur, contrairement aux autres transporteurs, le tableau HTML étant beaucoup
+   plus volumineux qu'une simple liste de colonnes).
+4. Cliquer sur **Importer** : l'application lit la 1ʳᵉ colonne de chaque ligne du tableau (SF
+   tracking number) et la 2ᵉ colonne (numéro dernier kilométrique), "Unknown" étant traité comme
+   une valeur vide.
 
 ### Scraping local WANBEXPRESS en secours
 

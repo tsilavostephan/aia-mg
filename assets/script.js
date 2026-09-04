@@ -50,8 +50,6 @@
     carrierPanel: document.getElementById('carrierPanel'),
     dashboardBtn: document.getElementById('dashboardBtn'),
     dashboardModalBg: document.getElementById('dashboardModalBg'),
-    dashboardPeriodTabs: document.getElementById('dashboardPeriodTabs'),
-    dashboardCarrierSelect: document.getElementById('dashboardCarrierSelect'),
     dashboardBody: document.getElementById('dashboardBody'),
     dashboardCloseBtn: document.getElementById('dashboardCloseBtn'),
     carrierMappingBtn: document.getElementById('carrierMappingBtn'),
@@ -1382,79 +1380,52 @@
     return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  // ---------- fenêtre "Tableau de bord" (taux de résolution par transporteur, par période) ----------
-  let dashboardPeriod = 'day';
-  let dashboardEntries = []; // dernière réponse de 'resolution-stats' pour la période courante
-
-  const DASHBOARD_BUCKET_LABEL = { day: 'jour', week: 'semaine', month: 'mois' };
-  function formatDashboardBucket(iso, period){
-    const d = new Date(iso);
-    if(period === 'month') return d.toLocaleDateString('fr-FR', { month:'long', year:'numeric' });
-    if(period === 'week') return `Semaine du ${d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })}`;
-    return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
-  }
-
-  function renderDashboardTable(){
-    const selected = els.dashboardCarrierSelect.value;
-    const byBucket = new Map(); // bucket ISO -> { total, resolved }
-    dashboardEntries.forEach(e=>{
-      if(selected && e.transporteur !== selected) return;
-      const cur = byBucket.get(e.bucket) || { total:0, resolved:0 };
-      cur.total += e.total;
-      cur.resolved += e.resolved;
-      byBucket.set(e.bucket, cur);
-    });
-
-    const buckets = Array.from(byBucket.keys()).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
-    if(buckets.length === 0){
-      els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucune donnée pour cette sélection.</p>';
+  // ---------- fenêtre "Tableau de bord" (taux de résolution par transporteur, toutes périodes) ----------
+  function renderDashboardTable(entries){
+    if(!entries.length){
+      els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucune donnée pour le moment.</p>';
       return;
     }
 
-    const rowsHtml = buckets.map(b=>{
-      const { total, resolved } = byBucket.get(b);
-      const pct = total > 0 ? Math.round((resolved / total) * 100) : (resolved > 0 ? 100 : 0);
-      return `<tr>
-        <td>${formatDashboardBucket(b, dashboardPeriod)}</td>
+    const totals = entries.reduce((acc, e) => ({ total: acc.total + e.total, resolved: acc.resolved + e.resolved }), { total:0, resolved:0 });
+
+    const rowHtml = (label, total, resolved, extraClass) => {
+      const pct = total > 0 ? Math.round((resolved / total) * 100) : 0;
+      return `<tr${extraClass ? ` class="${extraClass}"` : ''}>
+        <td>${label}</td>
         <td style="text-align:right;">${total}</td>
         <td style="text-align:right;">${resolved}</td>
-        <td style="text-align:right;">${total > 0 || resolved > 0 ? pct + ' %' : '—'}</td>
+        <td style="text-align:right;">${total > 0 ? pct + ' %' : '—'}</td>
       </tr>`;
-    }).join('');
+    };
+
+    const rowsHtml = entries.map(e => rowHtml(e.transporteur, e.total, e.resolved)).join('');
 
     els.dashboardBody.innerHTML = `
       <div style="overflow-x:auto;">
         <table class="dashboard-table">
           <thead><tr>
-            <th>Par ${DASHBOARD_BUCKET_LABEL[dashboardPeriod]}</th>
+            <th>Transporteur</th>
             <th style="text-align:right;">Ajoutés</th>
             <th style="text-align:right;">Résolus</th>
-            <th style="text-align:right;">Taux résolus/ajoutés</th>
+            <th style="text-align:right;">Taux</th>
           </tr></thead>
-          <tbody>${rowsHtml}</tbody>
+          <tbody>
+            ${rowHtml('Total (tous transporteurs)', totals.total, totals.resolved, 'dashboard-total-row')}
+            ${rowsHtml}
+          </tbody>
         </table>
       </div>`;
-  }
-
-  function populateDashboardCarrierSelect(){
-    const previous = els.dashboardCarrierSelect.value;
-    const carriers = Array.from(new Set(dashboardEntries.map(e => e.transporteur))).sort((a, b) => a.localeCompare(b));
-    els.dashboardCarrierSelect.innerHTML = '<option value="">Total (tous transporteurs)</option>'
-      + carriers.map(c => `<option value="${escapeHtmlAttr(c)}">${c}</option>`).join('');
-    if(carriers.includes(previous)) els.dashboardCarrierSelect.value = previous;
   }
 
   async function loadDashboard(){
     els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Chargement…</p>';
     try{
-      const result = await dbGet('resolution-stats', { period: dashboardPeriod });
-      dashboardEntries = result.entries || [];
+      const result = await dbGet('resolution-stats', {});
+      renderDashboardTable(result.entries || []);
     }catch(e){
       els.dashboardBody.innerHTML = `<p style="font-size:13px; color:var(--danger); text-align:center; padding:20px 0;">Erreur de chargement (${e && e.message ? e.message : 'erreur inconnue'}).</p>`;
-      return;
     }
-    populateDashboardCarrierSelect();
-    renderDashboardTable();
   }
 
   function openDashboardModal(){
@@ -1470,14 +1441,6 @@
   els.dashboardModalBg.addEventListener('click', (e)=>{
     if(e.target === els.dashboardModalBg) closeDashboardModal();
   });
-  els.dashboardPeriodTabs.querySelectorAll('button').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      dashboardPeriod = btn.dataset.period;
-      els.dashboardPeriodTabs.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
-      loadDashboard();
-    });
-  });
-  els.dashboardCarrierSelect.addEventListener('change', renderDashboardTable);
 
   async function openCarrierMappingModal(){
     draftCarrierMapping = { ...carrierMapping };

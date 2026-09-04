@@ -174,23 +174,8 @@
     <h2 class="modal-title">Tableau de bord</h2>
     <p class="modal-subtext">
       Volumes de colis ajoutés et de numéros dernier kilométrique résolus, par transporteur (valeur
-      brute trouvée dans vos CSV) sur une fenêtre récente. Un colis résolu dans une période donnée
-      n'a pas forcément été ajouté pendant cette même période (le scraping peut avoir du retard sur
-      l'import) — les deux compteurs sont donc indépendants plutôt qu'un strict taux de cohorte.
+      brute trouvée dans vos CSV), toutes périodes confondues.
     </p>
-    <div class="row" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      <div class="tabs" id="dashboardPeriodTabs" style="margin-bottom:0;">
-        <button type="button" data-period="day" class="active">Jour</button>
-        <button type="button" data-period="week">Semaine</button>
-        <button type="button" data-period="month">Mois</button>
-      </div>
-      <label style="font-size:13px; display:flex; align-items:center; gap:8px;">
-        Transporteur
-        <select id="dashboardCarrierSelect" style="min-width:220px;">
-          <option value="">Total (tous transporteurs)</option>
-        </select>
-      </label>
-    </div>
     <div id="dashboardBody" style="margin-top:12px;"></div>
     <div class="actions">
       <button type="button" id="dashboardCloseBtn" class="secondary">✕ Fermer</button>

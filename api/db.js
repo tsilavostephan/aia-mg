@@ -51,7 +51,7 @@ module.exports = async function handler(req, res) {
       }
 
       if (action === 'resolution-stats') {
-        res.status(200).json(await db.resolutionStats(req.query.period));
+        res.status(200).json(await db.resolutionStats());
         return;
       }
 

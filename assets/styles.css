@@ -630,6 +630,7 @@
     white-space: nowrap;
   }
   .dashboard-table tr:last-child td{ border-bottom: none; }
+  .dashboard-total-row td{ font-weight: 700; border-bottom: 2px solid var(--border); }
   .modal-error{ font-size: 13px; color: var(--danger); margin-top: 8px; min-height: 1px; }
 
   /* ---------- rappel des raccourcis clavier (affiché tant qu'Alt est maintenu) ---------- */

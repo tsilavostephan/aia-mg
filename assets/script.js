@@ -1396,30 +1396,35 @@
     </div>`;
   }
 
-  // Graphique en barres horizontales : longueur de la barre ∝ volume du transporteur (relatif au
-  // plus gros), couleur du remplissage ∝ taux de résolution — donne les deux informations (volume
-  // ET taux) d'un coup d'œil, sans avoir à lire le tableau détaillé en dessous. Limité aux plus gros
-  // transporteurs (déjà triés par volume décroissant côté serveur) pour rester lisible.
+  // Graphique en cercles de progression (5 par ligne) : les 10 transporteurs avec le plus de
+  // numéros dernier kilométrique résolus (pas forcément les plus gros volumes) — répond à "quels
+  // transporteurs ont le plus fait avancer la résolution", plutôt qu'un classement par volume brut.
+  const DASH_CIRCLE_R = 16;
+  const DASH_CIRCLE_CIRCUMFERENCE = 2 * Math.PI * DASH_CIRCLE_R;
   function renderDashboardChart(entries){
-    const top = entries.slice(0, 15);
+    const top = entries.slice().sort((a, b) => b.resolved - a.resolved).slice(0, 10);
     if(!top.length) return '';
-    const maxTotal = Math.max(...top.map(e => e.total));
 
-    const rowsHtml = top.map(e=>{
+    const itemsHtml = top.map(e=>{
       const pct = e.total > 0 ? (e.resolved / e.total) * 100 : 0;
-      const barWidthPct = maxTotal > 0 ? Math.max(2, Math.round((e.total / maxTotal) * 100)) : 0;
-      return `<div class="dash-chart-row">
-        <span class="dash-chart-label" title="${escapeHtmlAttr(e.transporteur)}">${e.transporteur}</span>
-        <div class="dash-chart-track">
-          <div class="dash-chart-bar" style="width:${barWidthPct}%;">
-            <div class="dash-chart-bar-fill" style="width:${pct}%; background:${dashboardRateColor(pct)};"></div>
-          </div>
+      const offset = DASH_CIRCLE_CIRCUMFERENCE * (1 - pct / 100);
+      const color = dashboardRateColor(pct);
+      return `<div class="dash-circle-item">
+        <div class="dash-circle-ring">
+          <svg viewBox="0 0 40 40">
+            <circle cx="20" cy="20" r="${DASH_CIRCLE_R}" fill="none" stroke="var(--border)" stroke-width="4"></circle>
+            <circle cx="20" cy="20" r="${DASH_CIRCLE_R}" fill="none" stroke="${color}" stroke-width="4"
+              stroke-linecap="round" stroke-dasharray="${DASH_CIRCLE_CIRCUMFERENCE}" stroke-dashoffset="${offset}"
+              transform="rotate(-90 20 20)"></circle>
+          </svg>
+          <span class="dash-circle-pct">${pct.toFixed(2)}%</span>
         </div>
-        <span class="dash-chart-value">${e.resolved}/${e.total} (${pct.toFixed(2)} %)</span>
+        <div class="dash-circle-label" title="${escapeHtmlAttr(e.transporteur)}">${e.transporteur}</div>
+        <div class="dash-circle-count">${e.resolved}/${e.total}</div>
       </div>`;
     }).join('');
 
-    return `<div class="dash-chart">${rowsHtml}</div>`;
+    return `<div class="dash-circle-grid">${itemsHtml}</div>`;
   }
 
   function renderDashboardTable(entries, overall){

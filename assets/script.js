@@ -1406,7 +1406,7 @@
     const maxTotal = Math.max(...top.map(e => e.total));
 
     const rowsHtml = top.map(e=>{
-      const pct = e.total > 0 ? Math.round((e.resolved / e.total) * 100) : 0;
+      const pct = e.total > 0 ? (e.resolved / e.total) * 100 : 0;
       const barWidthPct = maxTotal > 0 ? Math.max(2, Math.round((e.total / maxTotal) * 100)) : 0;
       return `<div class="dash-chart-row">
         <span class="dash-chart-label" title="${escapeHtmlAttr(e.transporteur)}">${e.transporteur}</span>
@@ -1415,7 +1415,7 @@
             <div class="dash-chart-bar-fill" style="width:${pct}%; background:${dashboardRateColor(pct)};"></div>
           </div>
         </div>
-        <span class="dash-chart-value">${e.resolved}/${e.total} (${pct} %)</span>
+        <span class="dash-chart-value">${e.resolved}/${e.total} (${pct.toFixed(2)} %)</span>
       </div>`;
     }).join('');
 
@@ -1431,7 +1431,7 @@
     }
 
     const rowHtml = (label, total, resolved, extraClass) => {
-      const pct = total > 0 ? Math.round((resolved / total) * 100) : 0;
+      const pct = total > 0 ? (resolved / total) * 100 : 0;
       return `<tr${extraClass ? ` class="${extraClass}"` : ''}>
         <td>${label}</td>
         <td style="text-align:right;">${total}</td>
@@ -1439,7 +1439,7 @@
         <td>
           <div class="dash-rate-wrap">
             ${total > 0 ? dashboardRateBarHtml(pct) : ''}
-            <span class="dash-rate-text">${total > 0 ? pct + ' %' : '—'}</span>
+            <span class="dash-rate-text">${total > 0 ? pct.toFixed(2) + ' %' : '—'}</span>
           </div>
         </td>
       </tr>`;

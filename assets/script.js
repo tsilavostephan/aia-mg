@@ -854,7 +854,8 @@
   // déjà retirés par rowToRecord avant l'appel).
   const TRANSPORTEUR_NORMALIZE = {
     'colissimo': 'Colissimo',
-    'colis privé': 'Colis Prive',
+    'colis privé': 'Colis Privé',
+    'colis prive': 'Colis Privé',
   };
   function normalizeTransporteur(v){
     return TRANSPORTEUR_NORMALIZE[v.toLowerCase()] || v;

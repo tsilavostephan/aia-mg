@@ -48,6 +48,12 @@
     carrierSection: document.getElementById('carrierSection'),
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
+    dashboardBtn: document.getElementById('dashboardBtn'),
+    dashboardModalBg: document.getElementById('dashboardModalBg'),
+    dashboardPeriodTabs: document.getElementById('dashboardPeriodTabs'),
+    dashboardCarrierSelect: document.getElementById('dashboardCarrierSelect'),
+    dashboardBody: document.getElementById('dashboardBody'),
+    dashboardCloseBtn: document.getElementById('dashboardCloseBtn'),
     carrierMappingBtn: document.getElementById('carrierMappingBtn'),
     carrierSectionUpdatedCount: document.getElementById('carrierSectionUpdatedCount'),
     carrierMappingModalBg: document.getElementById('carrierMappingModalBg'),
@@ -98,6 +104,8 @@
     scannerModalBg: document.getElementById('scannerModalBg'),
     scannerReaderContainer: document.getElementById('scannerReaderContainer'),
     scannerError: document.getElementById('scannerError'),
+    scannerRafaleCheckbox: document.getElementById('scannerRafaleCheckbox'),
+    scannerHint: document.getElementById('scannerHint'),
     closeScannerBtn: document.getElementById('closeScannerBtn'),
     focusDbBtn: document.getElementById('focusDbBtn'),
     autoDetailsCheckbox: document.getElementById('autoDetailsCheckbox'),
@@ -1374,6 +1382,103 @@
     return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // ---------- fenêtre "Tableau de bord" (taux de résolution par transporteur, par période) ----------
+  let dashboardPeriod = 'day';
+  let dashboardEntries = []; // dernière réponse de 'resolution-stats' pour la période courante
+
+  const DASHBOARD_BUCKET_LABEL = { day: 'jour', week: 'semaine', month: 'mois' };
+  function formatDashboardBucket(iso, period){
+    const d = new Date(iso);
+    if(period === 'month') return d.toLocaleDateString('fr-FR', { month:'long', year:'numeric' });
+    if(period === 'week') return `Semaine du ${d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })}`;
+    return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' });
+  }
+
+  function renderDashboardTable(){
+    const selected = els.dashboardCarrierSelect.value;
+    const byBucket = new Map(); // bucket ISO -> { total, resolved }
+    dashboardEntries.forEach(e=>{
+      if(selected && e.transporteur !== selected) return;
+      const cur = byBucket.get(e.bucket) || { total:0, resolved:0 };
+      cur.total += e.total;
+      cur.resolved += e.resolved;
+      byBucket.set(e.bucket, cur);
+    });
+
+    const buckets = Array.from(byBucket.keys()).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+    if(buckets.length === 0){
+      els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucune donnée pour cette sélection.</p>';
+      return;
+    }
+
+    const rowsHtml = buckets.map(b=>{
+      const { total, resolved } = byBucket.get(b);
+      const pct = total > 0 ? Math.round((resolved / total) * 100) : (resolved > 0 ? 100 : 0);
+      return `<tr>
+        <td>${formatDashboardBucket(b, dashboardPeriod)}</td>
+        <td style="text-align:right;">${total}</td>
+        <td style="text-align:right;">${resolved}</td>
+        <td style="text-align:right;">${total > 0 || resolved > 0 ? pct + ' %' : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    els.dashboardBody.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="dashboard-table">
+          <thead><tr>
+            <th>Par ${DASHBOARD_BUCKET_LABEL[dashboardPeriod]}</th>
+            <th style="text-align:right;">Ajoutés</th>
+            <th style="text-align:right;">Résolus</th>
+            <th style="text-align:right;">Taux résolus/ajoutés</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>`;
+  }
+
+  function populateDashboardCarrierSelect(){
+    const previous = els.dashboardCarrierSelect.value;
+    const carriers = Array.from(new Set(dashboardEntries.map(e => e.transporteur))).sort((a, b) => a.localeCompare(b));
+    els.dashboardCarrierSelect.innerHTML = '<option value="">Total (tous transporteurs)</option>'
+      + carriers.map(c => `<option value="${escapeHtmlAttr(c)}">${c}</option>`).join('');
+    if(carriers.includes(previous)) els.dashboardCarrierSelect.value = previous;
+  }
+
+  async function loadDashboard(){
+    els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Chargement…</p>';
+    try{
+      const result = await dbGet('resolution-stats', { period: dashboardPeriod });
+      dashboardEntries = result.entries || [];
+    }catch(e){
+      els.dashboardBody.innerHTML = `<p style="font-size:13px; color:var(--danger); text-align:center; padding:20px 0;">Erreur de chargement (${e && e.message ? e.message : 'erreur inconnue'}).</p>`;
+      return;
+    }
+    populateDashboardCarrierSelect();
+    renderDashboardTable();
+  }
+
+  function openDashboardModal(){
+    els.dashboardModalBg.style.display = 'block';
+    loadDashboard();
+  }
+  function closeDashboardModal(){
+    els.dashboardModalBg.style.display = 'none';
+  }
+
+  els.dashboardBtn.addEventListener('click', openDashboardModal);
+  els.dashboardCloseBtn.addEventListener('click', closeDashboardModal);
+  els.dashboardModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.dashboardModalBg) closeDashboardModal();
+  });
+  els.dashboardPeriodTabs.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      dashboardPeriod = btn.dataset.period;
+      els.dashboardPeriodTabs.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      loadDashboard();
+    });
+  });
+  els.dashboardCarrierSelect.addEventListener('change', renderDashboardTable);
+
   async function openCarrierMappingModal(){
     draftCarrierMapping = { ...carrierMapping };
     els.carrierMappingList.innerHTML = '<p style="font-size:13px; color:var(--muted);">Chargement…</p>';
@@ -1427,6 +1532,18 @@
       });
       els.carrierTabs.appendChild(btn);
     });
+  }
+
+  // Change d'onglet transporteur sans toucher la souris (Alt+↑/↓, voir KEYBOARD_SHORTCUTS) —
+  // pratique pour enchaîner les sessions de scraping manuel transporteur par transporteur.
+  // Boucle d'un bout à l'autre de la liste plutôt que de s'arrêter au premier/dernier onglet.
+  function switchCarrierTab(delta){
+    if(!carrierGroups.length) return;
+    const idx = carrierGroups.findIndex(g => g.key === activeCarrierKey);
+    const nextIdx = ((idx === -1 ? 0 : idx) + delta + carrierGroups.length) % carrierGroups.length;
+    activeCarrierKey = carrierGroups[nextIdx].key;
+    renderCarrierTabs();
+    renderCarrierPanel();
   }
 
   // Analyse générique du texte collé : colonne matchColIndex (0-based) = numéro de suivi (clé de correspondance),
@@ -2032,6 +2149,8 @@
       closeScrapeConfigModal();
     }else if(els.exportCodeModalBg.style.display === 'block'){
       closeExportCodeModal();
+    }else if(els.dashboardModalBg.style.display === 'block'){
+      closeDashboardModal();
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){
@@ -2066,13 +2185,16 @@
     { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click() },
     { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click() },
     { code:'KeyT', label:'Verrouiller / déverrouiller',         run: () => els.focusDbBtn.click() },
+    { code:'ArrowUp',   label:'Onglet transporteur précédent',  run: () => switchCarrierTab(-1), displayKey:'↑' },
+    { code:'ArrowDown', label:'Onglet transporteur suivant',    run: () => switchCarrierTab(1),  displayKey:'↓' },
   ];
 
   // Étiquette affichée par défaut (position QWERTY de la touche, ex. "KeyQ" -> "Q") — mise à jour
   // ci-dessous dès qu'on connaît la vraie disposition, pour éviter d'afficher "Alt+Q" à un
   // utilisateur AZERTY dont cette touche physique porte en réalité la lettre "A" (et inversement).
+  // Les touches non-lettres (flèches) gardent leur `displayKey` explicite, jamais remappé.
   const shortcutDisplayKeys = {};
-  KEYBOARD_SHORTCUTS.forEach(s => { shortcutDisplayKeys[s.code] = s.code.replace('Key', ''); });
+  KEYBOARD_SHORTCUTS.forEach(s => { shortcutDisplayKeys[s.code] = s.displayKey || s.code.replace('Key', ''); });
 
   // Affiche un rappel des raccourcis disponibles tant que la touche Alt est maintenue seule —
   // comme les indices de touche d'accès de Windows — pour qu'ils restent découvrables sans avoir
@@ -2454,6 +2576,59 @@
   let scannerInstance = null;
   let scannerStopping = false;
 
+  // ---------- "Mode rafale" : enchaîne les scans sans fermer la caméra ni toucher l'écran ----------
+  const SCANNER_RAFALE_KEY = 'commandes-scanner-rafale';
+  function loadScannerRafale(){
+    try{ return localStorage.getItem(SCANNER_RAFALE_KEY) === 'true'; }catch(e){ return false; }
+  }
+  function saveScannerRafale(enabled){
+    try{ localStorage.setItem(SCANNER_RAFALE_KEY, enabled ? 'true' : 'false'); }catch(e){ /* stockage indisponible */ }
+  }
+  const HINT_NORMAL = "Pointez la caméra vers le code-barres ou le QR code du colis. La fenêtre se ferme automatiquement dès qu'une valeur est détectée.";
+  const HINT_RAFALE = "Mode rafale : scannez un colis, sa fiche s'affiche puis se referme automatiquement après quelques secondes — enchaînez directement le colis suivant sans rien toucher. Cliquez sur Annuler pour arrêter.";
+  function updateScannerHint(){
+    els.scannerHint.textContent = els.scannerRafaleCheckbox.checked ? HINT_RAFALE : HINT_NORMAL;
+  }
+  els.scannerRafaleCheckbox.checked = loadScannerRafale();
+  updateScannerHint();
+  els.scannerRafaleCheckbox.addEventListener('change', ()=>{
+    saveScannerRafale(els.scannerRafaleCheckbox.checked);
+    updateScannerHint();
+  });
+
+  let rafaleLastValue = '';
+  let rafaleLastTime = 0;
+  let rafaleAutoCloseTimer = null;
+  const RAFALE_COOLDOWN_MS = 2500;    // ignore le même code tant qu'il reste dans le champ de la caméra
+  const RAFALE_AUTOCLOSE_MS = 2500;   // laisse la fiche visible le temps de la lire, puis referme seule
+
+  // Traite un scan en mode rafale SANS arrêter la caméra (contrairement au mode normal) : remplit la
+  // recherche, et si elle ne donne qu'un seul résultat, ouvre sa fiche puis la referme automatiquement
+  // après RAFALE_AUTOCLOSE_MS — indépendant des réglages "mode plein écran"/"Détails auto" (propres à
+  // la recherche manuelle), pour fonctionner de façon autonome quel que soit l'état de l'app.
+  async function handleRafaleDecode(decodedText){
+    const now = Date.now();
+    if(decodedText === rafaleLastValue && (now - rafaleLastTime) < RAFALE_COOLDOWN_MS) return;
+    rafaleLastValue = decodedText;
+    rafaleLastTime = now;
+
+    const transformed = await computeBestTracking(decodedText);
+    const value = transformed || decodedText;
+    els.search.value = value;
+    els.search.dispatchEvent(new Event('input'));
+
+    clearTimeout(rafaleAutoCloseTimer);
+    try{
+      const result = await dbGet('search', { q: value, limit: 2, offset: 0 });
+      if(result.total === 1 && result.rows.length === 1){
+        openPackageModal(result.rows[0]);
+        rafaleAutoCloseTimer = setTimeout(()=>{
+          if(els.packageModalBg.style.display === 'block') closePackageModal();
+        }, RAFALE_AUTOCLOSE_MS);
+      }
+    }catch(e){ /* recherche best-effort : le champ reste rempli même en cas d'échec réseau */ }
+  }
+
   function scannerFormats(){
     if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
     return [
@@ -2474,6 +2649,9 @@
   async function stopScanner(){
     if(scannerStopping) return;
     scannerStopping = true;
+    clearTimeout(rafaleAutoCloseTimer);
+    rafaleLastValue = '';
+    rafaleLastTime = 0;
     if(scannerInstance){
       try{
         await scannerInstance.stop();
@@ -2525,6 +2703,11 @@
           },
         },
         async (decodedText)=>{
+          if(els.scannerRafaleCheckbox.checked){
+            // Mode rafale : ne pas arrêter la caméra, voir handleRafaleDecode.
+            handleRafaleDecode(decodedText);
+            return;
+          }
           // une valeur a été détectée : on arrête le scan et on colle la valeur dans la recherche
           stopScanner();
           const transformed = await computeBestTracking(decodedText);

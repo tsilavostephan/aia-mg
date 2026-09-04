@@ -50,6 +50,11 @@ module.exports = async function handler(req, res) {
         return;
       }
 
+      if (action === 'resolution-stats') {
+        res.status(200).json(await db.resolutionStats(req.query.period));
+        return;
+      }
+
       if (action === 'export-csv') {
         // Le code passe en en-tête (pas en query string) pour ne jamais apparaître dans l'URL —
         // voir le commentaire correspondant dans assets/script.js.
@@ -68,7 +73,7 @@ module.exports = async function handler(req, res) {
         return;
       }
 
-      res.status(400).json({ error: "Action inconnue pour GET (attendu : 'stats', 'search', 'unresolved-rows', 'distinct-transporteurs' ou 'export-csv')." });
+      res.status(400).json({ error: "Action inconnue pour GET (attendu : 'stats', 'search', 'unresolved-rows', 'distinct-transporteurs', 'resolution-stats' ou 'export-csv')." });
       return;
     }
 

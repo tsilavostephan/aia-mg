@@ -75,10 +75,13 @@
 <fieldset id="dbSection">
   <h2 class="section-title">
     <span>Colis (<span id="rowCount">0</span> enregistrés, <span id="resolvedCount">0</span> à jour<span id="resolvedPercent"></span>)</span>
-    <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Verrouillé — Alt+T pour déverrouiller">🔒</button>
+    <span class="section-title-actions">
+      <button type="button" id="dashboardBtn" class="secondary" title="Taux de résolution par transporteur, par jour/semaine/mois">📊 Tableau de bord</button>
+      <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Verrouillé — Alt+T pour déverrouiller">🔒</button>
+    </span>
   </h2>
   <div class="row search-row">
-    <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)">
+    <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)" title="Virgule = OU entre plusieurs recherches (ex. « 4PX, YANWEN »). + = ET, pour combiner des critères (ex. « Colissimo + Rasoa »).">
     <button type="button" id="scanBtn" class="scan-btn" title="Scanner un code-barres / QR code">📷</button>
     <button type="button" id="searchOptionsBtn" class="scan-btn" title="Options des algorithmes de recherche">⚙️</button>
     <label class="toggle-switch" title="En mode plein écran, ouvre automatiquement le détail du colis quand la recherche ne trouve qu'une seule correspondance">
@@ -162,6 +165,35 @@
     </div>
     <div class="actions" style="margin-top:16px;">
       <button id="closePackageModalBtn" class="secondary">✕ Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div id="dashboardModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box modal-box-wide">
+    <h2 class="modal-title">Tableau de bord</h2>
+    <p class="modal-subtext">
+      Volumes de colis ajoutés et de numéros dernier kilométrique résolus, par transporteur (valeur
+      brute trouvée dans vos CSV) sur une fenêtre récente. Un colis résolu dans une période donnée
+      n'a pas forcément été ajouté pendant cette même période (le scraping peut avoir du retard sur
+      l'import) — les deux compteurs sont donc indépendants plutôt qu'un strict taux de cohorte.
+    </p>
+    <div class="row" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div class="tabs" id="dashboardPeriodTabs" style="margin-bottom:0;">
+        <button type="button" data-period="day" class="active">Jour</button>
+        <button type="button" data-period="week">Semaine</button>
+        <button type="button" data-period="month">Mois</button>
+      </div>
+      <label style="font-size:13px; display:flex; align-items:center; gap:8px;">
+        Transporteur
+        <select id="dashboardCarrierSelect" style="min-width:220px;">
+          <option value="">Total (tous transporteurs)</option>
+        </select>
+      </label>
+    </div>
+    <div id="dashboardBody" style="margin-top:12px;"></div>
+    <div class="actions">
+      <button type="button" id="dashboardCloseBtn" class="secondary">✕ Fermer</button>
     </div>
   </div>
 </div>
@@ -260,7 +292,12 @@
     <h2 class="modal-title">Scanner un code-barres / QR code</h2>
     <div id="scannerReaderContainer"></div>
     <div id="scannerError" class="scanner-error" style="display:none;"></div>
-    <p class="scanner-hint">Pointez la caméra vers le code-barres ou le QR code du colis. La fenêtre se ferme automatiquement dès qu'une valeur est détectée.</p>
+    <label class="toggle-switch" style="margin-top:10px;" title="Enchaîne les scans sans fermer la caméra : la fiche du colis s'ouvre puis se referme toute seule, prête pour le colis suivant.">
+      <input type="checkbox" id="scannerRafaleCheckbox" class="toggle-switch-input">
+      <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+      Mode rafale (scan en continu)
+    </label>
+    <p class="scanner-hint" id="scannerHint">Pointez la caméra vers le code-barres ou le QR code du colis. La fenêtre se ferme automatiquement dès qu'une valeur est détectée.</p>
     <div class="actions">
       <button id="closeScannerBtn" class="secondary">✕ Annuler</button>
     </div>

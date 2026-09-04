@@ -60,6 +60,12 @@ commandes sans ralentissement.
   « transporteur » trouvées dans la base, avec des cases à cocher pour forcer manuellement leur
   association à un transporteur connu (utile si l'orthographe exacte dans les CSV ne correspond
   à aucun transporteur reconnu automatiquement). Sauvegardé dans le navigateur (localStorage).
+- Raccourci **Alt+↑ / Alt+↓** : passe à l'onglet transporteur précédent/suivant sans toucher la
+  souris, pratique pour enchaîner les sessions de scraping manuel transporteur par transporteur.
+- Bouton **📊 Tableau de bord** (dans la section « Colis ») : volumes de colis ajoutés et de
+  numéros dernier kilométrique résolus par transporteur (ou au total), par jour/semaine/mois —
+  utile pour repérer un transporteur qui traîne ou confirmer qu'une session de scraping a porté
+  ses fruits.
 
 ### 3. Base de données
 - Affichage adapté à l'écran : un vrai tableau à colonnes sur desktop (Transporteur, N°
@@ -69,7 +75,13 @@ commandes sans ralentissement.
 - Code transporteur coloré, statut de quantité (correspondance commandée/expédiée en vert/rouge),
   et numéro dernier kilométrique une fois trouvé.
 - Recherche par numéro de commande, transporteur ou numéro de suivi, avec :
-  - **Scanner un code-barres / QR code** (caméra du téléphone/ordinateur).
+  - **Scanner un code-barres / QR code** (caméra du téléphone/ordinateur), avec un **mode rafale**
+    optionnel : la fiche du colis scanné s'affiche puis se referme toute seule après quelques
+    secondes, sans fermer la caméra — pratique pour enchaîner les colis un par un sans re-toucher
+    l'écran entre deux scans.
+  - **Recherche combinée** : virgule = OU entre plusieurs recherches (ex. « 4PX, YANWEN » renvoie
+    l'un ou l'autre), `+` = ET pour combiner des critères sur un même colis (ex.
+    « Colissimo + Rasoa » ne renvoie que les colis qui correspondent aux deux à la fois).
   - **Algorithmes de recherche** (bouton ⚙️ à côté du champ) : règles configurables qui
     transforment un numéro collé/scanné (ex. extraction depuis un code-barres) avant de chercher
     une correspondance. Entièrement personnalisable via une fenêtre dédiée (ajout/suppression de

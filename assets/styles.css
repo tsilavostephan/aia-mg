@@ -18,13 +18,32 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
     background: var(--bg);
   }
-  .app-loading-spinner{
-    width: 40px; height: 40px; border-radius: 50%;
-    border: 4px solid var(--border); border-top-color: var(--primary);
-    animation: app-loading-spin 0.8s linear infinite;
+  .app-loading-logo{
+    height: 72px; width: auto;
+    animation: app-loading-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes app-loading-pulse{
+    0%, 100%{ opacity: 1; transform: scale(1); }
+    50%{ opacity: .82; transform: scale(1.04); }
+  }
+  .app-loading-bar-track{
+    width: 220px; max-width: 60vw;
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .app-loading-bar-fill{
+    height: 100%;
+    width: 0%;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: width .3s ease;
   }
   .app-loading-overlay p{ font-size: 14px; color: var(--muted); margin: 0; }
-  @keyframes app-loading-spin{ to{ transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){
+    .app-loading-logo{ animation: none; }
+  }
   body{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
@@ -632,24 +651,34 @@
   .dashboard-table tr:last-child td{ border-bottom: none; }
   .dashboard-total-row td{ font-weight: 700; border-bottom: 2px solid var(--border); }
 
-  /* Barre compacte dans la colonne "Taux" du tableau */
+  /* Barre compacte dans la colonne "Taux" du tableau — part de 0 puis s'anime jusqu'à sa vraie
+     largeur juste après l'insertion dans le DOM (voir animateDashboardVisuals). */
   .dash-rate-wrap{ display: flex; align-items: center; gap: 7px; justify-content: flex-end; }
   .dash-rate-bar{ width: 70px; height: 10px; background: var(--border); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
-  .dash-rate-fill{ height: 100%; border-radius: 4px; }
+  .dash-rate-fill{ height: 100%; border-radius: 4px; transition: width 0.7s cubic-bezier(.34,1.1,.64,1); }
   .dash-rate-text{ font-size: 12px; color: var(--text); min-width: 52px; text-align: right; }
 
-  /* Graphique en barres horizontales au-dessus du tableau (voir renderDashboardChart) : longueur
-     de la barre = volume relatif au plus gros transporteur affiché, couleur du remplissage = taux
-     de résolution (même échelle de couleur que .dash-rate-fill). */
+  /* Graphique en cercles de progression au-dessus du tableau (voir renderDashboardChart) : chaque
+     anneau se remplit à l'ouverture (transition sur stroke-dashoffset) jusqu'au taux de résolution
+     du transporteur, avec une carte qui apparaît juste avant l'autre (animation-delay posé en
+     ligne par carte) pour un effet de vague plutôt qu'un bloc figé. */
   .dash-circle-grid{
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 16px 8px;
     margin-bottom: 18px;
   }
-  .dash-circle-item{ display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
+  .dash-circle-item{
+    display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0;
+    animation: dash-circle-pop-in .45s cubic-bezier(.34,1.4,.64,1) backwards;
+  }
+  @keyframes dash-circle-pop-in{
+    from{ opacity: 0; transform: translateY(6px) scale(.9); }
+    to{ opacity: 1; transform: translateY(0) scale(1); }
+  }
   .dash-circle-ring{ position: relative; width: 64px; height: 64px; }
   .dash-circle-ring svg{ width: 100%; height: 100%; }
+  .dash-circle-progress{ transition: stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1); }
   .dash-circle-pct{
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -660,6 +689,13 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .dash-circle-count{ font-size: 11px; color: var(--muted); }
+
+  /* Respecte la préférence système "réduire les animations" : plus de remplissage progressif ni
+     d'apparition en cascade, tout s'affiche directement dans son état final. */
+  @media (prefers-reduced-motion: reduce){
+    .dash-circle-item{ animation: none; }
+    .dash-circle-progress, .dash-rate-fill{ transition: none; }
+  }
   .modal-error{ font-size: 13px; color: var(--danger); margin-top: 8px; min-height: 1px; }
 
   /* ---------- rappel des raccourcis clavier (affiché tant qu'Alt est maintenu) ---------- */

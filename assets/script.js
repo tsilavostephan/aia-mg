@@ -14,6 +14,7 @@
 
   const els = {
     appLoadingOverlay: document.getElementById('appLoadingOverlay'),
+    appLoadingBarFill: document.getElementById('appLoadingBarFill'),
     dropzone: document.getElementById('dropzone'),
     fileInput: document.getElementById('fileInput'),
     filelist: document.getElementById('filelist'),
@@ -772,14 +773,18 @@
   // (voir api/db.js) — il n'y a plus de "base en mémoire" à recharger/sauvegarder au sens propre.
   // refreshStats() récupère juste les compteurs globaux (total/résolus), indépendamment de la
   // recherche en cours.
+  // Renvoie { total, resolved } (ou null en cas d'échec) — utilisé aussi par l'écran de chargement
+  // initial pour calculer une cible réaliste pour sa barre de progression (voir plus bas).
   async function refreshStats(){
     try{
       const { total, resolved } = await dbGet('stats', {});
-      els.rowCount.textContent = total;
-      els.resolvedCount.textContent = resolved;
+      els.rowCount.textContent = formatNumber(total);
+      els.resolvedCount.textContent = formatNumber(resolved);
       els.resolvedPercent.textContent = total > 0 ? ` (${((resolved / total) * 100).toFixed(2)}%)` : '';
+      return { total, resolved };
     }catch(e){
       // Échec silencieux : les compteurs restent simplement à leur dernière valeur connue.
+      return null;
     }
   }
 
@@ -1101,8 +1106,8 @@
       totalAdded += added;
       totalUpdated += updated;
       const parts = [];
-      if(added > 0) parts.push(`${added} ajoutée(s)`);
-      if(updated > 0) parts.push(`${updated} mise(s) à jour`);
+      if(added > 0) parts.push(`${formatNumber(added)} ajoutée(s)`);
+      if(updated > 0) parts.push(`${formatNumber(updated)} mise(s) à jour`);
       if(skippedNoKey > 0) parts.push(`${skippedNoKey} ignorée(s) (N° Commande ou Commande Amazon manquant)`);
       logLine(`${file.name} — ${parts.join(', ')}.`, skippedNoKey > 0 && added === 0 && updated === 0);
       if(shortRows > 0){
@@ -1120,8 +1125,8 @@
     renderFileList();
     els.importBtn.disabled = false;
     const summaryParts = [];
-    if(totalAdded > 0) summaryParts.push(`${totalAdded} ajoutée(s)`);
-    if(totalUpdated > 0) summaryParts.push(`${totalUpdated} mise(s) à jour`);
+    if(totalAdded > 0) summaryParts.push(`${formatNumber(totalAdded)} ajoutée(s)`);
+    if(totalUpdated > 0) summaryParts.push(`${formatNumber(totalUpdated)} mise(s) à jour`);
     logLine(`Import terminé — ${summaryParts.join(', ') || '0 commande'} au total.`);
 
     // Lance automatiquement le scraping AUTO juste après l'import, sans attendre un clic manuel sur
@@ -1316,7 +1321,9 @@
   // appelé au chargement puis après tout import/scraping/nettoyage qui peut faire évoluer ce
   // sous-ensemble, PAS à chaque frappe de recherche (contrairement à l'ancien computeCarrierGroups
   // qui rescannait toute la base à chaque render()).
-  async function refreshUnresolvedRows(){
+  // onProgress(rowsChargées) optionnel, appelé après chaque lot — utilisé par l'écran de
+  // chargement initial pour faire avancer sa barre de progression au fil des lots reçus.
+  async function refreshUnresolvedRows(onProgress){
     // Pagination par curseur (id > afterId), pas par offset — reste rapide même très loin dans une
     // grosse base (voir le même principe côté serveur dans lib/db.js, unresolvedRows).
     const rows = [];
@@ -1326,6 +1333,7 @@
       if(!page.rows || page.rows.length === 0) break;
       rows.push(...page.rows);
       afterId = page.rows[page.rows.length - 1].id;
+      if(onProgress) onProgress(rows.length);
       if(page.rows.length < 5000) break;
     }
     unresolvedRows = rows;
@@ -1371,7 +1379,7 @@
       ).join('');
 
       return `<div class="row carrierMapRow" style="display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
-        <span style="flex:1; min-width:160px; font-size:13px;">${raw} <span style="color:var(--muted);">(${count})</span></span>
+        <span style="flex:1; min-width:160px; font-size:13px;">${raw} <span style="color:var(--muted);">(${formatNumber(count)})</span></span>
         <span style="display:flex; gap:10px; flex-wrap:wrap;">${checkboxesHtml}</span>
       </div>`;
     }).join('');
@@ -1395,6 +1403,12 @@
     return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // Séparateur de milliers (convention française : espace insécable fine) pour tous les compteurs
+  // affichés dans l'app (stats, tableau de bord, onglets transporteur, résultats de recherche...).
+  function formatNumber(n){
+    return Number(n || 0).toLocaleString('fr-FR');
+  }
+
   // ---------- fenêtre "Tableau de bord" (taux de résolution par transporteur, toutes périodes) ----------
   // Couleur du taux de résolution : rouge en dessous de 30%, orange entre 30 et 70%, vert au-delà —
   // permet de repérer un transporteur à la traîne d'un coup d'œil sans lire le chiffre.
@@ -1404,38 +1418,44 @@
     return 'var(--danger)';
   }
 
-  // Barre compacte pour la colonne "Taux" du tableau (largeur fixe, voir .dash-rate-bar).
+  // Barre compacte pour la colonne "Taux" du tableau (largeur fixe, voir .dash-rate-bar). Part de
+  // 0 (voir .dash-rate-fill{ transition: width }) : la vraie largeur est posée juste après
+  // l'insertion dans le DOM par animateDashboardVisuals(), pour que la barre se remplisse au lieu
+  // d'apparaître déjà pleine.
   function dashboardRateBarHtml(pct){
     return `<div class="dash-rate-bar">
-      <div class="dash-rate-fill" style="width:${pct}%; background:${dashboardRateColor(pct)};"></div>
+      <div class="dash-rate-fill" data-target-width="${pct}" style="width:0%; background:${dashboardRateColor(pct)};"></div>
     </div>`;
   }
 
   // Graphique en cercles de progression (5 par ligne) : les 10 transporteurs avec le plus de
   // numéros dernier kilométrique résolus (pas forcément les plus gros volumes) — répond à "quels
   // transporteurs ont le plus fait avancer la résolution", plutôt qu'un classement par volume brut.
+  // Chaque anneau part vide (offset = circonférence entière) et se remplit jusqu'à sa vraie valeur
+  // juste après l'insertion dans le DOM (voir animateDashboardVisuals), avec un léger décalage par
+  // carte pour un effet de vague plutôt que tout d'un bloc.
   const DASH_CIRCLE_R = 16;
   const DASH_CIRCLE_CIRCUMFERENCE = 2 * Math.PI * DASH_CIRCLE_R;
   function renderDashboardChart(entries){
     const top = entries.slice().sort((a, b) => b.resolved - a.resolved).slice(0, 10);
     if(!top.length) return '';
 
-    const itemsHtml = top.map(e=>{
+    const itemsHtml = top.map((e, idx)=>{
       const pct = e.total > 0 ? (e.resolved / e.total) * 100 : 0;
       const offset = DASH_CIRCLE_CIRCUMFERENCE * (1 - pct / 100);
       const color = dashboardRateColor(pct);
-      return `<div class="dash-circle-item">
+      return `<div class="dash-circle-item" style="animation-delay:${idx * 50}ms;">
         <div class="dash-circle-ring">
           <svg viewBox="0 0 40 40">
             <circle cx="20" cy="20" r="${DASH_CIRCLE_R}" fill="none" stroke="var(--border)" stroke-width="4"></circle>
-            <circle cx="20" cy="20" r="${DASH_CIRCLE_R}" fill="none" stroke="${color}" stroke-width="4"
-              stroke-linecap="round" stroke-dasharray="${DASH_CIRCLE_CIRCUMFERENCE}" stroke-dashoffset="${offset}"
+            <circle class="dash-circle-progress" data-target-offset="${offset}" cx="20" cy="20" r="${DASH_CIRCLE_R}" fill="none" stroke="${color}" stroke-width="4"
+              stroke-linecap="round" stroke-dasharray="${DASH_CIRCLE_CIRCUMFERENCE}" stroke-dashoffset="${DASH_CIRCLE_CIRCUMFERENCE}"
               transform="rotate(-90 20 20)"></circle>
           </svg>
           <span class="dash-circle-pct">${pct.toFixed(2)}%</span>
         </div>
         <div class="dash-circle-label" title="${escapeHtmlAttr(e.transporteur)}">${e.transporteur}</div>
-        <div class="dash-circle-count">${e.resolved}/${e.total}</div>
+        <div class="dash-circle-count">${formatNumber(e.resolved)}/${formatNumber(e.total)}</div>
       </div>`;
     }).join('');
 
@@ -1447,6 +1467,7 @@
 
     if(!entries.length){
       els.dashboardBody.innerHTML = chartHtml + '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucun transporteur avec au moins 100 colis pour le moment.</p>';
+      animateDashboardVisuals();
       return;
     }
 
@@ -1454,8 +1475,8 @@
       const pct = total > 0 ? (resolved / total) * 100 : 0;
       return `<tr${extraClass ? ` class="${extraClass}"` : ''}>
         <td>${label}</td>
-        <td style="text-align:right;">${total}</td>
-        <td style="text-align:right;">${resolved}</td>
+        <td style="text-align:right;">${formatNumber(total)}</td>
+        <td style="text-align:right;">${formatNumber(resolved)}</td>
         <td>
           <div class="dash-rate-wrap">
             ${total > 0 ? dashboardRateBarHtml(pct) : ''}
@@ -1483,6 +1504,23 @@
         </table>
       </div>
       <p class="modal-footnote">Seuls les transporteurs avec au moins 100 colis sont listés (le Total reste calculé sur toute la base).</p>`;
+    animateDashboardVisuals();
+  }
+
+  // Pose les vraies valeurs (offset des anneaux, largeur des barres) une frame après l'insertion
+  // dans le DOM : les poser directement dans le HTML initial empêcherait la transition CSS de se
+  // déclencher (l'élément apparaîtrait déjà dans son état final, rien à animer).
+  function animateDashboardVisuals(){
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        els.dashboardBody.querySelectorAll('.dash-circle-progress').forEach(circle=>{
+          circle.style.strokeDashoffset = circle.dataset.targetOffset;
+        });
+        els.dashboardBody.querySelectorAll('.dash-rate-fill').forEach(bar=>{
+          bar.style.width = bar.dataset.targetWidth + '%';
+        });
+      });
+    });
   }
 
   async function loadDashboard(){
@@ -1553,7 +1591,7 @@
       const btn = document.createElement('button');
       const logoFile = CARRIER_LOGO_FILES[g.key];
       const logoHtml = logoFile ? `<img src="assets/carrier-logos/${logoFile}" alt="" class="carrier-tab-logo">` : '';
-      btn.innerHTML = `${logoHtml}${g.label} (${g.nums.length})`;
+      btn.innerHTML = `${logoHtml}${g.label} (${formatNumber(g.nums.length)})`;
       if(g.key === activeCarrierKey) btn.classList.add('active');
       btn.addEventListener('click', ()=>{
         activeCarrierKey = g.key;
@@ -1716,7 +1754,7 @@
     pastedTextByCarrier[g.key] = ''; // vide le champ après un import terminé avec succès
 
     importLogByCarrier[g.key] = {
-      text: `${matched} commande(s) mise(s) à jour dans la base.` + (notFound > 0 ? ` ${notFound} numéro(s) collé(s) sans correspondance dans la base pour ${g.label}.` : ''),
+      text: `${formatNumber(matched)} commande(s) mise(s) à jour dans la base.` + (notFound > 0 ? ` ${formatNumber(notFound)} numéro(s) collé(s) sans correspondance dans la base pour ${g.label}.` : ''),
       err: false
     };
     updateCarrierTracking();
@@ -1916,7 +1954,7 @@
     }
 
     importLogByCarrier[g.key] = {
-      text: `${totalMatched} commande(s) mise(s) à jour via ${g.sourceLabel || 'le scraping Vercel'}${chunks.length > 1 ? ` (${chunks.length} liens)` : ''}.`
+      text: `${formatNumber(totalMatched)} commande(s) mise(s) à jour via ${g.sourceLabel || 'le scraping Vercel'}${chunks.length > 1 ? ` (${chunks.length} liens)` : ''}.`
         + (chunkErrors.length > 0 ? ` ⚠️ ${chunkErrors.length} lien(s) en échec : ${chunkErrors.join(' | ')}` : ''),
       err: false
     };
@@ -1957,7 +1995,7 @@
     els.scrapeAllLog.textContent = `Scraping terminé pour : ${eligible.map(g => g.label).join(', ')}. Voir le détail dans l'onglet de chaque transporteur.`;
 
     const totalUpdated = outcomes.reduce((sum, o) => sum + (o.status === 'fulfilled' ? o.value : 0), 0);
-    els.carrierSectionUpdatedCount.textContent = ` (${totalUpdated} colis mis à jour)`;
+    els.carrierSectionUpdatedCount.textContent = ` (${formatNumber(totalUpdated)} colis mis à jour)`;
 
     renderCarrierPanel();
   }
@@ -2061,7 +2099,7 @@
 
     els.carrierPanel.innerHTML = `
       <p style="font-size:13px; color:var(--muted);">
-        ${g.nums.length} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
+        ${formatNumber(g.nums.length)} numéro(s) de suivi trouvé(s) pour ${g.label}${g.chunks.length > 1 ? `, répartis en ${g.chunks.length} liens (max ${CHUNK_SIZE} par lien)` : ''}.
       </p>
       ${includeUnresolvedHtml}
       ${linksHtml}
@@ -2103,12 +2141,12 @@
 
         if(g.mode === 'clipboard'){
           els.trackingBoxLabel.textContent = 'Numéros de colis (un par ligne)';
-          els.trackingCount.textContent = `${g.chunks[idx].length} numéro(s) de colis ${g.label} — copiez-les puis collez-les sur la page de suivi.`;
+          els.trackingCount.textContent = `${formatNumber(g.chunks[idx].length)} numéro(s) de colis ${g.label} — copiez-les puis collez-les sur la page de suivi.`;
           els.trackingUrlBox.value = g.chunks[idx].join('\n');
           modalOpenUrl = g.baseUrl;
         }else{
           els.trackingBoxLabel.textContent = 'URL de suivi';
-          els.trackingCount.textContent = `${g.chunks[idx].length} numéro(s) de suivi groupé(s) dans ce lien.`;
+          els.trackingCount.textContent = `${formatNumber(g.chunks[idx].length)} numéro(s) de suivi groupé(s) dans ce lien.`;
           const url = buildCarrierTrackingUrl(g, g.chunks[idx]);
           els.trackingUrlBox.value = url;
           modalOpenUrl = url;
@@ -2810,11 +2848,11 @@
       ? 'Aucun résultat pour cette recherche.'
       : 'Aucune commande en base pour le moment. Importez un CSV pour commencer.';
 
-    els.count.textContent = currentSearchTotal > 0 ? `${currentSearchTotal} résultat(s) pour cette recherche` : '';
+    els.count.textContent = currentSearchTotal > 0 ? `${formatNumber(currentSearchTotal)} résultat(s) pour cette recherche` : '';
 
     const totalPages = Math.max(1, Math.ceil(currentSearchTotal / limit));
     const currentPageNum = Math.floor(currentOffset / limit) + 1;
-    els.pageInfo.textContent = currentSearchTotal > 0 ? `Page ${currentPageNum} / ${totalPages}` : '';
+    els.pageInfo.textContent = currentSearchTotal > 0 ? `Page ${formatNumber(currentPageNum)} / ${formatNumber(totalPages)}` : '';
     els.prevPageBtn.disabled = currentOffset <= 0;
     els.nextPageBtn.disabled = (currentOffset + limit) >= currentSearchTotal;
   }
@@ -3069,18 +3107,35 @@
   // transporteurs) : refreshUnresolvedRows() peut prendre du temps sur une grosse base (récupérée
   // par lots de 5000), autant empêcher toute interaction avec une page à moitié chargée plutôt que
   // de laisser cliquer sur des boutons dont l'état dépend de ces données.
+  function setAppLoadingProgress(pct){
+    if(els.appLoadingBarFill) els.appLoadingBarFill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  }
   (async ()=>{
     try{
+      setAppLoadingProgress(5);
+      // refreshStats() est rapide (une seule requête) et donne le nombre de colis non résolus
+      // attendu (total - resolved) : une cible réaliste pour faire avancer la barre au fil des lots
+      // de refreshUnresolvedRows(), plutôt qu'un remplissage arbitraire sans rapport avec l'avancement
+      // réel. fetchAndRenderPage() n'a pas besoin d'attendre ce calcul, il tourne en parallèle.
+      const fetchPagePromise = fetchAndRenderPage();
+      const stats = await refreshStats();
+      setAppLoadingProgress(15);
+      const target = stats ? Math.max(0, stats.total - stats.resolved) : 0;
+
       await Promise.all([
-        fetchAndRenderPage(),
-        refreshStats(),
-        refreshUnresolvedRows().then(updateCarrierTracking),
+        fetchPagePromise,
+        refreshUnresolvedRows((loaded)=>{
+          if(target > 0) setAppLoadingProgress(15 + Math.min(80, (loaded / target) * 80));
+        }).then(updateCarrierTracking),
       ]);
+      setAppLoadingProgress(100);
     }catch(e){
       // Échec silencieux ici : chaque fonction gère déjà ses propres erreurs (message dans #dbLog
       // ou #scrapeAllLog) — on ne bloque jamais l'affichage de la page à cause de ça.
+      setAppLoadingProgress(100);
     }finally{
-      els.appLoadingOverlay.style.display = 'none';
+      // Léger délai pour laisser voir la barre atteindre 100% plutôt qu'une disparition instantanée.
+      setTimeout(()=>{ els.appLoadingOverlay.style.display = 'none'; }, 200);
     }
   })();
   syncLockUi(); // état verrouillé par défaut à chaque connexion (voir plus haut)

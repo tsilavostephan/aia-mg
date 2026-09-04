@@ -1381,13 +1381,54 @@
   }
 
   // ---------- fenêtre "Tableau de bord" (taux de résolution par transporteur, toutes périodes) ----------
-  function renderDashboardTable(entries){
+  // Couleur du taux de résolution : rouge en dessous de 30%, orange entre 30 et 70%, vert au-delà —
+  // permet de repérer un transporteur à la traîne d'un coup d'œil sans lire le chiffre.
+  function dashboardRateColor(pct){
+    if(pct >= 70) return 'var(--success)';
+    if(pct >= 30) return '#d97706';
+    return 'var(--danger)';
+  }
+
+  // Barre compacte pour la colonne "Taux" du tableau (largeur fixe, voir .dash-rate-bar).
+  function dashboardRateBarHtml(pct){
+    return `<div class="dash-rate-bar">
+      <div class="dash-rate-fill" style="width:${pct}%; background:${dashboardRateColor(pct)};"></div>
+    </div>`;
+  }
+
+  // Graphique en barres horizontales : longueur de la barre ∝ volume du transporteur (relatif au
+  // plus gros), couleur du remplissage ∝ taux de résolution — donne les deux informations (volume
+  // ET taux) d'un coup d'œil, sans avoir à lire le tableau détaillé en dessous. Limité aux plus gros
+  // transporteurs (déjà triés par volume décroissant côté serveur) pour rester lisible.
+  function renderDashboardChart(entries){
+    const top = entries.slice(0, 15);
+    if(!top.length) return '';
+    const maxTotal = Math.max(...top.map(e => e.total));
+
+    const rowsHtml = top.map(e=>{
+      const pct = e.total > 0 ? Math.round((e.resolved / e.total) * 100) : 0;
+      const barWidthPct = maxTotal > 0 ? Math.max(2, Math.round((e.total / maxTotal) * 100)) : 0;
+      return `<div class="dash-chart-row">
+        <span class="dash-chart-label" title="${escapeHtmlAttr(e.transporteur)}">${e.transporteur}</span>
+        <div class="dash-chart-track">
+          <div class="dash-chart-bar" style="width:${barWidthPct}%;">
+            <div class="dash-chart-bar-fill" style="width:${pct}%; background:${dashboardRateColor(pct)};"></div>
+          </div>
+        </div>
+        <span class="dash-chart-value">${e.resolved}/${e.total} (${pct} %)</span>
+      </div>`;
+    }).join('');
+
+    return `<div class="dash-chart">${rowsHtml}</div>`;
+  }
+
+  function renderDashboardTable(entries, overall){
+    const chartHtml = renderDashboardChart(entries);
+
     if(!entries.length){
-      els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucune donnée pour le moment.</p>';
+      els.dashboardBody.innerHTML = chartHtml + '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucun transporteur avec au moins 100 colis pour le moment.</p>';
       return;
     }
-
-    const totals = entries.reduce((acc, e) => ({ total: acc.total + e.total, resolved: acc.resolved + e.resolved }), { total:0, resolved:0 });
 
     const rowHtml = (label, total, resolved, extraClass) => {
       const pct = total > 0 ? Math.round((resolved / total) * 100) : 0;
@@ -1395,34 +1436,40 @@
         <td>${label}</td>
         <td style="text-align:right;">${total}</td>
         <td style="text-align:right;">${resolved}</td>
-        <td style="text-align:right;">${total > 0 ? pct + ' %' : '—'}</td>
+        <td>
+          <div class="dash-rate-wrap">
+            ${total > 0 ? dashboardRateBarHtml(pct) : ''}
+            <span class="dash-rate-text">${total > 0 ? pct + ' %' : '—'}</span>
+          </div>
+        </td>
       </tr>`;
     };
 
     const rowsHtml = entries.map(e => rowHtml(e.transporteur, e.total, e.resolved)).join('');
 
-    els.dashboardBody.innerHTML = `
+    els.dashboardBody.innerHTML = chartHtml + `
       <div style="overflow-x:auto;">
         <table class="dashboard-table">
           <thead><tr>
             <th>Transporteur</th>
             <th style="text-align:right;">Ajoutés</th>
             <th style="text-align:right;">Résolus</th>
-            <th style="text-align:right;">Taux</th>
+            <th>Taux</th>
           </tr></thead>
           <tbody>
-            ${rowHtml('Total (tous transporteurs)', totals.total, totals.resolved, 'dashboard-total-row')}
+            ${rowHtml('Total (tous transporteurs)', overall.total, overall.resolved, 'dashboard-total-row')}
             ${rowsHtml}
           </tbody>
         </table>
-      </div>`;
+      </div>
+      <p class="modal-footnote">Seuls les transporteurs avec au moins 100 colis sont listés (le Total reste calculé sur toute la base).</p>`;
   }
 
   async function loadDashboard(){
     els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Chargement…</p>';
     try{
       const result = await dbGet('resolution-stats', {});
-      renderDashboardTable(result.entries || []);
+      renderDashboardTable(result.entries || [], result.overall || { total:0, resolved:0 });
     }catch(e){
       els.dashboardBody.innerHTML = `<p style="font-size:13px; color:var(--danger); text-align:center; padding:20px 0;">Erreur de chargement (${e && e.message ? e.message : 'erreur inconnue'}).</p>`;
     }

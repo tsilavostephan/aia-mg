@@ -848,6 +848,18 @@
     setTimeout(()=>{ div.remove(); }, 60000);
   }
 
+  // Normalise certaines valeurs de transporteur connues pour avoir plusieurs orthographes dans les
+  // CSV (casse, accents...) vers une seule graphie de référence, pour éviter les doublons dans le
+  // tableau de bord/les onglets transporteur. Comparaison insensible à la casse (espaces de bord
+  // déjà retirés par rowToRecord avant l'appel).
+  const TRANSPORTEUR_NORMALIZE = {
+    'colissimo': 'Colissimo',
+    'colis privé': 'Colis Prive',
+  };
+  function normalizeTransporteur(v){
+    return TRANSPORTEUR_NORMALIZE[v.toLowerCase()] || v;
+  }
+
   function rowToRecord(row){
     const rec = {};
     COLS.forEach(c=>{
@@ -860,6 +872,8 @@
           rec[c.key] = cleanNumSuivi(v);
         }else if(c.key === 'nom'){
           rec[c.key] = extractNomFromCol7(v);
+        }else if(c.key === 'transporteur'){
+          rec[c.key] = normalizeTransporteur(v);
         }else{
           rec[c.key] = v;
         }

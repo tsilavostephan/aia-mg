@@ -80,6 +80,16 @@
     margin-top:16px; padding:14px; font-size:14px; font-weight:600; color:#fff;
     background:var(--primary); border:none; border-radius:10px; cursor:pointer;
   }
+
+  /* Champ invisible qui capte la frappe d'une douchette code-barres (USB/Bluetooth) : ce type
+     d'appareil se comporte comme un clavier, il "tape" le code puis Entrée dans l'élément qui a le
+     focus — sans champ de saisie à l'écran, ces frappes se perdraient. Reste focus en permanence
+     (voir assets/scan.js) sans jamais s'afficher ni ouvrir le clavier virtuel du téléphone
+     (inputmode="none" — la douchette elle-même n'est pas concernée, seul le clavier tactile l'est). */
+  #scanHiddenInput{
+    position:fixed; top:0; left:0; width:1px; height:1px; padding:0; border:none; margin:0;
+    opacity:0; pointer-events:none;
+  }
 </style>
 </head>
 <body>
@@ -94,6 +104,7 @@
 
 <div id="scanReaderContainer"></div>
 <div id="scanError"></div>
+<input type="text" id="scanHiddenInput" inputmode="none" autocomplete="off" tabindex="-1" aria-hidden="true">
 
 <div id="scanMessage"></div>
 

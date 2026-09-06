@@ -14,6 +14,7 @@
     resultOverlay: document.getElementById('scanResultOverlay'),
     resultBody: document.getElementById('scanResultBody'),
     resultQr: document.getElementById('scanResultQr'),
+    hiddenInput: document.getElementById('scanHiddenInput'),
     newScanBtn: document.getElementById('newScanBtn'),
     message: document.getElementById('scanMessage'),
     version: document.getElementById('scanVersion'),
@@ -222,6 +223,29 @@
       showMessage(e && e.message ? e.message : 'Erreur de recherche.');
     }
   }
+
+  // ---------- douchette code-barres (USB/Bluetooth, se comporte comme un clavier) ----------
+  // Ce type d'appareil "tape" le code scanné puis Entrée dans l'élément qui a le focus — sans
+  // champ de saisie toujours focus, ces frappes se perdraient (cette page n'a normalement aucun
+  // champ de texte, tout se fait par la caméra). #scanHiddenInput reste focus en permanence à
+  // cet effet, jamais visible ni ouvert de clavier virtuel (inputmode="none").
+  function refocusHiddenInput(){
+    els.hiddenInput.focus({ preventScroll: true });
+  }
+
+  els.hiddenInput.addEventListener('keydown', (e)=>{
+    // La plupart des douchettes terminent par Entrée (certains modèles par Tabulation) — les deux
+    // sont traités comme "fin du code scanné".
+    if(e.key !== 'Enter' && e.key !== 'Tab') return;
+    e.preventDefault();
+    const value = els.hiddenInput.value.trim();
+    els.hiddenInput.value = '';
+    if(value) handleDecode(value);
+  });
+  els.hiddenInput.addEventListener('blur', ()=> setTimeout(refocusHiddenInput, 50));
+  document.addEventListener('click', ()=> setTimeout(refocusHiddenInput, 50));
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refocusHiddenInput(); });
+  refocusHiddenInput();
 
   function scannerFormats(){
     if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;

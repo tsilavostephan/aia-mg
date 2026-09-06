@@ -260,7 +260,7 @@
   // Chaque algorithme (La Poste, Colissimo, GLS, ou un algorithme ajouté par l'utilisateur) est
   // une liste de règles testées dans l'ordre. La première règle dont les conditions correspondent
   // ET dont l'extraction produit un résultat non vide est retenue pour cet algorithme.
-  const SEARCH_ALGOS_STORAGE_KEY = 'commandes-search-algos';
+  const SEARCH_ALGOS_STORAGE_KEY = 'search-algos'; // clé partagée côté serveur, voir lib/config.js
 
   const DEFAULT_SEARCH_ALGORITHMS = [
     {
@@ -276,6 +276,19 @@
       ]
     },
     {
+      // Même format (32, %...^) que "laposte" ci-dessus mais avec une borne de découpage décalée
+      // d'1 caractère (cut1:21 au lieu de 22, ex. "%009431087001435613025601250A18^..." ->
+      // "8700143561302") — un algorithme séparé plutôt qu'une règle de plus dans "laposte" : les deux
+      // partagent exactement les mêmes conditions de correspondance (longueur/bornes %/^), la
+      // première règle qui correspond l'emporterait toujours et la seconde ne serait jamais essayée.
+      // En algorithmes séparés, computeBestTracking() génère les deux candidats et retient celui qui
+      // correspond réellement à une commande en base.
+      id: 'laposte_v2', label: 'La Poste (variante)', enabled: true,
+      rules: [
+        { length: 32, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'twoStepCut', cut1: 21, cut2: 9 }
+      ]
+    },
+    {
       id: 'colissimo', label: 'Colissimo', enabled: true,
       rules: [
         // Code-barres 1D "Geopost" de 28 caractères débutant par % (étiquette domestique) : digit 1
@@ -284,7 +297,10 @@
         // pays. Le numéro de suivi utile occupe les digits 11 à 22 (12 caractères) — voir la note
         // technique GeoLabel de La Poste/Colissimo (ex. "%0010000116C0000148195802250" ->
         // "6C0000148195"). L'ancienne borne (19 au lieu de 22) coupait le numéro 3 caractères trop tôt.
-        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 22 }
+        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 22 },
+        // Même étiquette sans le "%" de tête (27 caractères au lieu de 28, ex.
+        // "0094150116A0748389369801250" -> "6A0748389369") : mêmes bornes décalées d'1 caractère.
+        { length: 27, startsWith: '', endsWith: '', contentType: 'any', extractType: 'slice', start: 10, end: 21 }
       ]
     },
     {
@@ -303,7 +319,14 @@
         // code-barres Code 128, entièrement numérique, 28 caractères : "PPPP PPP TTTT TTTT TTTT TT
         // SSS CCC D" = code postal (7) + numéro de suivi (14) + code service (3) + code pays (3) +
         // clé de contrôle (1). Le numéro de suivi utile occupe les positions 8 à 21.
-        { length: 28, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'slice', start: 8, end: 21 }
+        { length: 28, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'slice', start: 8, end: 21 },
+        // Même position utile (8 à 21) sur une variante à 27 chiffres (un chiffre de moins, ex.
+        // "009415010804001783487101902" -> "10804001783487").
+        { length: 27, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'slice', start: 8, end: 21 },
+        // Variante alphanumérique préfixée "AC", 17 caractères (ex. "AC000058304494150" ->
+        // "AC0000583044") : le numéro de suivi utile occupe les 12 premiers caractères (préfixe
+        // inclus), pas une plage interne comme les deux règles numériques ci-dessus.
+        { length: 17, startsWith: 'AC', endsWith: '', contentType: 'alnum', extractType: 'slice', start: 1, end: 12 }
       ]
     },
     {
@@ -326,26 +349,14 @@
     }
   ];
 
+  // Chargée/enregistrée via /api/config (partagée entre tous les comptes admin, voir
+  // loadSharedCarrierConfig/saveSharedConfig plus bas) — reste aux algorithmes par défaut tant que
+  // ce chargement n'a pas abouti.
   let SEARCH_ALGORITHMS = DEFAULT_SEARCH_ALGORITHMS.map(a => ({ ...a, rules: a.rules.map(r => ({ ...r })) }));
 
-  function loadSearchAlgorithms(){
-    try{
-      const raw = localStorage.getItem(SEARCH_ALGOS_STORAGE_KEY);
-      if(!raw) return;
-      const saved = JSON.parse(raw);
-      if(Array.isArray(saved) && saved.length > 0){
-        SEARCH_ALGORITHMS = saved;
-      }
-    }catch(e){ /* config invalide, on garde les algorithmes par défaut */ }
-  }
-
   function saveSearchAlgorithms(){
-    try{
-      localStorage.setItem(SEARCH_ALGOS_STORAGE_KEY, JSON.stringify(SEARCH_ALGORITHMS));
-    }catch(e){ /* stockage indisponible, la config ne sera pas persistée */ }
+    saveSharedConfig(SEARCH_ALGOS_STORAGE_KEY, SEARCH_ALGORITHMS);
   }
-
-  loadSearchAlgorithms();
 
   function contentTypeMatches(str, type){
     if(type === 'digits') return /^[0-9]+$/.test(str);
@@ -1202,7 +1213,7 @@
   // colonne "transporteur" correspond exactement (après normalisation) à l'une des entrées de
   // c.match. Cette association manuelle permet de forcer le rattachement pour des valeurs brutes qui
   // ne correspondent à aucune entrée exacte (variantes d'orthographe, etc.), sans toucher au code.
-  const CARRIER_MAPPING_KEY = 'commandes-carrier-mapping';
+  const CARRIER_MAPPING_KEY = 'carrier-mapping'; // clé partagée côté serveur, voir lib/config.js
 
   // GOFO a été retiré de l'application (plus d'onglet ni de rôle de vérification finale) — plus
   // aucune association par défaut n'est donc nécessaire ici. Reste vide pour compatibilité avec
@@ -1210,21 +1221,15 @@
   // manuelle vers n'importe quel autre transporteur si besoin.
   const DEFAULT_CARRIER_MAPPING = {};
 
-  function loadCarrierMapping(){
-    try{
-      const raw = localStorage.getItem(CARRIER_MAPPING_KEY);
-      return raw ? JSON.parse(raw) : {};
-    }catch(e){
-      return {};
-    }
-  }
-
   function saveCarrierMapping(mapping){
     carrierMapping = mapping;
-    try{ localStorage.setItem(CARRIER_MAPPING_KEY, JSON.stringify(mapping)); }catch(e){ /* stockage indisponible */ }
+    saveSharedConfig(CARRIER_MAPPING_KEY, mapping);
   }
 
-  let carrierMapping = loadCarrierMapping();
+  // Chargée via /api/config (partagée entre tous les comptes admin) — vide (donc résolution
+  // automatique par nom uniquement, voir resolveCarrierKeysForRow) tant que ce chargement n'a pas
+  // abouti.
+  let carrierMapping = {};
 
   // Une commande peut appartenir à PLUSIEURS transporteurs à la fois : par exemple une valeur brute
   // "LANDMARK" est à la fois suivie par son propre transporteur dédié (correspondance automatique
@@ -1269,23 +1274,15 @@
   // n'a pas encore été trouvé, quel que soit le transporteur auquel il est normalement rattaché — ce
   // comportement est activé par défaut pour GOFO, mais peut aussi être activé pour n'importe quel
   // autre transporteur (YANWEN, etc.) via la case à cocher dans son onglet.
-  const CARRIER_INCLUDE_UNRESOLVED_KEY = 'commandes-carrier-include-unresolved';
-
-  function loadCarrierIncludeUnresolved(){
-    try{
-      const raw = localStorage.getItem(CARRIER_INCLUDE_UNRESOLVED_KEY);
-      return raw ? JSON.parse(raw) : {};
-    }catch(e){
-      return {};
-    }
-  }
+  const CARRIER_INCLUDE_UNRESOLVED_KEY = 'carrier-include-unresolved'; // clé partagée côté serveur
 
   function saveCarrierIncludeUnresolved(map){
     carrierIncludeUnresolved = map;
-    try{ localStorage.setItem(CARRIER_INCLUDE_UNRESOLVED_KEY, JSON.stringify(map)); }catch(e){ /* stockage indisponible */ }
+    saveSharedConfig(CARRIER_INCLUDE_UNRESOLVED_KEY, map);
   }
 
-  let carrierIncludeUnresolved = loadCarrierIncludeUnresolved();
+  // Chargée via /api/config (partagée entre tous les comptes admin) — voir loadSharedCarrierConfig.
+  let carrierIncludeUnresolved = {};
 
   function carrierIncludesUnresolved(key){
     return !!carrierIncludeUnresolved[key]; // décoché par défaut pour tous les transporteurs, y compris GOFO
@@ -1767,21 +1764,57 @@
   // seuls les délais d'attente sont configurables ici — l'URL de la fonction de scraping est fixe
   // par transporteur (champ "scrapeEndpoint" dans CARRIERS), une fonction backend étant dédiée à
   // chacun (logique de clic différente selon le site de suivi).
-  const SCRAPE_CONFIG_KEY = 'scrape-config';
+  const SCRAPE_CONFIG_KEY = 'scrape-config'; // clé partagée côté serveur, voir lib/config.js
+
+  // Chargée via /api/config (partagée entre tous les comptes admin) — voir loadSharedCarrierConfig.
+  let scrapeConfig = {};
 
   function loadScrapeConfig(){
-    try{
-      const raw = localStorage.getItem(SCRAPE_CONFIG_KEY);
-      return raw ? JSON.parse(raw) : {};
-    }catch(e){
-      return {};
-    }
+    return scrapeConfig;
   }
 
   function saveScrapeConfig(config){
+    scrapeConfig = config;
+    saveSharedConfig(SCRAPE_CONFIG_KEY, config);
+  }
+
+  // ---------- configuration transporteur partagée (via /api/config, admin uniquement) ----------
+  // Remplace le localStorage par navigateur pour les 4 réglages liés aux transporteurs
+  // (algorithmes de recherche, association manuelle, case "inclure les colis non résolus", délais
+  // de scraping) : plusieurs comptes admin sur des navigateurs différents voient et modifient
+  // désormais la même configuration, au lieu d'une copie propre à chaque appareil.
+  async function loadSharedCarrierConfig(){
     try{
-      localStorage.setItem(SCRAPE_CONFIG_KEY, JSON.stringify(config));
-    }catch(e){ /* stockage indisponible, la config ne sera pas persistée */ }
+      const res = await fetch('/api/config', { cache: 'no-store' });
+      if(!res.ok) return;
+      const cfg = await res.json();
+      if(Array.isArray(cfg[SEARCH_ALGOS_STORAGE_KEY]) && cfg[SEARCH_ALGOS_STORAGE_KEY].length > 0){
+        SEARCH_ALGORITHMS = cfg[SEARCH_ALGOS_STORAGE_KEY];
+      }
+      if(cfg[CARRIER_MAPPING_KEY] && typeof cfg[CARRIER_MAPPING_KEY] === 'object'){
+        carrierMapping = cfg[CARRIER_MAPPING_KEY];
+      }
+      if(cfg[CARRIER_INCLUDE_UNRESOLVED_KEY] && typeof cfg[CARRIER_INCLUDE_UNRESOLVED_KEY] === 'object'){
+        carrierIncludeUnresolved = cfg[CARRIER_INCLUDE_UNRESOLVED_KEY];
+      }
+      if(cfg[SCRAPE_CONFIG_KEY] && typeof cfg[SCRAPE_CONFIG_KEY] === 'object'){
+        scrapeConfig = cfg[SCRAPE_CONFIG_KEY];
+      }
+    }catch(e){ /* échec réseau : on garde les valeurs par défaut jusqu'au prochain chargement de page */ }
+  }
+
+  // "Best effort" volontairement non bloquant pour l'appelant (saveXxx() ci-dessus ne l'attendent
+  // pas) : la config reste appliquée localement immédiatement même si l'enregistrement serveur
+  // échoue ou est lent, l'action déclenchante (fermer une fenêtre, cocher une case...) ne doit pas
+  // attendre un aller-retour réseau.
+  async function saveSharedConfig(key, value){
+    try{
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+      });
+    }catch(e){ /* voir commentaire ci-dessus */ }
   }
 
   function openScrapeConfigModal(){
@@ -3187,6 +3220,11 @@
       // Le rôle doit être connu avant le moindre rendu (masque import/scraping pour un compte
       // "pc" dès le premier affichage, pas après coup) — voir applyRoleUi().
       await loadCurrentUser();
+      // La configuration transporteur partagée (algorithmes de recherche, association manuelle,
+      // délais de scraping) doit être en place avant tout regroupement par transporteur
+      // (updateCarrierTracking, plus bas) ou toute recherche/scan — seul le rôle admin y a accès
+      // côté serveur (voir api/config.js), inutile de l'appeler pour les autres rôles.
+      if(currentUserRole === 'admin') await loadSharedCarrierConfig();
       setAppLoadingProgress(10);
 
       // refreshStats() est rapide (une seule requête) et donne le nombre de colis non résolus

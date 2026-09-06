@@ -65,3 +65,15 @@ ALTER TABLE users DROP COLUMN IF EXISTS email;
 ALTER TABLE users ALTER COLUMN username SET NOT NULL;
 DROP INDEX IF EXISTS idx_users_email_lower;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (lower(username));
+
+-- Configuration transporteur partagée (remplace le localStorage par navigateur, incohérent dès
+-- que plusieurs comptes admin s'y connectent) : algorithmes de recherche, association manuelle
+-- transporteur -> valeur brute, case "inclure les colis non résolus des autres transporteurs",
+-- délais de scraping (4PX/YANWEN/...). Clé/valeur générique (JSONB) plutôt qu'une colonne par
+-- réglage : ces blobs ont chacun leur propre forme et évoluent indépendamment (voir lib/config.js
+-- pour la liste des clés utilisées).
+CREATE TABLE IF NOT EXISTS app_config (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -15,6 +15,7 @@
     resultBody: document.getElementById('scanResultBody'),
     resultQr: document.getElementById('scanResultQr'),
     hiddenInput: document.getElementById('scanHiddenInput'),
+    debugLog: document.getElementById('scanDebugLog'),
     newScanBtn: document.getElementById('newScanBtn'),
     message: document.getElementById('scanMessage'),
     version: document.getElementById('scanVersion'),
@@ -223,6 +224,35 @@
       showMessage(e && e.message ? e.message : 'Erreur de recherche.');
     }
   }
+
+  // ---------- panneau de diagnostic TEMPORAIRE (voir scan.html #scanDebugPanel) ----------
+  // Affiche chaque événement DOM potentiellement pertinent pour une douchette, avec assez de
+  // détail pour voir exactement ce que l'appareil déclenche réellement (aucun des mécanismes
+  // essayés jusqu'ici — keydown, paste, input debounce — n'a fonctionné avec ce modèle précis).
+  let debugLastTime = Date.now();
+  function debugLog(msg){
+    const now = Date.now();
+    const dt = now - debugLastTime;
+    debugLastTime = now;
+    const line = document.createElement('div');
+    line.textContent = `+${dt}ms  ${msg}`;
+    els.debugLog.appendChild(line);
+    while(els.debugLog.children.length > 60) els.debugLog.removeChild(els.debugLog.firstChild);
+    els.debugLog.scrollTop = els.debugLog.scrollHeight;
+  }
+  ['keydown','keyup','beforeinput','input','paste','compositionstart','compositionupdate','compositionend','focus','blur','focusin','focusout']
+    .forEach(type=>{
+      document.addEventListener(type, (e)=>{
+        const target = e.target === els.hiddenInput ? 'hiddenInput' : (e.target && e.target.tagName) || '?';
+        let detail = '';
+        if(type === 'keydown' || type === 'keyup') detail = `key="${e.key}" code="${e.code}"`;
+        else if(type === 'beforeinput' || type === 'input') detail = `inputType="${e.inputType || ''}" data="${e.data || ''}" value="${els.hiddenInput.value}"`;
+        else if(type === 'paste') detail = `data="${((e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : '')}"`;
+        else if(type.startsWith('composition')) detail = `data="${e.data || ''}"`;
+        debugLog(`${type} on ${target} ${detail}`);
+      }, true); // phase de capture : voit l'événement même s'il est stoppé plus bas
+    });
+  debugLog('diagnostic prêt — scannez maintenant');
 
   // ---------- douchette code-barres (USB/Bluetooth, se comporte comme un clavier) ----------
   // Ce type d'appareil "tape" le code scanné puis Entrée dans l'élément qui a le focus — sans

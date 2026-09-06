@@ -90,6 +90,18 @@
     position:fixed; top:0; left:0; width:1px; height:1px; padding:0; border:none; margin:0;
     opacity:0; pointer-events:none;
   }
+
+  #scanDebugPanel{
+    width:100%; max-width:480px; margin-top:12px; padding:10px 12px;
+    background:#000; border:1px solid var(--border); border-radius:10px;
+  }
+  #scanDebugTitle{ font-size:11px; font-weight:700; color:var(--danger); margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em; }
+  #scanDebugLog{
+    font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:11px; line-height:1.5; color:var(--success);
+    max-height:220px; overflow-y:auto; white-space:pre-wrap; word-break:break-all;
+  }
+  #scanDebugLog div{ border-bottom:1px dashed var(--border); padding:2px 0; }
 </style>
 </head>
 <body>
@@ -105,6 +117,14 @@
 <div id="scanReaderContainer"></div>
 <div id="scanError"></div>
 <input type="text" id="scanHiddenInput" inputmode="none" autocomplete="off" tabindex="-1">
+
+<!-- Panneau de diagnostic TEMPORAIRE — à retirer une fois la douchette identifiée. Affiche en
+     direct chaque événement DOM pertinent (clavier, saisie, collage, IME) pendant un scan, pour
+     voir exactement ce que déclenche l'appareil sans avoir à deviner à l'aveugle. -->
+<div id="scanDebugPanel">
+  <div id="scanDebugTitle">🐞 Diagnostic douchette (temporaire)</div>
+  <div id="scanDebugLog"></div>
+</div>
 
 <div id="scanMessage"></div>
 

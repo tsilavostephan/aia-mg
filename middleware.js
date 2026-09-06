@@ -8,7 +8,7 @@
 // format — celle-ci est la contrepartie Web Crypto (`crypto.subtle`), seule API disponible en Edge
 // Runtime. Les deux DOIVENT rester en accord sur le format exact du jeton.
 export const config = {
-  matcher: ['/((?!api/login|api/register|api/logout|login\\.html|register\\.html|pending\\.html|manifest(?:-scan)?\\.json|assets/(?:logo-aia|favicon|apple-touch-icon|icon-192|icon-512|icon-512-maskable)\\.png).*)'],
+  matcher: ['/((?!api/login|api/register|api/logout|api/usernames|login\\.html|register\\.html|pending\\.html|manifest(?:-scan)?\\.json|assets/(?:logo-aia|favicon|apple-touch-icon|icon-192|icon-512|icon-512-maskable)\\.png).*)'],
 };
 
 // Chemins accessibles au rôle "mobile" (voir plus bas) sans être redirigé vers /scan.html.

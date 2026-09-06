@@ -18,9 +18,9 @@
   .login-logo{ display:block; height:56px; width:auto; margin:0 auto 18px; }
   h1{ font-size:15px; text-transform:uppercase; letter-spacing:.04em; color:var(--primary); margin:0 0 6px; text-align:center; }
   p{ font-size:13px; color:var(--muted); margin:0 0 18px; text-align:center; }
-  input{
+  input, select{
     width:100%; padding:12px; font-size:16px; border:1px solid var(--border); border-radius:8px;
-    margin-bottom:14px;
+    margin-bottom:14px; font-family:inherit; background:#fff; color:inherit;
   }
   button{
     width:100%; padding:12px; font-size:14px; font-weight:600; color:#fff; background:var(--primary);
@@ -37,19 +37,51 @@
 <form id="loginForm">
   <img class="login-logo" src="/assets/logo-aia.png" alt="AIA">
   <h1>Page de connexion sécurisée</h1>
-  <p>Entrez vos identifiants pour continuer.</p>
-  <input type="text" id="usernameInput" placeholder="Trigramme" autocomplete="username" maxlength="3" style="text-transform:uppercase;" autofocus>
+  <p>Choisissez votre trigramme et entrez votre mot de passe.</p>
+  <select id="usernameSelect" autofocus>
+    <option value="">Chargement…</option>
+  </select>
   <input type="password" id="passwordInput" placeholder="Mot de passe" autocomplete="current-password">
   <button type="submit" id="submitBtn">Se connecter</button>
   <p id="loginError"></p>
   <p class="register-link"><a href="/register.html">Créer un compte</a></p>
 </form>
 <script>
+  // Menu déroulant des trigrammes existants (voir api/usernames.js — public, ne renvoie que les
+  // trigrammes) plutôt qu'un champ texte libre. Si la liste ne peut pas être chargée ou est vide
+  // (base neuve, aucun compte créé), on retombe sur un champ texte classique plutôt que de bloquer
+  // la connexion.
+  const usernameSelect = document.getElementById('usernameSelect');
+  function fallBackToTextInput(){
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'usernameSelect'; // même id : le reste du script lit toujours #usernameSelect.value
+    input.placeholder = 'Trigramme';
+    input.autocomplete = 'username';
+    input.maxLength = 3;
+    input.style.textTransform = 'uppercase';
+    usernameSelect.replaceWith(input);
+  }
+  (async () => {
+    try {
+      const res = await fetch('/api/usernames', { cache: 'no-store' });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const { usernames } = await res.json();
+      if(!Array.isArray(usernames) || usernames.length === 0){
+        fallBackToTextInput();
+        return;
+      }
+      usernameSelect.innerHTML = usernames.map(u => `<option value="${u}">${u}</option>`).join('');
+    } catch (e) {
+      fallBackToTextInput();
+    }
+  })();
+
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
     const errEl = document.getElementById('loginError');
-    const username = document.getElementById('usernameInput').value;
+    const username = document.getElementById('usernameSelect').value;
     const password = document.getElementById('passwordInput').value;
     errEl.style.display = 'none';
     btn.disabled = true;

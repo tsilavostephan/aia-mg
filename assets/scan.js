@@ -65,11 +65,7 @@
       // "digits" de matcher. Numéro de suivi client = champ T (positions 8-21, 14 caractères) +
       // clé calculée séparément par ISO/IEC 7064 MOD 37,36 (voir iso7064Mod3736 ci-dessous), ex.
       // "009415010913008577590101902P" -> T="10913008577590" -> "10913008577590U".
-      { length:28, startsWith:'', endsWith:'', contentType:'alnum', extractType:'dpdChecksum', numStart:8, numLen:14 },
-      // Variante à 27 chiffres précédée d'un '%' parasite (ex. "%009415005438800036587327901" ->
-      // "05438800036587") : même longueur/même préfixe '%' qu'un Colissimo, mais 100% numérique —
-      // voir dpdPercentSlice ci-dessous (vérifie que le corps après le '%' est bien numérique).
-      { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'dpdPercentSlice', start:8, end:21 }
+      { length:28, startsWith:'', endsWith:'', contentType:'alnum', extractType:'dpdChecksum', numStart:8, numLen:14 }
     ]},
   ];
   let SEARCH_ALGORITHMS = DEFAULT_SEARCH_ALGORITHMS;

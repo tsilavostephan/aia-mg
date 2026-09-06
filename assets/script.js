@@ -288,13 +288,7 @@
         // affiché = champ T (positions 8-21) + une clé calculée séparément sur ces 14 caractères par
         // ISO/IEC 7064 MOD 37,36 (ex. "009415010913008577590101902P" -> T="10913008577590" ->
         // "10913008577590U"), pas simplement le caractère D qui contrôle P+T+S+C.
-        { length: 28, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'dpdChecksum', numStart: 8, numLen: 14 },
-        // Variante à 27 chiffres (aucune clé de bloc), mais précédée d'un '%' parasite constaté en
-        // prod (ex. "%009415005438800036587327901" -> "05438800036587") : ce code-barres est de même
-        // longueur/même préfixe '%' qu'un Colissimo, mais 100% numérique — voir dpdPercentSlice
-        // ci-dessous (vérifie explicitement que le corps après le '%' est bien numérique, pour ne pas
-        // capturer un vrai Colissimo par erreur).
-        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'dpdPercentSlice', start: 8, end: 21 }
+        { length: 28, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'dpdChecksum', numStart: 8, numLen: 14 }
       ]
     }
   ];

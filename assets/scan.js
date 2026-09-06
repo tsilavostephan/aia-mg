@@ -72,7 +72,11 @@
       // ci-dessus de matcher. Numéro de suivi client = champ T (positions 8-21, 14 caractères) +
       // clé calculée séparément par ISO/IEC 7064 MOD 37,36 (voir iso7064Mod3736 ci-dessous), ex.
       // "009415010913008577590101902P" -> T="10913008577590" -> "10913008577590U".
-      { length:28, startsWith:'', endsWith:'', contentType:'alnum', extractType:'dpdChecksum', numStart:8, numLen:14 }
+      { length:28, startsWith:'', endsWith:'', contentType:'alnum', extractType:'dpdChecksum', numStart:8, numLen:14 },
+      // Variante à 27 chiffres précédée d'un '%' parasite (ex. "%009415005438800036587327901" ->
+      // "05438800036587") : même longueur/même préfixe '%' qu'un Colissimo, mais 100% numérique —
+      // voir dpdPercentSlice ci-dessous (vérifie que le corps après le '%' est bien numérique).
+      { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'dpdPercentSlice', start:8, end:21 }
     ]},
     { id:'gls', label:'GLS', enabled:true, rules:[
       { length:13, startsWith:'', endsWith:'', contentType:'digits', extractType:'removeLast', count:2 },
@@ -133,6 +137,10 @@
         if(clean.length < prefixStart - 1 + prefixLen || clean.length < numStart - 1 + numLen) return null;
         const prefix = clean.slice(prefixStart - 1, prefixStart - 1 + prefixLen);
         const numStr = clean.slice(numStart - 1, numStart - 1 + numLen);
+        // Un DPD tout numérique peut avoir la même longueur/même préfixe '%' — le préfixe
+        // Colissimo/Chronopost mélange chiffre(s)+lettre(s) (ex. "6A") : au moins UNE lettre suffit
+        // à distinguer une vraie étiquette Colissimo/Chronopost d'un DPD purement numérique.
+        if(!/[A-Za-z]/.test(prefix)) return null;
         if(!/^[0-9]+$/.test(numStr)) return null;
         let oddSum = 0, evenSum = 0;
         for(let i = 0; i < numStr.length; i++){
@@ -142,6 +150,13 @@
         const total = oddSum + evenSum * 3;
         const key = Math.ceil(total / 10) * 10 - total;
         return prefix + numStr + String(key);
+      }
+      case 'dpdPercentSlice': {
+        const start = Number(rule.start), end = Number(rule.end);
+        if(!start || !end || end < start) return null;
+        const body = clean.slice(1);
+        if(!/^[0-9]+$/.test(body) || body.length < end) return null;
+        return body.slice(start - 1, end);
       }
       case 'dpdChecksum': {
         const numStart = Number(rule.numStart), numLen = Number(rule.numLen);

@@ -339,7 +339,13 @@
         // = champ T (positions 8-21) + une clé calculée séparément sur ces 14 caractères par
         // ISO/IEC 7064 MOD 37,36 (ex. "009415010913008577590101902P" -> T="10913008577590" ->
         // "10913008577590U"), pas simplement le caractère D qui contrôle P+T+S+C.
-        { length: 28, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'dpdChecksum', numStart: 8, numLen: 14 }
+        { length: 28, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'dpdChecksum', numStart: 8, numLen: 14 },
+        // Même variante à 27 chiffres que ci-dessus (aucune clé de bloc), mais précédée d'un '%'
+        // parasite constaté en prod (ex. "%009415005438800036587327901" -> "05438800036587") : sans
+        // cette règle, ce code-barres est de même longueur/même préfixe '%' qu'un Colissimo, mais
+        // 100% numérique — voir dpdPercentSlice ci-dessus (vérifie explicitement que le corps après
+        // le '%' est bien numérique, pour ne pas capturer un vrai Colissimo par erreur).
+        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'dpdPercentSlice', start: 8, end: 21 }
       ]
     },
     {
@@ -420,6 +426,12 @@
         if(clean.length < prefixStart - 1 + prefixLen || clean.length < numStart - 1 + numLen) return null;
         const prefix = clean.slice(prefixStart - 1, prefixStart - 1 + prefixLen);
         const numStr = clean.slice(numStart - 1, numStart - 1 + numLen);
+        // Un code-barres DPD tout numérique peut avoir la même longueur/même préfixe '%' qu'un
+        // Colissimo (voir la note de différenciation Colissimo/DPD) — sans cette vérification, un
+        // DPD 100% chiffres se ferait extraire ici par erreur. Le préfixe Colissimo/Chronopost
+        // mélange chiffre(s) et lettre(s) (ex. "6A", "6C") : au moins UNE lettre au milieu du code
+        // distingue une vraie étiquette Colissimo/Chronopost d'un DPD purement numérique.
+        if(!/[A-Za-z]/.test(prefix)) return null;
         if(!/^[0-9]+$/.test(numStr)) return null;
         let oddSum = 0, evenSum = 0;
         for(let i = 0; i < numStr.length; i++){
@@ -429,6 +441,18 @@
         const total = oddSum + evenSum * 3;
         const key = Math.ceil(total / 10) * 10 - total;
         return prefix + numStr + String(key);
+      }
+      case 'dpdPercentSlice': {
+        // Variante DPD dont le code-barres est précédé d'un '%' parasite (constatée en prod, ex.
+        // "%009415005438800036587327901") : mêmes formats/positions que les règles DPD numériques
+        // ci-dessous, mais calculées après avoir retiré ce '%' de tête. Le contentType de la règle
+        // ('any') ne suffit pas à garantir que le RESTE est bien numérique (un vrai Colissimo/
+        // Chronopost commence aussi par '%') — vérifié explicitement ici.
+        const start = Number(rule.start), end = Number(rule.end);
+        if(!start || !end || end < start) return null;
+        const body = clean.slice(1);
+        if(!/^[0-9]+$/.test(body) || body.length < end) return null;
+        return body.slice(start - 1, end);
       }
       case 'dpdChecksum': {
         // Numéro de suivi client DPD (DPD Parcel Label Specification v2.4.1, §4.6.1.4) : champ T
@@ -542,6 +566,7 @@
     twoStepCut: 'Découpage en 2 étapes',
     dpdChecksum: 'Clé de contrôle DPD (ISO 7064 MOD 37,36)',
     colissimoKey: 'Clé de contrôle Colissimo (préfixe + numéro + clé calculée)',
+    dpdPercentSlice: "DPD avec '%' de tête (plage de positions après le '%')",
   };
 
   function cloneAlgorithms(list){
@@ -667,7 +692,7 @@
 
     function renderParams(){
       paramsWrap.innerHTML = '';
-      if(rule.extractType === 'slice'){
+      if(rule.extractType === 'slice' || rule.extractType === 'dpdPercentSlice'){
         const start = document.createElement('input');
         start.type = 'number'; start.min = '1'; start.placeholder = 'Début'; start.value = rule.start || '';
         start.addEventListener('input', ()=>{ rule.start = parseInt(start.value, 10) || null; });

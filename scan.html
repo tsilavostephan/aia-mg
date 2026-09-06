@@ -85,6 +85,19 @@
     background:var(--primary); border:none; border-radius:10px; cursor:pointer;
   }
 
+  /* Popup plein écran quand le colis scanné n'est pas trouvé en base — plus visible qu'un simple
+     message en bas d'écran, se ferme toute seule après un court délai (voir assets/scan.js) pour
+     rester dans l'esprit "mains libres" du mode rafale. */
+  #scanNotFoundOverlay{
+    position:fixed; inset:0; z-index:70; background:rgba(127,29,29,0.97);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    opacity:0; pointer-events:none; transition:opacity .15s ease;
+  }
+  #scanNotFoundOverlay.visible{ opacity:1; }
+  .scan-not-found-icon{ font-size:64px; line-height:1; }
+  .scan-not-found-title{ font-size:20px; font-weight:800; letter-spacing:.03em; color:#fff; text-align:center; }
+  .scan-not-found-code{ font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:13px; color:rgba(255,255,255,0.75); text-align:center; word-break:break-all; padding:0 24px; }
+
   /* Champ invisible qui capte la frappe d'une douchette code-barres (USB/Bluetooth) : ce type
      d'appareil se comporte comme un clavier, il "tape" le code puis Entrée dans l'élément qui a le
      focus — sans champ de saisie à l'écran, ces frappes se perdraient. Reste focus en permanence
@@ -112,6 +125,12 @@
 <input type="text" id="scanHiddenInput" inputmode="none" autocomplete="off" tabindex="-1">
 
 <div id="scanMessage"></div>
+
+<div id="scanNotFoundOverlay">
+  <div class="scan-not-found-icon">❌</div>
+  <div class="scan-not-found-title">COLIS NON TROUVÉ</div>
+  <div class="scan-not-found-code" id="scanNotFoundCode"></div>
+</div>
 
 <div id="scanResultOverlay">
   <h2 class="scan-result-title">Détails du colis</h2>

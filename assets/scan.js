@@ -17,6 +17,8 @@
     hiddenInput: document.getElementById('scanHiddenInput'),
     newScanBtn: document.getElementById('newScanBtn'),
     message: document.getElementById('scanMessage'),
+    notFoundOverlay: document.getElementById('scanNotFoundOverlay'),
+    notFoundCode: document.getElementById('scanNotFoundCode'),
     version: document.getElementById('scanVersion'),
   };
 
@@ -154,6 +156,11 @@
   }
 
   function showPackageResult(r){
+    // Referme le popup "colis non trouvé" s'il était encore affiché (rafale rapide) : sinon il
+    // resterait visible par-dessus cette fiche jusqu'à l'expiration de son propre délai.
+    clearTimeout(showNotFoundPopup._t);
+    els.notFoundOverlay.classList.remove('visible');
+
     const qteMatch = String(r.qteCommande || '').trim() !== '' && String(r.qteCommande || '').trim() === String(r.qteExpedie || '').trim();
     const fields = [
       { label:'N° Commande', value:r.numCommande },
@@ -195,6 +202,19 @@
   }
   els.newScanBtn.addEventListener('click', hidePackageResult);
 
+  // Popup plein écran (pas un simple message discret en bas d'écran) quand le code scanné ne
+  // correspond à aucun colis en base — se ferme toute seule après un court délai pour rester
+  // hands-free (mode rafale). Referme aussi une fiche colis déjà affichée : sinon, une fois le
+  // popup disparu, l'ancienne fiche resterait visible en arrière-plan alors que CE code-là n'a
+  // rien donné, ce qui prêterait à confusion.
+  function showNotFoundPopup(code){
+    hidePackageResult();
+    els.notFoundCode.textContent = code || '';
+    els.notFoundOverlay.classList.add('visible');
+    clearTimeout(showNotFoundPopup._t);
+    showNotFoundPopup._t = setTimeout(()=>{ els.notFoundOverlay.classList.remove('visible'); }, 2200);
+  }
+
   // ---------- scan continu (caméra jamais arrêtée, façon "mode rafale" de l'app principale) ----------
   let lastValue = '';
   let lastTime = 0;
@@ -216,7 +236,7 @@
       if(result.total === 1 && result.rows.length === 1){
         showPackageResult(result.rows[0]);
       }else if(result.total === 0){
-        showMessage('Aucun colis trouvé pour ce code.');
+        showNotFoundPopup(value);
       }else{
         showMessage('Plusieurs colis correspondent — impossible de choisir automatiquement.');
       }

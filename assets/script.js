@@ -326,7 +326,15 @@
         // Variante alphanumérique préfixée "AC", 17 caractères (ex. "AC000058304494150" ->
         // "AC0000583044") : le numéro de suivi utile occupe les 12 premiers caractères (préfixe
         // inclus), pas une plage interne comme les deux règles numériques ci-dessus.
-        { length: 17, startsWith: 'AC', endsWith: '', contentType: 'alnum', extractType: 'slice', start: 1, end: 12 }
+        { length: 17, startsWith: 'AC', endsWith: '', contentType: 'alnum', extractType: 'slice', start: 1, end: 12 },
+        // Format officiel avec clé de contrôle du bloc en position 28 (DPD Parcel Label
+        // Specification v2.4.1, §4.6.1.4) : "P(7) T(14) S(3) C(3) D(1)" = code postal + numéro de
+        // suivi + code service + code pays + clé du bloc complet (ce dernier caractère, souvent une
+        // lettre, empêche la règle "digits" ci-dessus de matcher). Le numéro de suivi client affiché
+        // = champ T (positions 8-21) + une clé calculée séparément sur ces 14 caractères par
+        // ISO/IEC 7064 MOD 37,36 (ex. "009415010913008577590101902P" -> T="10913008577590" ->
+        // "10913008577590U"), pas simplement le caractère D qui contrôle P+T+S+C.
+        { length: 28, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'dpdChecksum', numStart: 8, numLen: 14 }
       ]
     },
     {
@@ -396,8 +404,47 @@
         if(firstPart.length < cut2) return null;
         return firstPart.slice(cut2 - 1);
       }
+      case 'dpdChecksum': {
+        // Numéro de suivi client DPD (DPD Parcel Label Specification v2.4.1, §4.6.1.4) : champ T
+        // (numéro de suivi, 14 caractères par défaut) + une clé de contrôle calculée séparément sur
+        // ces caractères par l'algorithme ISO/IEC 7064 MOD 37,36 (voir iso7064Mod3736 ci-dessous).
+        const numStart = Number(rule.numStart), numLen = Number(rule.numLen);
+        if(!numStart || !numLen) return null;
+        if(clean.length < numStart - 1 + numLen) return null;
+        const numStr = clean.slice(numStart - 1, numStart - 1 + numLen);
+        const key = iso7064Mod3736(numStr);
+        if(!key) return null;
+        return numStr + key;
+      }
       default: return null;
     }
+  }
+
+  // Clé de contrôle ISO/IEC 7064 MOD 37,36 (utilisée par DPD, entre autres) : un caractère
+  // (0-9 ou A-Z) calculé à partir d'une chaîne alphanumérique quelconque. Chaque caractère est
+  // converti en valeur (chiffre tel quel, lettre = position dans l'alphabet + 10, A=10..Z=35), puis
+  // combiné à un accumulateur P initialisé à 36 par : P = (P + valeur) mod 36 (ramené à ]0,36] plutôt
+  // que [0,36[, d'où le "si > 36, -36" au lieu d'un modulo classique), puis P = (P × 2) mod 37. La
+  // clé finale est le complément à 37 du P obtenu après le dernier caractère (37 lui-même -> "0").
+  function iso7064Mod3736(str){
+    const s = String(str || '');
+    if(!s) return null;
+    const M = 36, M1 = 37;
+    let p = M;
+    for(let i = 0; i < s.length; i++){
+      const ch = s[i];
+      let val;
+      if(/[0-9]/.test(ch)) val = Number(ch);
+      else if(/[A-Za-z]/.test(ch)) val = 10 + (ch.toUpperCase().charCodeAt(0) - 65);
+      else return null; // caractère non alphanumérique, hors spécification
+      p += val;
+      if(p > M) p -= M;
+      p *= 2;
+      if(p >= M1) p -= M1;
+    }
+    const index = M1 - p;
+    if(index === M) return '0'; // cas particulier : P final == 37 - 36, complément égal à 36
+    return index < 10 ? String(index) : String.fromCharCode(65 + (index - 10));
   }
 
   // Exécute un algorithme (liste de règles) sur une valeur brute et renvoie le premier résultat
@@ -467,6 +514,7 @@
     removeFirst: 'Retirer les N premiers caractères',
     removeLast: 'Retirer les N derniers caractères',
     twoStepCut: 'Découpage en 2 étapes',
+    dpdChecksum: 'Clé de contrôle DPD (ISO 7064 MOD 37,36)',
   };
 
   function cloneAlgorithms(list){
@@ -615,6 +663,15 @@
         cut2.addEventListener('input', ()=>{ rule.cut2 = parseInt(cut2.value, 10) || null; });
         paramsWrap.appendChild(field('Position de coupe 1', cut1));
         paramsWrap.appendChild(field('Position de coupe 2', cut2));
+      }else if(rule.extractType === 'dpdChecksum'){
+        const numStart = document.createElement('input');
+        numStart.type = 'number'; numStart.min = '1'; numStart.placeholder = 'Début numéro'; numStart.value = rule.numStart || '';
+        numStart.addEventListener('input', ()=>{ rule.numStart = parseInt(numStart.value, 10) || null; });
+        const numLen = document.createElement('input');
+        numLen.type = 'number'; numLen.min = '1'; numLen.placeholder = 'Longueur numéro'; numLen.value = rule.numLen || '';
+        numLen.addEventListener('input', ()=>{ rule.numLen = parseInt(numLen.value, 10) || null; });
+        paramsWrap.appendChild(field('Début du numéro', numStart));
+        paramsWrap.appendChild(field('Longueur du numéro', numLen));
       }
     }
     renderParams();
@@ -681,6 +738,8 @@
           `count="${rule.count ?? ''}"`,
           `cut1="${rule.cut1 ?? ''}"`,
           `cut2="${rule.cut2 ?? ''}"`,
+          `numStart="${rule.numStart ?? ''}"`,
+          `numLen="${rule.numLen ?? ''}"`,
         ].join(' ');
         lines.push(`    <rule ${attrs} />`);
       });
@@ -731,6 +790,8 @@
         count: numAttr(ruleEl, 'count'),
         cut1: numAttr(ruleEl, 'cut1'),
         cut2: numAttr(ruleEl, 'cut2'),
+        numStart: numAttr(ruleEl, 'numStart'),
+        numLen: numAttr(ruleEl, 'numLen'),
       }));
       return {
         id: algoEl.getAttribute('id') || ('algo-importe-' + idx),

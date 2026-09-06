@@ -63,7 +63,13 @@
       { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'slice', start:11, end:22 }
     ]},
     { id:'dpd', label:'DPD', enabled:true, rules:[
-      { length:28, startsWith:'', endsWith:'', contentType:'digits', extractType:'slice', start:8, end:21 }
+      { length:28, startsWith:'', endsWith:'', contentType:'digits', extractType:'slice', start:8, end:21 },
+      // Format officiel avec clé de contrôle du bloc en position 28 (DPD Parcel Label Specification
+      // v2.4.1, §4.6.1.4) : le caractère 28 (souvent une lettre) empêche la règle "digits"
+      // ci-dessus de matcher. Numéro de suivi client = champ T (positions 8-21, 14 caractères) +
+      // clé calculée séparément par ISO/IEC 7064 MOD 37,36 (voir iso7064Mod3736 ci-dessous), ex.
+      // "009415010913008577590101902P" -> T="10913008577590" -> "10913008577590U".
+      { length:28, startsWith:'', endsWith:'', contentType:'alnum', extractType:'dpdChecksum', numStart:8, numLen:14 }
     ]},
     { id:'gls', label:'GLS', enabled:true, rules:[
       { length:13, startsWith:'', endsWith:'', contentType:'digits', extractType:'removeLast', count:2 },
@@ -117,8 +123,41 @@
         if(firstPart.length < cut2) return null;
         return firstPart.slice(cut2 - 1);
       }
+      case 'dpdChecksum': {
+        const numStart = Number(rule.numStart), numLen = Number(rule.numLen);
+        if(!numStart || !numLen) return null;
+        if(clean.length < numStart - 1 + numLen) return null;
+        const numStr = clean.slice(numStart - 1, numStart - 1 + numLen);
+        const key = iso7064Mod3736(numStr);
+        if(!key) return null;
+        return numStr + key;
+      }
       default: return null;
     }
+  }
+
+  // Clé de contrôle ISO/IEC 7064 MOD 37,36 (DPD Parcel Label Specification v2.4.1, §4.6.1.4) : un
+  // caractère (0-9 ou A-Z) calculé à partir d'une chaîne alphanumérique. Copie de la même fonction
+  // dans assets/script.js (voir ce fichier pour le détail du calcul).
+  function iso7064Mod3736(str){
+    const s = String(str || '');
+    if(!s) return null;
+    const M = 36, M1 = 37;
+    let p = M;
+    for(let i = 0; i < s.length; i++){
+      const ch = s[i];
+      let val;
+      if(/[0-9]/.test(ch)) val = Number(ch);
+      else if(/[A-Za-z]/.test(ch)) val = 10 + (ch.toUpperCase().charCodeAt(0) - 65);
+      else return null;
+      p += val;
+      if(p > M) p -= M;
+      p *= 2;
+      if(p >= M1) p -= M1;
+    }
+    const index = M1 - p;
+    if(index === M) return '0';
+    return index < 10 ? String(index) : String.fromCharCode(65 + (index - 10));
   }
   function runSearchAlgorithm(algo, raw){
     if(!algo.enabled) return null;

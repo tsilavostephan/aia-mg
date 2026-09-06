@@ -2506,6 +2506,46 @@
     if(!(await applyTrackingTransformIfNeeded())) render();
   });
 
+  // ---------- douchette code-barres (USB/Bluetooth) qui "tape" comme un clavier ----------
+  // Si #search a déjà le focus, son propre gestionnaire keydown (voir plus bas, "Entrée" ->
+  // applyTrackingTransformIfNeeded) suffit. Ce tampon global (même principe que assets/scan.js côté
+  // mobile) couvre le cas où le focus est ailleurs au moment du scan (aucun champ, un bouton...) —
+  // sans forcer le focus nulle part en permanence (contrairement au mobile, cette page a de
+  // nombreux champs/boutons avec lesquels on ne veut pas interférer).
+  let hidBuffer = '';
+  let hidLastCharTime = 0;
+  const HID_CHAR_GAP_MS = 150;
+
+  document.addEventListener('keydown', (e)=>{
+    // Alt+lettre (raccourcis existants) et autres combinaisons (Ctrl+C, etc.) ne viennent jamais
+    // d'une douchette, qui n'envoie que des caractères bruts sans modificateur.
+    if(e.altKey || e.ctrlKey || e.metaKey) return;
+
+    const active = document.activeElement;
+    const isEditable = active && (
+      active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
+    );
+
+    if(e.key === 'Enter' || e.key === 'Tab'){
+      // Focus déjà sur un champ éditable : laisse son propre gestionnaire (ex. #search) s'en
+      // charger, pour ne pas déclencher la transformation deux fois.
+      if(isEditable || !hidBuffer) return;
+      const value = hidBuffer;
+      hidBuffer = '';
+      e.preventDefault();
+      els.search.value = value;
+      els.search.focus();
+      applyTrackingTransformIfNeeded().then(ok => { if(!ok) render(); });
+      return;
+    }
+    if(isEditable) return; // laisse le champ actif recevoir sa propre frappe normalement
+    if(e.key.length !== 1) return; // ignore Shift/Alt/flèches/etc.
+    const now = Date.now();
+    if(now - hidLastCharTime > HID_CHAR_GAP_MS) hidBuffer = '';
+    hidBuffer += e.key;
+    hidLastCharTime = now;
+  });
+
   els.copyUrlBtn.addEventListener('click', async ()=>{
     const ok = await copyTextToClipboard(els.trackingUrlBox.value);
     els.copyUrlBtn.textContent = ok ? 'Copié !' : 'Échec de la copie';

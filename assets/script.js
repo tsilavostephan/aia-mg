@@ -292,14 +292,19 @@
       id: 'colissimo', label: 'Colissimo', enabled: true,
       rules: [
         // Code-barres 1D "Geopost" de 28 caractères débutant par % (étiquette domestique) : digit 1
-        // = '%', digits 2-8 = code postal destination, digits 9-10 fixes, digits 11-12 = code
-        // produit, digits 13-22 = numéro de série, digits 23-25 = code service, digits 26-28 = code
-        // pays. Le numéro de suivi utile occupe les digits 11 à 22 (12 caractères) — voir la note
-        // technique GeoLabel de La Poste/Colissimo (ex. "%0010000116C0000148195802250" ->
-        // "6C0000148195"). L'ancienne borne (19 au lieu de 22) coupait le numéro 3 caractères trop tôt.
-        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 22 },
+        // = '%', digits 2-8 = code postal destination, digits 9-10 fixes, digits 11-12 = préfixe du
+        // numéro de suivi (2 car., ex. "6A"), digits 13-22 = numéro de colis (10 chiffres), digits
+        // 23-25 = code service, digits 26-28 = code pays. Le numéro de suivi complet affiché sur
+        // l'étiquette n'est PAS une simple sous-chaîne : il faut ajouter au préfixe+numéro (12
+        // caractères) une clé de contrôle calculée sur les 10 chiffres du numéro de colis (voir
+        // extractType 'colissimoKey' dans applyExtraction) — sans quoi le numéro de suivi obtenu est
+        // un caractère trop court et ne correspond à aucun colis en base (constaté en prod : "6A"+
+        // "0750391009" = "6A0750391009" alors que le vrai numéro est "6A07503910096").
+        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'colissimoKey', prefixStart: 11, prefixLen: 2, numStart: 13, numLen: 10 },
         // Même étiquette sans le "%" de tête (27 caractères au lieu de 28, ex.
         // "0094150116A0748389369801250" -> "6A0748389369") : mêmes bornes décalées d'1 caractère.
+        // Format vérifié différent de celui ci-dessus : le numéro de suivi imprimé sur CETTE variante
+        // n'inclut pas de clé de contrôle additionnelle (vérifié contre la base de production).
         { length: 27, startsWith: '', endsWith: '', contentType: 'any', extractType: 'slice', start: 10, end: 21 }
       ]
     },
@@ -309,7 +314,7 @@
       // un seul id) pour pouvoir l'activer/désactiver ou l'ajuster indépendamment si besoin.
       id: 'chronopost', label: 'Chronopost', enabled: true,
       rules: [
-        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'slice', start: 11, end: 22 }
+        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'colissimoKey', prefixStart: 11, prefixLen: 2, numStart: 13, numLen: 10 }
       ]
     },
     {
@@ -403,6 +408,27 @@
         const firstPart = clean.slice(0, cut1);
         if(firstPart.length < cut2) return null;
         return firstPart.slice(cut2 - 1);
+      }
+      case 'colissimoKey': {
+        // Clé de contrôle Colissimo/Chronopost (technique GeoLabel) : préfixe (ex. "6A") + numéro
+        // de colis (10 chiffres) + une clé calculée à partir de ce numéro. Clé = complément à la
+        // dizaine supérieure de (somme des chiffres en position paire × 3) + (somme des chiffres en
+        // position impaire), positions comptées à partir de 1 dans le numéro de colis.
+        const prefixStart = Number(rule.prefixStart), prefixLen = Number(rule.prefixLen);
+        const numStart = Number(rule.numStart), numLen = Number(rule.numLen);
+        if(!prefixStart || !prefixLen || !numStart || !numLen) return null;
+        if(clean.length < prefixStart - 1 + prefixLen || clean.length < numStart - 1 + numLen) return null;
+        const prefix = clean.slice(prefixStart - 1, prefixStart - 1 + prefixLen);
+        const numStr = clean.slice(numStart - 1, numStart - 1 + numLen);
+        if(!/^[0-9]+$/.test(numStr)) return null;
+        let oddSum = 0, evenSum = 0;
+        for(let i = 0; i < numStr.length; i++){
+          const digit = Number(numStr[i]);
+          if((i + 1) % 2 === 1) oddSum += digit; else evenSum += digit;
+        }
+        const total = oddSum + evenSum * 3;
+        const key = Math.ceil(total / 10) * 10 - total;
+        return prefix + numStr + String(key);
       }
       case 'dpdChecksum': {
         // Numéro de suivi client DPD (DPD Parcel Label Specification v2.4.1, §4.6.1.4) : champ T
@@ -515,6 +541,7 @@
     removeLast: 'Retirer les N derniers caractères',
     twoStepCut: 'Découpage en 2 étapes',
     dpdChecksum: 'Clé de contrôle DPD (ISO 7064 MOD 37,36)',
+    colissimoKey: 'Clé de contrôle Colissimo (préfixe + numéro + clé calculée)',
   };
 
   function cloneAlgorithms(list){
@@ -672,6 +699,23 @@
         numLen.addEventListener('input', ()=>{ rule.numLen = parseInt(numLen.value, 10) || null; });
         paramsWrap.appendChild(field('Début du numéro', numStart));
         paramsWrap.appendChild(field('Longueur du numéro', numLen));
+      }else if(rule.extractType === 'colissimoKey'){
+        const prefixStart = document.createElement('input');
+        prefixStart.type = 'number'; prefixStart.min = '1'; prefixStart.placeholder = 'Début préfixe'; prefixStart.value = rule.prefixStart || '';
+        prefixStart.addEventListener('input', ()=>{ rule.prefixStart = parseInt(prefixStart.value, 10) || null; });
+        const prefixLen = document.createElement('input');
+        prefixLen.type = 'number'; prefixLen.min = '1'; prefixLen.placeholder = 'Longueur préfixe'; prefixLen.value = rule.prefixLen || '';
+        prefixLen.addEventListener('input', ()=>{ rule.prefixLen = parseInt(prefixLen.value, 10) || null; });
+        const cNumStart = document.createElement('input');
+        cNumStart.type = 'number'; cNumStart.min = '1'; cNumStart.placeholder = 'Début numéro'; cNumStart.value = rule.numStart || '';
+        cNumStart.addEventListener('input', ()=>{ rule.numStart = parseInt(cNumStart.value, 10) || null; });
+        const cNumLen = document.createElement('input');
+        cNumLen.type = 'number'; cNumLen.min = '1'; cNumLen.placeholder = 'Longueur numéro'; cNumLen.value = rule.numLen || '';
+        cNumLen.addEventListener('input', ()=>{ rule.numLen = parseInt(cNumLen.value, 10) || null; });
+        paramsWrap.appendChild(field('Début du préfixe', prefixStart));
+        paramsWrap.appendChild(field('Longueur du préfixe', prefixLen));
+        paramsWrap.appendChild(field('Début du numéro', cNumStart));
+        paramsWrap.appendChild(field('Longueur du numéro', cNumLen));
       }
     }
     renderParams();
@@ -740,6 +784,8 @@
           `cut2="${rule.cut2 ?? ''}"`,
           `numStart="${rule.numStart ?? ''}"`,
           `numLen="${rule.numLen ?? ''}"`,
+          `prefixStart="${rule.prefixStart ?? ''}"`,
+          `prefixLen="${rule.prefixLen ?? ''}"`,
         ].join(' ');
         lines.push(`    <rule ${attrs} />`);
       });
@@ -792,6 +838,8 @@
         cut2: numAttr(ruleEl, 'cut2'),
         numStart: numAttr(ruleEl, 'numStart'),
         numLen: numAttr(ruleEl, 'numLen'),
+        prefixStart: numAttr(ruleEl, 'prefixStart'),
+        prefixLen: numAttr(ruleEl, 'prefixLen'),
       }));
       return {
         id: algoEl.getAttribute('id') || ('algo-importe-' + idx),

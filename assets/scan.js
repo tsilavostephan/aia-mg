@@ -57,10 +57,13 @@
       { length:32, startsWith:'%', endsWith:'^', contentType:'any', extractType:'twoStepCut', cut1:22, cut2:9 }
     ]},
     { id:'colissimo', label:'Colissimo', enabled:true, rules:[
-      { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'slice', start:11, end:22 }
+      // Le numéro de suivi complet inclut une clé de contrôle calculée (voir colissimoKey /
+      // applyExtraction ci-dessous) — une simple sous-chaîne (ex. "6A0750391009") est un caractère
+      // trop courte et ne correspond à aucun colis en base (le vrai numéro est "6A07503910096").
+      { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'colissimoKey', prefixStart:11, prefixLen:2, numStart:13, numLen:10 }
     ]},
     { id:'chronopost', label:'Chronopost', enabled:true, rules:[
-      { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'slice', start:11, end:22 }
+      { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'colissimoKey', prefixStart:11, prefixLen:2, numStart:13, numLen:10 }
     ]},
     { id:'dpd', label:'DPD', enabled:true, rules:[
       { length:28, startsWith:'', endsWith:'', contentType:'digits', extractType:'slice', start:8, end:21 },
@@ -122,6 +125,23 @@
         const firstPart = clean.slice(0, cut1);
         if(firstPart.length < cut2) return null;
         return firstPart.slice(cut2 - 1);
+      }
+      case 'colissimoKey': {
+        const prefixStart = Number(rule.prefixStart), prefixLen = Number(rule.prefixLen);
+        const numStart = Number(rule.numStart), numLen = Number(rule.numLen);
+        if(!prefixStart || !prefixLen || !numStart || !numLen) return null;
+        if(clean.length < prefixStart - 1 + prefixLen || clean.length < numStart - 1 + numLen) return null;
+        const prefix = clean.slice(prefixStart - 1, prefixStart - 1 + prefixLen);
+        const numStr = clean.slice(numStart - 1, numStart - 1 + numLen);
+        if(!/^[0-9]+$/.test(numStr)) return null;
+        let oddSum = 0, evenSum = 0;
+        for(let i = 0; i < numStr.length; i++){
+          const digit = Number(numStr[i]);
+          if((i + 1) % 2 === 1) oddSum += digit; else evenSum += digit;
+        }
+        const total = oddSum + evenSum * 3;
+        const key = Math.ceil(total / 10) * 10 - total;
+        return prefix + numStr + String(key);
       }
       case 'dpdChecksum': {
         const numStart = Number(rule.numStart), numLen = Number(rule.numLen);

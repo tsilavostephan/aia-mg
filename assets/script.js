@@ -264,31 +264,6 @@
 
   const DEFAULT_SEARCH_ALGORITHMS = [
     {
-      id: 'laposte', label: 'La Poste', enabled: true,
-      rules: [
-        // Code-barres de 32 caractères encadré par % ... ^ (ex. "%000000088000234424817600250A18^").
-        // Certains scans ajoutent des caractères après le "^" de fin (ex.
-        // "%000000087001431047100601250A10^26646bc") — runSearchAlgorithm() tronque automatiquement
-        // à la première occurrence de endsWith avant d'appliquer les règles ci-dessous.
-        // Découpage en 2 étapes : on garde les 22 premiers caractères, puis dans ce résultat on
-        // garde à partir de la position 9 (14 caractères au final).
-        { length: 32, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'twoStepCut', cut1: 22, cut2: 9 }
-      ]
-    },
-    {
-      // Même format (32, %...^) que "laposte" ci-dessus mais avec une borne de découpage décalée
-      // d'1 caractère (cut1:21 au lieu de 22, ex. "%009431087001435613025601250A18^..." ->
-      // "8700143561302") — un algorithme séparé plutôt qu'une règle de plus dans "laposte" : les deux
-      // partagent exactement les mêmes conditions de correspondance (longueur/bornes %/^), la
-      // première règle qui correspond l'emporterait toujours et la seconde ne serait jamais essayée.
-      // En algorithmes séparés, computeBestTracking() génère les deux candidats et retient celui qui
-      // correspond réellement à une commande en base.
-      id: 'laposte_v2', label: 'La Poste (variante)', enabled: true,
-      rules: [
-        { length: 32, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'twoStepCut', cut1: 21, cut2: 9 }
-      ]
-    },
-    {
       id: 'colissimo', label: 'Colissimo', enabled: true,
       rules: [
         // Code-barres 1D "Geopost" de 28 caractères débutant par % (étiquette domestique) : digit 1
@@ -300,70 +275,26 @@
         // extractType 'colissimoKey' dans applyExtraction) — sans quoi le numéro de suivi obtenu est
         // un caractère trop court et ne correspond à aucun colis en base (constaté en prod : "6A"+
         // "0750391009" = "6A0750391009" alors que le vrai numéro est "6A07503910096").
-        { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'colissimoKey', prefixStart: 11, prefixLen: 2, numStart: 13, numLen: 10 },
-        // Même étiquette sans le "%" de tête (27 caractères au lieu de 28, ex.
-        // "0094150116A0748389369801250" -> "6A0748389369") : mêmes bornes décalées d'1 caractère.
-        // Format vérifié différent de celui ci-dessus : le numéro de suivi imprimé sur CETTE variante
-        // n'inclut pas de clé de contrôle additionnelle (vérifié contre la base de production).
-        { length: 27, startsWith: '', endsWith: '', contentType: 'any', extractType: 'slice', start: 10, end: 21 }
-      ]
-    },
-    {
-      // Chronopost et Colissimo partagent la même étiquette/infrastructure Geopost domestique — même
-      // règle d'extraction que Colissimo, gardée comme algorithme séparé (plutôt que fusionnée sous
-      // un seul id) pour pouvoir l'activer/désactiver ou l'ajuster indépendamment si besoin.
-      id: 'chronopost', label: 'Chronopost', enabled: true,
-      rules: [
         { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'colissimoKey', prefixStart: 11, prefixLen: 2, numStart: 13, numLen: 10 }
       ]
     },
     {
       id: 'dpd', label: 'DPD', enabled: true,
       rules: [
-        // Format officiel DPD (DPD Parcel Label Specification 2.4.1) : texte imprimé sous le
-        // code-barres Code 128, entièrement numérique, 28 caractères : "PPPP PPP TTTT TTTT TTTT TT
-        // SSS CCC D" = code postal (7) + numéro de suivi (14) + code service (3) + code pays (3) +
-        // clé de contrôle (1). Le numéro de suivi utile occupe les positions 8 à 21.
-        { length: 28, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'slice', start: 8, end: 21 },
-        // Même position utile (8 à 21) sur une variante à 27 chiffres (un chiffre de moins, ex.
-        // "009415010804001783487101902" -> "10804001783487").
-        { length: 27, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'slice', start: 8, end: 21 },
-        // Variante alphanumérique préfixée "AC", 17 caractères (ex. "AC000058304494150" ->
-        // "AC0000583044") : le numéro de suivi utile occupe les 12 premiers caractères (préfixe
-        // inclus), pas une plage interne comme les deux règles numériques ci-dessus.
-        { length: 17, startsWith: 'AC', endsWith: '', contentType: 'alnum', extractType: 'slice', start: 1, end: 12 },
         // Format officiel avec clé de contrôle du bloc en position 28 (DPD Parcel Label
         // Specification v2.4.1, §4.6.1.4) : "P(7) T(14) S(3) C(3) D(1)" = code postal + numéro de
         // suivi + code service + code pays + clé du bloc complet (ce dernier caractère, souvent une
-        // lettre, empêche la règle "digits" ci-dessus de matcher). Le numéro de suivi client affiché
-        // = champ T (positions 8-21) + une clé calculée séparément sur ces 14 caractères par
+        // lettre, empêche un simple contentType "digits" de matcher). Le numéro de suivi client
+        // affiché = champ T (positions 8-21) + une clé calculée séparément sur ces 14 caractères par
         // ISO/IEC 7064 MOD 37,36 (ex. "009415010913008577590101902P" -> T="10913008577590" ->
         // "10913008577590U"), pas simplement le caractère D qui contrôle P+T+S+C.
         { length: 28, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'dpdChecksum', numStart: 8, numLen: 14 },
-        // Même variante à 27 chiffres que ci-dessus (aucune clé de bloc), mais précédée d'un '%'
-        // parasite constaté en prod (ex. "%009415005438800036587327901" -> "05438800036587") : sans
-        // cette règle, ce code-barres est de même longueur/même préfixe '%' qu'un Colissimo, mais
-        // 100% numérique — voir dpdPercentSlice ci-dessus (vérifie explicitement que le corps après
-        // le '%' est bien numérique, pour ne pas capturer un vrai Colissimo par erreur).
+        // Variante à 27 chiffres (aucune clé de bloc), mais précédée d'un '%' parasite constaté en
+        // prod (ex. "%009415005438800036587327901" -> "05438800036587") : ce code-barres est de même
+        // longueur/même préfixe '%' qu'un Colissimo, mais 100% numérique — voir dpdPercentSlice
+        // ci-dessous (vérifie explicitement que le corps après le '%' est bien numérique, pour ne pas
+        // capturer un vrai Colissimo par erreur).
         { length: 28, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'dpdPercentSlice', start: 8, end: 21 }
-      ]
-    },
-    {
-      id: 'gls', label: 'GLS', enabled: true,
-      rules: [
-        // Formats GLS trouvés dans la documentation publique (pas de spécification officielle GLS
-        // accessible, contrairement à DPD/Colissimo ci-dessus — confiance moindre) : France
-        // numérique 11 chiffres (ex. scan à 13 chiffres avec 2 caractères de bruit en fin) et
-        // international ~14 chiffres (scan à 16). On garde plusieurs longueurs explicites plutôt
-        // qu'une règle sans contrainte, pour éviter de tronquer par erreur un code d'un autre
-        // transporteur pas encore reconnu.
-        { length: 13, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'removeLast', count: 2 },
-        { length: 16, startsWith: '', endsWith: '', contentType: 'digits', extractType: 'removeLast', count: 2 },
-        // France alphanumérique 8 caractères (ex. "GL00L5UAZM" -> "00L5UAZM", scan à 10 caractères
-        // avec un préfixe de 2 caractères) et format international ~11 caractères (2 lettres + 9
-        // chiffres, scan à 13 caractères).
-        { length: 10, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'removeFirst', count: 2 },
-        { length: 13, startsWith: '', endsWith: '', contentType: 'alnum', extractType: 'removeFirst', count: 2 }
       ]
     }
   ];

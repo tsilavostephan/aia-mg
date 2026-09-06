@@ -53,23 +53,16 @@
 
   const SEARCH_ALGOS_STORAGE_KEY = 'commandes-search-algos';
   const DEFAULT_SEARCH_ALGORITHMS = [
-    { id:'laposte', label:'La Poste', enabled:true, rules:[
-      { length:32, startsWith:'%', endsWith:'^', contentType:'any', extractType:'twoStepCut', cut1:22, cut2:9 }
-    ]},
     { id:'colissimo', label:'Colissimo', enabled:true, rules:[
       // Le numéro de suivi complet inclut une clé de contrôle calculée (voir colissimoKey /
       // applyExtraction ci-dessous) — une simple sous-chaîne (ex. "6A0750391009") est un caractère
       // trop courte et ne correspond à aucun colis en base (le vrai numéro est "6A07503910096").
       { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'colissimoKey', prefixStart:11, prefixLen:2, numStart:13, numLen:10 }
     ]},
-    { id:'chronopost', label:'Chronopost', enabled:true, rules:[
-      { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'colissimoKey', prefixStart:11, prefixLen:2, numStart:13, numLen:10 }
-    ]},
     { id:'dpd', label:'DPD', enabled:true, rules:[
-      { length:28, startsWith:'', endsWith:'', contentType:'digits', extractType:'slice', start:8, end:21 },
       // Format officiel avec clé de contrôle du bloc en position 28 (DPD Parcel Label Specification
-      // v2.4.1, §4.6.1.4) : le caractère 28 (souvent une lettre) empêche la règle "digits"
-      // ci-dessus de matcher. Numéro de suivi client = champ T (positions 8-21, 14 caractères) +
+      // v2.4.1, §4.6.1.4) : le caractère 28 (souvent une lettre) empêche un simple contentType
+      // "digits" de matcher. Numéro de suivi client = champ T (positions 8-21, 14 caractères) +
       // clé calculée séparément par ISO/IEC 7064 MOD 37,36 (voir iso7064Mod3736 ci-dessous), ex.
       // "009415010913008577590101902P" -> T="10913008577590" -> "10913008577590U".
       { length:28, startsWith:'', endsWith:'', contentType:'alnum', extractType:'dpdChecksum', numStart:8, numLen:14 },
@@ -77,12 +70,6 @@
       // "05438800036587") : même longueur/même préfixe '%' qu'un Colissimo, mais 100% numérique —
       // voir dpdPercentSlice ci-dessous (vérifie que le corps après le '%' est bien numérique).
       { length:28, startsWith:'%', endsWith:'', contentType:'any', extractType:'dpdPercentSlice', start:8, end:21 }
-    ]},
-    { id:'gls', label:'GLS', enabled:true, rules:[
-      { length:13, startsWith:'', endsWith:'', contentType:'digits', extractType:'removeLast', count:2 },
-      { length:16, startsWith:'', endsWith:'', contentType:'digits', extractType:'removeLast', count:2 },
-      { length:10, startsWith:'', endsWith:'', contentType:'alnum', extractType:'removeFirst', count:2 },
-      { length:13, startsWith:'', endsWith:'', contentType:'alnum', extractType:'removeFirst', count:2 }
     ]},
   ];
   let SEARCH_ALGORITHMS = DEFAULT_SEARCH_ALGORITHMS;

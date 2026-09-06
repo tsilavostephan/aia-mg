@@ -33,6 +33,7 @@
     <p class="app-version" id="appVersion">v1.2 &middot; &copy; TSLV</p>
   </div>
   <button type="button" id="updateAvailableBtn" class="update-btn" style="display:none;" title="Une nouvelle version de l'application est disponible">⟳ MAJ</button>
+  <span id="userInfo" class="user-info"></span>
   <a href="/api/logout" class="logout-btn" title="Se déconnecter">⏻ Se déconnecter</a>
 </div>
 
@@ -80,7 +81,7 @@
     <span>Colis (<span id="rowCount">0</span> enregistrés, <span id="resolvedCount">0</span> à jour<span id="resolvedPercent"></span>)</span>
     <span class="section-title-actions">
       <button type="button" id="dashboardBtn" class="secondary" title="Taux de résolution par transporteur, par jour/semaine/mois">📊 Tableau de bord</button>
-      <button type="button" id="focusDbBtn" class="focus-toggle-btn" title="Verrouillé — Alt+T pour déverrouiller">🔒</button>
+      <button type="button" id="usersBtn" class="secondary" style="display:none;" title="Gérer les comptes utilisateurs">👥 Comptes</button>
     </span>
   </h2>
   <div class="row search-row">
@@ -127,7 +128,7 @@
     <div id="backupProgressText" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
   </div>
   <div class="actions actions-bottom">
-    <button id="exportJsonEncryptedBtn" class="secondary" title="Verrouillé — Alt+T pour déverrouiller" disabled>📤 Exporter</button>
+    <button id="exportJsonEncryptedBtn" class="secondary" title="Télécharger un export CSV de toute la base">📤 Exporter</button>
     <button id="importBackupBtn" class="secondary" title="Recharge la liste et les compteurs depuis la base">📥 Actualiser</button>
     <button id="cleanInvalidBtn" class="secondary" style="display:none;">🧹 Nettoyer les colis sans N°/Amazon</button>
     <button id="cleanInvalidKmBtn" class="secondary" style="display:none;">🧹 Nettoyer les numéros dernier km invalides</button>
@@ -248,17 +249,17 @@
   </div>
 </div>
 
-<div id="exportCodeModalBg" class="modal-bg" style="display:none;">
-  <div class="modal-box modal-box-narrow">
-    <h2 class="modal-title">Déverrouiller</h2>
-    <p class="modal-subtext">Code requis pour afficher toutes les sections et activer l'export.</p>
-    <div class="row"><label>Code<br>
-      <input type="password" id="exportCodeInput" autocomplete="off" style="width:100%;">
-    </label></div>
-    <div id="exportCodeModalError" class="modal-error"></div>
+<div id="usersModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box modal-box-wide">
+    <h2 class="modal-title">Comptes utilisateurs</h2>
+    <p class="modal-subtext">
+      Rôle <strong>Admin</strong> : accès complet. <strong>PC</strong> : tableau de bord, recherche,
+      actualisation, export. <strong>Mobile</strong> : recherche par caméra uniquement, sur une page
+      dédiée. <strong>En attente</strong> : aucun accès tant qu'un rôle n'est pas attribué.
+    </p>
+    <div id="usersList"></div>
     <div class="actions">
-      <button id="exportCodeConfirmBtn">🔓 Déverrouiller</button>
-      <button id="exportCodeCancelBtn" class="secondary">✕ Annuler</button>
+      <button type="button" id="usersCloseBtn" class="secondary">✕ Fermer</button>
     </div>
   </div>
 </div>

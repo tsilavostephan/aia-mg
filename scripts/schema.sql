@@ -41,3 +41,16 @@ UPDATE colis SET resolved_at = updated_at
 -- transporteur en tête de liste n'aiderait pas ce filtre-là, d'où deux index simples.
 CREATE INDEX IF NOT EXISTS idx_colis_created_at ON colis (created_at);
 CREATE INDEX IF NOT EXISTS idx_colis_resolved_at ON colis (resolved_at) WHERE resolved_at IS NOT NULL;
+
+-- Comptes utilisateurs (remplace le code d'accès unique partagé) : inscription libre, mais un
+-- compte reste "pending" (aucun accès à l'appli, voir middleware.js) tant qu'un admin ne lui
+-- attribue pas explicitement un rôle depuis le panneau "Comptes" (voir api/users.js).
+CREATE TABLE IF NOT EXISTS users (
+  id BIGSERIAL PRIMARY KEY,
+  email TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'pending' CHECK (role IN ('pending','mobile','pc','admin')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  approved_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users (lower(email));

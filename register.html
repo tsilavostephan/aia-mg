@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Créer un compte — AIA</title>
+<style>
+  :root{ --primary:#2563eb; --danger:#dc2626; --success:#16a34a; --border:#e2e8f0; --muted:#64748b; --bg:#f8fafc; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:var(--bg); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  form{
+    width:100%; max-width:320px; padding:28px; background:#fff; border:1px solid var(--border);
+    border-radius:14px; box-shadow:0 4px 16px rgba(0,0,0,.06);
+  }
+  .login-logo{ display:block; height:56px; width:auto; margin:0 auto 18px; }
+  h1{ font-size:15px; text-transform:uppercase; letter-spacing:.04em; color:var(--primary); margin:0 0 6px; text-align:center; }
+  p{ font-size:13px; color:var(--muted); margin:0 0 18px; text-align:center; }
+  input{
+    width:100%; padding:12px; font-size:16px; border:1px solid var(--border); border-radius:8px;
+    margin-bottom:14px;
+  }
+  button{
+    width:100%; padding:12px; font-size:14px; font-weight:600; color:#fff; background:var(--primary);
+    border:none; border-radius:8px; cursor:pointer;
+  }
+  button:disabled{ opacity:.6; cursor:default; }
+  #registerError{ color:var(--danger); font-size:13px; margin-top:12px; display:none; }
+  #registerSuccess{ color:var(--success); font-size:13px; margin-top:12px; display:none; }
+  .login-link{ font-size:13px; text-align:center; margin-top:16px; }
+  .login-link a{ color:var(--primary); text-decoration:none; }
+  .login-link a:hover{ text-decoration:underline; }
+</style>
+</head>
+<body>
+<form id="registerForm">
+  <img class="login-logo" src="/assets/logo-aia.png" alt="AIA">
+  <h1>Créer un compte</h1>
+  <p>Le compte devra être validé par un administrateur avant de pouvoir être utilisé.</p>
+  <input type="email" id="emailInput" placeholder="Email" autocomplete="email" autofocus>
+  <input type="password" id="passwordInput" placeholder="Mot de passe (8 caractères min.)" autocomplete="new-password">
+  <input type="password" id="passwordConfirmInput" placeholder="Confirmer le mot de passe" autocomplete="new-password">
+  <button type="submit" id="submitBtn">Créer le compte</button>
+  <p id="registerError"></p>
+  <p id="registerSuccess"></p>
+  <p class="login-link"><a href="/login.html">J'ai déjà un compte</a></p>
+</form>
+<script>
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const errEl = document.getElementById('registerError');
+    const okEl = document.getElementById('registerSuccess');
+    const email = document.getElementById('emailInput').value;
+    const password = document.getElementById('passwordInput').value;
+    const passwordConfirm = document.getElementById('passwordConfirmInput').value;
+    errEl.style.display = 'none';
+    okEl.style.display = 'none';
+
+    if (password !== passwordConfirm) {
+      errEl.textContent = 'Les mots de passe ne correspondent pas.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Création…';
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok) {
+        if (json.role === 'admin') {
+          // Amorçage du premier compte admin (APP_BOOTSTRAP_ADMIN_EMAIL) : déjà connecté.
+          window.location.href = '/';
+          return;
+        }
+        okEl.textContent = json.message || 'Compte créé — en attente de validation par un administrateur.';
+        okEl.style.display = 'block';
+        document.getElementById('registerForm').reset();
+      } else {
+        errEl.textContent = json.error || "Échec de la création du compte.";
+        errEl.style.display = 'block';
+      }
+    } catch (err) {
+      errEl.textContent = 'Erreur réseau, réessayez.';
+      errEl.style.display = 'block';
+    }
+    btn.disabled = false;
+    btn.textContent = 'Créer le compte';
+  });
+</script>
+</body>
+</html>

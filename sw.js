@@ -5,8 +5,11 @@ const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './scan.html',
+  './manifest-scan.json',
   './assets/styles.css',
   './assets/script.js',
+  './assets/scan.js',
   './assets/favicon.png',
   './assets/apple-touch-icon.png',
   './assets/logo-aia.png',
@@ -38,10 +41,11 @@ self.addEventListener('fetch', (event) => {
   // - /api/version : c'est justement ce que le client interroge pour détecter qu'une nouvelle
   //   version a été déployée (voir assets/script.js) — le mettre en cache le figerait sur la
   //   première version vue et casserait la détection.
-  // - /api/login-code : renvoie le code d'accès en clair (voir api/login-code.js) — le mettre en
-  //   cache le rendrait lisible par quiconque inspecte le cache du service worker, sans même être
-  //   authentifié à ce moment-là.
-  if(event.request.url.endsWith('/api/version') || event.request.url.endsWith('/api/login-code')){
+  // - /api/session : renvoie l'email/rôle du compte connecté (voir api/session.js) — le mettre en
+  //   cache le rendrait lisible par quiconque inspecte le cache du service worker (et figerait le
+  //   rôle affiché après un changement de rôle par un admin), sans même être authentifié à ce
+  //   moment-là.
+  if(event.request.url.endsWith('/api/version') || event.request.url.endsWith('/api/session')){
     event.respondWith(fetch(event.request));
     return;
   }

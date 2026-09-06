@@ -9,6 +9,7 @@
 // plus qu'une seule entrée "api/scrape.js" (maxDuration + includeFiles du binaire Chromium)
 // s'appliquant à tous les transporteurs.
 const { setCorsHeaders } = require('./_scrapeLib');
+const { getSession } = require('../lib/auth');
 
 const SCRAPERS = {
   '4px': require('../lib/scrapers/4px'),
@@ -27,6 +28,15 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     setCorsHeaders(res);
     res.status(204).end();
+    return;
+  }
+
+  // Le scraping (import/écriture massive dans la base) est réservé aux comptes admin — pc/mobile
+  // n'ont accès qu'à la recherche (voir api/db.js).
+  const session = getSession(req);
+  if (!session || session.role !== 'admin') {
+    setCorsHeaders(res);
+    res.status(403).json({ error: 'Réservé aux comptes administrateur.' });
     return;
   }
 

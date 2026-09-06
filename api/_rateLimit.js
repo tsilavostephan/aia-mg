@@ -1,4 +1,5 @@
-// Limite les tentatives de connexion (api/auth.js) par adresse IP, avec verrouillage progressif :
+// Limite les tentatives de connexion (api/login.js, api/register.js) par adresse IP, avec
+// verrouillage progressif :
 // 5 échecs -> 30s, 10 échecs -> 5 min, 20 échecs -> 30 min. Sans ça, l'endpoint accepte un nombre
 // illimité d'essais par seconde (confirmé par un test réel : 30 tentatives consécutives, toutes
 // traitées sans ralentissement).

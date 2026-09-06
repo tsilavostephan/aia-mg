@@ -1,15 +1,26 @@
 // Point d'entrée unique pour toutes les opérations sur la base de colis (Vercel Postgres), routées
 // par `action` — même approche que api/scrape.js (dispatch) et l'ancien api/backup.js, pour rester
 // sous la limite de fonctions serverless du plan Hobby (voir commentaire dans api/scrape.js).
-// L'authentification (cookie aia_auth) est déjà assurée par middleware.js pour toute cette route.
+//
+// L'authentification (cookie aia_auth) est déjà assurée par middleware.js pour toute cette route,
+// mais celui-ci ne route que par CHEMIN (pending/mobile/pc/admin) — il ne lit pas le corps des
+// requêtes. La restriction fine PAR ACTION (ex. un compte "pc" ne peut pas importer/scraper/nettoyer)
+// est donc vérifiée ici, via le rôle du jeton de session (voir lib/auth.js).
 const { setCorsHeaders } = require('./_scrapeLib');
+const { getSession } = require('../lib/auth');
 const db = require('../lib/db');
 
-function checkExportCode(code) {
-  const expected = process.env.APP_EXPORT_CODE;
-  if (!expected) return "Variable d'environnement APP_EXPORT_CODE manquante sur Vercel.";
-  if (code !== expected) return "Code d'exportation incorrect.";
-  return null;
+// null = toutes les actions autorisées pour ce rôle.
+const ROLE_ALLOWED_ACTIONS = {
+  admin: null,
+  pc: ['exists', 'stats', 'search', 'resolution-stats', 'export-csv'],
+  mobile: ['exists', 'search'],
+};
+
+function actionAllowedForRole(role, action) {
+  const allowed = ROLE_ALLOWED_ACTIONS[role];
+  if (allowed === undefined) return false; // rôle inconnu, ou 'pending' (jamais d'accès applicatif)
+  return allowed === null || allowed.includes(action);
 }
 
 module.exports = async function handler(req, res) {
@@ -20,10 +31,15 @@ module.exports = async function handler(req, res) {
     return;
   }
 
+  const action = req.method === 'GET' ? req.query.action : (req.body || {}).action;
+  const session = getSession(req);
+  if (!actionAllowedForRole(session ? session.role : null, action)) {
+    res.status(403).json({ error: "Action non autorisée pour ce rôle." });
+    return;
+  }
+
   try {
     if (req.method === 'GET') {
-      const action = req.query.action;
-
       if (action === 'exists') {
         res.status(200).json({ exists: await db.trackingNumberExists(req.query.numSuivi) });
         return;
@@ -56,13 +72,6 @@ module.exports = async function handler(req, res) {
       }
 
       if (action === 'export-csv') {
-        // Le code passe en en-tête (pas en query string) pour ne jamais apparaître dans l'URL —
-        // voir le commentaire correspondant dans assets/script.js.
-        const err = checkExportCode(req.headers['x-export-code']);
-        if (err) {
-          res.status(401).json({ error: err });
-          return;
-        }
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', 'attachment; filename="aia-mg-export.csv"');
         res.setHeader('Cache-Control', 'private, no-store');
@@ -79,16 +88,6 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = req.body || {};
-
-      if (body.action === 'verify-code') {
-        const err = checkExportCode(body.exportCode);
-        if (err) {
-          res.status(401).json({ error: err });
-          return;
-        }
-        res.status(200).json({ ok: true });
-        return;
-      }
 
       if (body.action === 'import-batch') {
         const rows = Array.isArray(body.rows) ? body.rows : null;
@@ -111,26 +110,16 @@ module.exports = async function handler(req, res) {
       }
 
       if (body.action === 'clean-invalid') {
-        const err = checkExportCode(body.exportCode);
-        if (err) {
-          res.status(401).json({ error: err });
-          return;
-        }
         res.status(200).json(await db.cleanInvalid());
         return;
       }
 
       if (body.action === 'clean-invalid-km') {
-        const err = checkExportCode(body.exportCode);
-        if (err) {
-          res.status(401).json({ error: err });
-          return;
-        }
         res.status(200).json(await db.cleanInvalidKm());
         return;
       }
 
-      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'verify-code', 'import-batch', 'apply-scrape-results', 'clean-invalid' ou 'clean-invalid-km')." });
+      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'import-batch', 'apply-scrape-results', 'clean-invalid' ou 'clean-invalid-km')." });
       return;
     }
 

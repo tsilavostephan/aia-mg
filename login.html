@@ -28,38 +28,46 @@
   }
   button:disabled{ opacity:.6; cursor:default; }
   #loginError{ color:var(--danger); font-size:13px; margin-top:12px; display:none; }
+  .register-link{ font-size:13px; text-align:center; margin-top:16px; }
+  .register-link a{ color:var(--primary); text-decoration:none; }
+  .register-link a:hover{ text-decoration:underline; }
 </style>
 </head>
 <body>
 <form id="loginForm">
   <img class="login-logo" src="/assets/logo-aia.png" alt="AIA">
   <h1>Page de connexion sécurisée</h1>
-  <p>Entrez le code d'accès pour continuer.</p>
-  <input type="password" id="codeInput" placeholder="Code d'accès" autocomplete="current-password" autofocus>
+  <p>Entrez vos identifiants pour continuer.</p>
+  <input type="email" id="emailInput" placeholder="Email" autocomplete="email" autofocus>
+  <input type="password" id="passwordInput" placeholder="Mot de passe" autocomplete="current-password">
   <button type="submit" id="submitBtn">Se connecter</button>
   <p id="loginError"></p>
+  <p class="register-link"><a href="/register.html">Créer un compte</a></p>
 </form>
 <script>
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
     const errEl = document.getElementById('loginError');
-    const code = document.getElementById('codeInput').value;
+    const email = document.getElementById('emailInput').value;
+    const password = document.getElementById('passwordInput').value;
     errEl.style.display = 'none';
     btn.disabled = true;
     btn.textContent = 'Connexion…';
     try {
-      const res = await fetch('/api/auth', {
+      const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ email, password }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok) {
+        // Le middleware redirige lui-même vers /pending.html si le compte n'a pas encore été
+        // validé par un admin — pas besoin de distinguer les cas ici.
         window.location.href = '/';
         return;
       }
-      errEl.textContent = json.error || 'Code incorrect.';
+      errEl.textContent = json.error || 'Email ou mot de passe incorrect.';
       errEl.style.display = 'block';
     } catch (err) {
       errEl.textContent = 'Erreur réseau, réessayez.';

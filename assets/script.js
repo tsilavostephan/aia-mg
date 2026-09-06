@@ -38,11 +38,12 @@
     backupProgressWrap: document.getElementById('backupProgressWrap'),
     backupProgressBar: document.getElementById('backupProgressBar'),
     backupProgressText: document.getElementById('backupProgressText'),
-    exportCodeModalBg: document.getElementById('exportCodeModalBg'),
-    exportCodeInput: document.getElementById('exportCodeInput'),
-    exportCodeModalError: document.getElementById('exportCodeModalError'),
-    exportCodeConfirmBtn: document.getElementById('exportCodeConfirmBtn'),
-    exportCodeCancelBtn: document.getElementById('exportCodeCancelBtn'),
+    csvSection: document.getElementById('csvSection'),
+    userInfo: document.getElementById('userInfo'),
+    usersBtn: document.getElementById('usersBtn'),
+    usersModalBg: document.getElementById('usersModalBg'),
+    usersList: document.getElementById('usersList'),
+    usersCloseBtn: document.getElementById('usersCloseBtn'),
     dbLog: document.getElementById('dbLog'),
     cleanInvalidBtn: document.getElementById('cleanInvalidBtn'),
     cleanInvalidKmBtn: document.getElementById('cleanInvalidKmBtn'),
@@ -106,7 +107,6 @@
     scannerRafaleCheckbox: document.getElementById('scannerRafaleCheckbox'),
     scannerHint: document.getElementById('scannerHint'),
     closeScannerBtn: document.getElementById('closeScannerBtn'),
-    focusDbBtn: document.getElementById('focusDbBtn'),
     autoDetailsCheckbox: document.getElementById('autoDetailsCheckbox'),
     appVersion: document.getElementById('appVersion'),
     updateAvailableBtn: document.getElementById('updateAvailableBtn'),
@@ -1117,7 +1117,7 @@
 
     if(totalBatches > 0) showBackupProgress(100, 'Mise à jour de l\'affichage…');
     currentOffset = 0;
-    await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+    await Promise.all([fetchAndRenderPage(), refreshStats(), refreshCarrierTrackingIfAdmin()]);
     hideBackupProgress();
 
     selectedFiles = [];
@@ -2215,10 +2215,10 @@
       closeSearchOptionsModal();
     }else if(els.fourPxApiConfigModalBg.style.display === 'block'){
       closeScrapeConfigModal();
-    }else if(els.exportCodeModalBg.style.display === 'block'){
-      closeExportCodeModal();
     }else if(els.dashboardModalBg.style.display === 'block'){
       closeDashboardModal();
+    }else if(els.usersModalBg.style.display === 'block'){
+      els.usersModalBg.style.display = 'none';
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){
@@ -2254,7 +2254,6 @@
     { code:'KeyS', label:'Scanner un code-barres / QR code',    run: () => els.scanBtn.click(), el: els.scanBtn },
     { code:'KeyE', label:'Exporter la base (.aiae)',            run: () => els.exportJsonEncryptedBtn.click(), el: els.exportJsonEncryptedBtn },
     { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click(), el: els.importBackupBtn },
-    { code:'KeyT', label:'Verrouiller / déverrouiller',         run: () => els.focusDbBtn.click(), el: els.focusDbBtn },
     { code:'ArrowUp',   label:'Onglet transporteur précédent',  run: () => switchCarrierTab(-1), displayKey:'↑', el: els.carrierTabs },
     { code:'ArrowDown', label:'Onglet transporteur suivant',    run: () => switchCarrierTab(1),  displayKey:'↓', el: els.carrierTabs },
   ];
@@ -2907,80 +2906,140 @@
   });
   els.search.addEventListener('change', applyTrackingTransformIfNeeded);
 
-  // ---------- verrouillage : au départ, section 3 seule + export bloqué ----------
-  // Dès la connexion, l'app démarre verrouillée : seule la section 3 est visible (mode plein
-  // écran) et le bouton Exporter est désactivé. Alt+T (ou le bouton 🔒) demande le code
-  // d'exportation pour tout déverrouiller d'un coup — toutes les sections réapparaissent et
-  // Exporter n'a plus besoin de code pour le reste de la session (code mémorisé côté client).
-  // Alt+T une seconde fois reverrouille instantanément, sans code.
-  let exportUnlocked = false;
-  let unlockedExportCode = null;
+  // ---------- rôle du compte connecté : remplace l'ancien verrouillage par code d'export ----------
+  // Le rôle (pending/mobile/pc/admin) vient du cookie de session (voir /api/session, lib/auth.js) —
+  // "mobile" n'atteint jamais cette page (redirigé vers /scan.html par middleware.js), "pending" non
+  // plus (redirigé vers /pending.html). Seuls "pc" et "admin" affichent réellement index.html.
+  let currentUserRole = null;
 
-  function syncLockUi(){
-    document.body.classList.toggle('focus-mode', !exportUnlocked);
-    els.focusDbBtn.textContent = exportUnlocked ? '🔓' : '🔒';
-    els.focusDbBtn.title = exportUnlocked ? 'Déverrouillé — Alt+T pour verrouiller' : 'Verrouillé — Alt+T pour déverrouiller';
-    els.exportJsonEncryptedBtn.disabled = !exportUnlocked;
-    els.exportJsonEncryptedBtn.title = exportUnlocked ? 'Télécharger un export CSV de toute la base' : 'Verrouillé — Alt+T pour déverrouiller';
-    // Masqués (pas juste désactivés) tant que non déverrouillé : ces actions sont destructrices,
-    // autant ne même pas les montrer avant Alt+T plutôt que de les laisser visibles mais grisées.
-    els.cleanInvalidBtn.style.display = exportUnlocked ? '' : 'none';
-    els.cleanInvalidBtn.title = 'Retire définitivement de la base les colis sans N° Commande ou sans Commande Amazon';
-    els.cleanInvalidKmBtn.style.display = exportUnlocked ? '' : 'none';
-    els.cleanInvalidKmBtn.title = 'Vide définitivement les numéros dernier kilométrique invalides (non alphanumériques, sans aucun chiffre, ou mots parasites connus)';
+  // "pc" garde la vue "Colis" seule en permanence (import CSV/scraping ne lui sont pas destinés) —
+  // .focus-mode réutilise volontairement la même classe qui pilotait avant le verrouillage par code
+  // (voir styles.css), pour que "Détails auto" continue de fonctionner sans changement pour ce rôle.
+  function applyRoleUi(role){
+    currentUserRole = role;
+    const isAdmin = role === 'admin';
+    document.body.classList.toggle('focus-mode', !isAdmin);
+    els.csvSection.style.display = isAdmin ? '' : 'none';
+    if(!isAdmin) els.carrierSection.style.display = 'none';
+    els.cleanInvalidBtn.style.display = isAdmin ? '' : 'none';
+    els.cleanInvalidKmBtn.style.display = isAdmin ? '' : 'none';
+    els.usersBtn.style.display = isAdmin ? '' : 'none';
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
   }
 
-  function openExportCodeModal(){
-    els.exportCodeInput.value = '';
-    els.exportCodeModalError.textContent = '';
-    els.exportCodeInput.disabled = false;
-    els.exportCodeConfirmBtn.disabled = false;
-    els.exportCodeCancelBtn.disabled = false;
-    els.exportCodeModalBg.style.display = 'block';
-    els.exportCodeInput.focus();
-  }
-  function closeExportCodeModal(){
-    els.exportCodeModalBg.style.display = 'none';
+  // unresolved-rows/le suivi par transporteur sont réservés au rôle admin côté serveur (voir
+  // api/db.js) — un compte "pc" n'a de toute façon jamais la section transporteur visible, mais on
+  // évite quand même l'appel (qui échouerait en 403) plutôt que de compter sur l'échec silencieux.
+  async function refreshCarrierTrackingIfAdmin(){
+    if(currentUserRole !== 'admin') return;
+    await refreshUnresolvedRows().then(updateCarrierTracking);
   }
 
-  els.focusDbBtn.addEventListener('click', ()=>{
-    if(exportUnlocked){
-      exportUnlocked = false;
-      unlockedExportCode = null;
-      syncLockUi();
-    }else{
-      openExportCodeModal();
+  const ROLE_LABELS = { admin: 'Admin', pc: 'PC', mobile: 'Mobile', pending: 'En attente' };
+
+  // Appelé tout au début du chargement (avant tout le reste) : l'interface doit déjà être adaptée
+  // au rôle avant que la moindre donnée ne soit affichée. En cas d'échec (session invalide malgré
+  // le passage de middleware.js — ne devrait normalement pas arriver), on se rabat sur "pc" (le
+  // rôle le plus restrictif parmi ceux qui atteignent réellement cette page).
+  async function loadCurrentUser(){
+    try{
+      const res = await fetch('/api/session', { cache: 'no-store' });
+      if(!res.ok) throw new Error('session invalide');
+      const { role, email } = await res.json();
+      applyRoleUi(role);
+      els.userInfo.innerHTML = `<strong>${escapeHtmlAttr(email)}</strong> (${ROLE_LABELS[role] || role})`;
+    }catch(e){
+      applyRoleUi('pc');
     }
-  });
-  els.exportCodeCancelBtn.addEventListener('click', closeExportCodeModal);
-  els.exportCodeModalBg.addEventListener('click', (e)=>{
-    if(e.target === els.exportCodeModalBg) closeExportCodeModal();
-  });
+  }
 
-  els.exportCodeConfirmBtn.addEventListener('click', async ()=>{
-    const code = els.exportCodeInput.value;
-    if(!code){
-      els.exportCodeModalError.textContent = 'Code requis.';
+  // ---------- fenêtre "Comptes" (admin uniquement) ----------
+  function renderUsersList(users){
+    if(!users.length){
+      els.usersList.innerHTML = '<p style="font-size:13px; color:var(--muted);">Aucun compte.</p>';
       return;
     }
-    els.exportCodeModalError.textContent = '';
-    els.exportCodeInput.disabled = true;
-    els.exportCodeConfirmBtn.disabled = true;
-    els.exportCodeCancelBtn.disabled = true;
+    els.usersList.innerHTML = users.map(u => `
+      <div class="row users-row" data-user-id="${u.id}" style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
+        <span style="flex:1; min-width:200px; font-size:13px;">${escapeHtmlAttr(u.email)}${u.role === 'pending' ? ' <span style="color:var(--danger); font-weight:600;">(en attente)</span>' : ''}</span>
+        <select class="userRoleSelect" style="font-size:13px;">
+          ${['pending','mobile','pc','admin'].map(r => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${ROLE_LABELS[r]}</option>`).join('')}
+        </select>
+        <button type="button" class="secondary userSaveRoleBtn" style="margin:0;">💾 Enregistrer</button>
+        <button type="button" class="secondary userResetPwBtn" style="margin:0;">🔑 Nouveau mot de passe</button>
+      </div>
+    `).join('');
+
+    els.usersList.querySelectorAll('.users-row').forEach(row=>{
+      const userId = Number(row.dataset.userId);
+
+      row.querySelector('.userSaveRoleBtn').addEventListener('click', async (e)=>{
+        const btn = e.currentTarget;
+        const role = row.querySelector('.userRoleSelect').value;
+        btn.disabled = true;
+        try{
+          await dbPostTo('/api/users', { action:'set-role', userId, role });
+          await loadUsersList();
+        }catch(err){
+          alert(err && err.message ? err.message : 'Échec de la mise à jour du rôle.');
+          btn.disabled = false;
+        }
+      });
+
+      row.querySelector('.userResetPwBtn').addEventListener('click', async (e)=>{
+        const btn = e.currentTarget;
+        const password = prompt('Nouveau mot de passe (8 caractères minimum) :');
+        if(!password) return;
+        if(password.length < 8){
+          alert('Le mot de passe doit contenir au moins 8 caractères.');
+          return;
+        }
+        btn.disabled = true;
+        try{
+          await dbPostTo('/api/users', { action:'set-password', userId, password });
+          alert('Mot de passe mis à jour.');
+        }catch(err){
+          alert(err && err.message ? err.message : 'Échec de la mise à jour du mot de passe.');
+        }finally{
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function loadUsersList(){
+    els.usersList.innerHTML = '<p style="font-size:13px; color:var(--muted);">Chargement…</p>';
     try{
-      await dbPost('verify-code', { exportCode: code });
-      unlockedExportCode = code;
-      exportUnlocked = true;
-      syncLockUi();
-      closeExportCodeModal();
+      const res = await fetch('/api/users', { cache:'no-store' });
+      if(!res.ok) throw new Error((await res.json().catch(()=>({}))).error || `HTTP ${res.status}`);
+      const { users } = await res.json();
+      renderUsersList(users);
     }catch(e){
-      els.exportCodeModalError.textContent = e && e.message ? e.message : 'Échec de la vérification.';
-    }finally{
-      els.exportCodeInput.disabled = false;
-      els.exportCodeConfirmBtn.disabled = false;
-      els.exportCodeCancelBtn.disabled = false;
+      els.usersList.innerHTML = `<p style="font-size:13px; color:var(--danger);">Erreur de chargement (${e && e.message ? e.message : 'erreur inconnue'}).</p>`;
     }
+  }
+
+  // Petit POST JSON générique vers une route qui n'est pas /api/db (dbPost() est câblé dessus).
+  async function dbPostTo(url, body){
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if(!res.ok){
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  els.usersBtn.addEventListener('click', ()=>{
+    els.usersModalBg.style.display = 'block';
+    loadUsersList();
+  });
+  els.usersCloseBtn.addEventListener('click', ()=>{ els.usersModalBg.style.display = 'none'; });
+  els.usersModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.usersModalBg) els.usersModalBg.style.display = 'none';
   });
 
   // ---------- "Détails auto" : ouvre automatiquement le détail d'un colis en mode plein écran ----------
@@ -3035,16 +3094,12 @@
   }
 
   els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
-    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
     els.exportJsonEncryptedBtn.disabled = true;
     try{
       showBackupProgress(0, 'Préparation du CSV…');
-      // Le code d'export passe en en-tête (pas dans l'URL) pour ne jamais apparaître dans
-      // l'historique du navigateur ni les journaux d'accès serveur.
-      const res = await fetch('/api/db?action=export-csv', {
-        headers: { 'X-Export-Code': unlockedExportCode },
-        cache: 'no-store',
-      });
+      // Plus de code d'export à fournir : le rôle du compte connecté (pc/admin, vérifié
+      // côté serveur dans api/db.js) est désormais la seule autorisation nécessaire.
+      const res = await fetch('/api/db?action=export-csv', { cache: 'no-store' });
       if(!res.ok){
         const errData = await res.json().catch(() => null);
         throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
@@ -3064,7 +3119,7 @@
       setDbLog(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
       hideBackupProgress();
-      els.exportJsonEncryptedBtn.disabled = !exportUnlocked;
+      els.exportJsonEncryptedBtn.disabled = false;
     }
   });
 
@@ -3072,7 +3127,7 @@
     els.importBackupBtn.disabled = true;
     try{
       currentOffset = 0;
-      await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+      await Promise.all([fetchAndRenderPage(), refreshStats(), refreshCarrierTrackingIfAdmin()]);
       setDbLog('Base rechargée depuis Postgres.', false);
     }catch(e){
       setDbLog(`Échec du rechargement (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
@@ -3082,16 +3137,15 @@
   });
 
   els.cleanInvalidBtn.addEventListener('click', async ()=>{
-    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
     if(!confirm('Retirer définitivement de la base tous les colis sans N° Commande ou sans Commande Amazon ?')) return;
     els.cleanInvalidBtn.disabled = true;
     try{
-      const { removed } = await dbPost('clean-invalid', { exportCode: unlockedExportCode });
+      const { removed } = await dbPost('clean-invalid', {});
       if(removed === 0){
         setDbLog('Aucun colis sans N° Commande / Commande Amazon dans la base actuelle.', false);
       }else{
         currentOffset = 0;
-        await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+        await Promise.all([fetchAndRenderPage(), refreshStats(), refreshCarrierTrackingIfAdmin()]);
         setDbLog(`${removed} colis retiré(s) (sans N° Commande / Commande Amazon).`, false);
       }
     }catch(e){
@@ -3102,16 +3156,15 @@
   });
 
   els.cleanInvalidKmBtn.addEventListener('click', async ()=>{
-    if(!exportUnlocked || !unlockedExportCode) return; // bouton normalement désactivé dans ce cas
     if(!confirm('Vider définitivement le numéro dernier kilométrique de tous les colis où cette valeur ne serait pas alphanumérique, ne contiendrait aucun chiffre, ou correspondrait à un mot parasite connu ?')) return;
     els.cleanInvalidKmBtn.disabled = true;
     try{
-      const { removed } = await dbPost('clean-invalid-km', { exportCode: unlockedExportCode });
+      const { removed } = await dbPost('clean-invalid-km', {});
       if(removed === 0){
         setDbLog('Aucun numéro dernier kilométrique invalide trouvé dans la base actuelle.', false);
       }else{
         currentOffset = 0;
-        await Promise.all([fetchAndRenderPage(), refreshStats(), refreshUnresolvedRows().then(updateCarrierTracking)]);
+        await Promise.all([fetchAndRenderPage(), refreshStats(), refreshCarrierTrackingIfAdmin()]);
         setDbLog(`${removed} numéro(s) dernier kilométrique invalide(s) vidé(s).`, false);
       }
     }catch(e){
@@ -3131,21 +3184,33 @@
   (async ()=>{
     try{
       setAppLoadingProgress(5);
+      // Le rôle doit être connu avant le moindre rendu (masque import/scraping pour un compte
+      // "pc" dès le premier affichage, pas après coup) — voir applyRoleUi().
+      await loadCurrentUser();
+      setAppLoadingProgress(10);
+
       // refreshStats() est rapide (une seule requête) et donne le nombre de colis non résolus
       // attendu (total - resolved) : une cible réaliste pour faire avancer la barre au fil des lots
       // de refreshUnresolvedRows(), plutôt qu'un remplissage arbitraire sans rapport avec l'avancement
       // réel. fetchAndRenderPage() n'a pas besoin d'attendre ce calcul, il tourne en parallèle.
+      // refreshUnresolvedRows/le suivi transporteur ne concernent que le rôle admin (voir
+      // refreshCarrierTrackingIfAdmin) : un compte "pc" saute directement à 90%, rien à mesurer.
       const fetchPagePromise = fetchAndRenderPage();
       const stats = await refreshStats();
       setAppLoadingProgress(15);
-      const target = stats ? Math.max(0, stats.total - stats.resolved) : 0;
 
-      await Promise.all([
-        fetchPagePromise,
-        refreshUnresolvedRows((loaded)=>{
-          if(target > 0) setAppLoadingProgress(15 + Math.min(80, (loaded / target) * 80));
-        }).then(updateCarrierTracking),
-      ]);
+      if(currentUserRole === 'admin'){
+        const target = stats ? Math.max(0, stats.total - stats.resolved) : 0;
+        await Promise.all([
+          fetchPagePromise,
+          refreshUnresolvedRows((loaded)=>{
+            if(target > 0) setAppLoadingProgress(15 + Math.min(80, (loaded / target) * 80));
+          }).then(updateCarrierTracking),
+        ]);
+      }else{
+        setAppLoadingProgress(90);
+        await fetchPagePromise;
+      }
       setAppLoadingProgress(100);
     }catch(e){
       // Échec silencieux ici : chaque fonction gère déjà ses propres erreurs (message dans #dbLog
@@ -3156,7 +3221,6 @@
       setTimeout(()=>{ els.appLoadingOverlay.style.display = 'none'; }, 200);
     }
   })();
-  syncLockUi(); // état verrouillé par défaut à chaque connexion (voir plus haut)
 
   // Enregistrement du service worker (mode PWA installable). On ne le fait que si le contexte
   // le permet (HTTPS ou localhost) : sur file:// ou http simple, l'API n'existe pas et ce bloc

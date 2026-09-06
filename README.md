@@ -88,16 +88,31 @@ commandes sans ralentissement.
     règles, export/import en XML).
 - Recherche et liste paginées côté serveur (boutons Précédent/Suivant) : seule la page affichée est
   chargée, jamais toute la base d'un coup.
-- Verrouillé par défaut à la connexion : seule cette section est visible, export/nettoyage/suppression
-  désactivés. Alt+T (ou le bouton 🔒) déverrouille tout avec un code dédié, pour la session.
+- Import CSV et section transporteurs/scraping réservés au rôle **admin** (masqués pour un compte
+  **pc**, voir [Comptes utilisateurs et rôles](#4-comptes-utilisateurs-et-rôles)) — pas de code à
+  saisir, l'accès dépend uniquement du rôle du compte connecté.
 - Export en CSV (en clair) de toute la base — voir section Sauvegarde ci-dessous. Import
   CSV/scraping écrit directement dans Postgres, sans étape d'export manuelle à part.
 
-### 4. Authentification
-- L'ensemble du site (pages et API) est protégé par un **code d'accès** unique, vérifié par un
-  middleware Vercel (Edge Middleware). Une fois le bon code saisi sur `/login.html`, un cookie
-  signé autorise l'accès pendant 30 jours. Lien **Se déconnecter** dans l'en-tête de l'app.
-- Verrouillage progressif par adresse IP en cas d'échecs répétés sur `/api/auth` (5 échecs → 30s,
+### 4. Comptes utilisateurs et rôles
+- Comptes individuels (email + mot de passe, `/register.html`) plutôt qu'un code d'accès unique
+  partagé. Un compte fraîchement créé reste **en attente** (`/pending.html`) tant qu'un admin ne
+  lui attribue pas explicitement un rôle depuis le panneau **👥 Comptes**.
+- Trois rôles :
+  - **Admin** : accès complet (import CSV, transporteurs/scraping, tableau de bord, recherche,
+    export, nettoyage, gestion des comptes).
+  - **PC** : tableau de bord, recherche (manuelle + caméra), actualisation, export — pas d'import
+    CSV, pas de section transporteurs/scraping, pas de nettoyage.
+  - **Mobile** : redirigé vers `/scan.html`, une page dédiée qui n'affiche que la caméra et la
+    version — aucun autre accès à l'application. Un scan trouvant une correspondance unique
+    affiche directement la fiche du colis.
+- Le tout premier compte admin s'amorce via `APP_BOOTSTRAP_ADMIN_EMAIL` (voir plus bas) : sans
+  cette étape, aucun compte ne pourrait jamais valider le tout premier.
+- Le routage par rôle est assuré par un Edge Middleware (`middleware.js`) qui vérifie un cookie de
+  session signé (HMAC-SHA256, format JWT-like maison — voir `lib/auth.js`) ; les restrictions plus
+  fines par action (ex. `import-batch` réservé à l'admin) sont vérifiées côté serveur dans
+  `api/db.js`/`api/scrape.js`, pas seulement masquées côté client.
+- Verrouillage progressif par adresse IP en cas d'échecs répétés sur `/api/login` (5 échecs → 30s,
   10 → 5 min, 20 → 30 min), pour limiter les attaques par force brute — voir `KV_REST_API_URL` /
   `KV_REST_API_TOKEN` ci-dessous.
 
@@ -106,23 +121,30 @@ commandes sans ralentissement.
 ## Structure du projet
 
 ```
-index.html                  Page principale de l'application
-login.html                  Page de connexion (code d'accès)
-manifest.json, sw.js        Configuration PWA (installation, cache hors-ligne)
-middleware.js               Vérifie le cookie d'authentification sur chaque requête (Edge Middleware)
+index.html                  Page principale (rôles pc/admin)
+scan.html                    Page "Mobile" : caméra + version uniquement (rôle mobile)
+login.html                  Page de connexion (email + mot de passe)
+register.html                Page d'inscription (compte créé en attente de validation)
+pending.html                  Page affichée à un compte en attente de validation
+manifest.json, sw.js        Configuration PWA de l'app principale (installation, cache hors-ligne)
+manifest-scan.json            Manifeste PWA dédié à scan.html (icône d'installation "AIA Scan" distincte)
+middleware.js               Vérifie le cookie de session et route selon le rôle (Edge Middleware)
 
 assets/
-  script.js                 Toute la logique de l'application (import, base, recherche, transporteurs, scraping…)
-  styles.css                Feuille de style
+  script.js                 Toute la logique de l'app principale (import, base, recherche, transporteurs, scraping…)
+  scan.js                    Logique de la page "Mobile" (caméra, recherche, affichage direct du colis)
+  styles.css                Feuille de style (app principale)
   *.png                     Logo et icônes PWA
 
 api/
-  auth.js                   Vérifie le code d'accès et pose le cookie de session
-  logout.js                 Efface le cookie de session
-  login-code.js              Renvoie le code d'accès à une session déjà connectée
-  db.js                      Point d'entrée unique vers la base Postgres (recherche, import, scraping, nettoyage, export CSV — voir lib/db.js)
+  login.js                   Vérifie email/mot de passe et pose le cookie de session
+  register.js                 Crée un compte (rôle "pending", sauf APP_BOOTSTRAP_ADMIN_EMAIL)
+  session.js                  Renvoie le rôle/email de la session en cours (adapte l'interface au rôle)
+  users.js                    Gestion des comptes (admin uniquement) : liste, attribution de rôle, mot de passe
+  logout.js                   Efface le cookie de session
+  db.js                      Point d'entrée unique vers la base Postgres (recherche, import, scraping, nettoyage, export CSV — voir lib/db.js), avec vérification du rôle par action
   version.js                 Renvoie le numéro de version généré au build (détection de mise à jour)
-  scrape.js                  Point d'entrée unique du scraping : dispatche vers lib/scrapers/*.js selon le champ "carrier"
+  scrape.js                  Point d'entrée unique du scraping (admin uniquement) : dispatche vers lib/scrapers/*.js selon le champ "carrier"
   _scrapeLib.js              Fonctions partagées par les fonctions de scraping (Chromium headless, parsing, CORS…)
   _rateLimit.js              Verrouillage progressif par IP après des échecs de connexion répétés (KV/Upstash ou repli en mémoire)
   _stealthScrapeLib.js        Lancement de navigateur "furtif" (puppeteer-extra-plugin-stealth) pour les sites avec détection anti-bot
@@ -141,7 +163,9 @@ lib/scrapers/                Un module par transporteur (hors de /api : pas comp
   wanbexpress.js             Scraping WANBEXPRESS (un lien par colis, navigateur furtif, via packageradar.com)
 
 lib/
-  db.js                      Accès Postgres (recherche paginée, import/dédoublonnage, application des résultats de scraping, nettoyage, export CSV)
+  db.js                      Accès Postgres (recherche paginée, import/dédoublonnage, application des résultats de scraping, nettoyage, export CSV, tableau de bord)
+  users.js                    Comptes utilisateurs (hash/vérification de mot de passe, rôles)
+  auth.js                     Jeton de session signé (création/vérification, HMAC-SHA256) — contrepartie Node de middleware.js (Web Crypto)
 
 scripts/
   postinstall.mjs            Copie les fichiers Chromium nécessaires au scraping lors du build Vercel
@@ -181,11 +205,11 @@ statique.
 
 | Variable | Obligatoire | Description |
 |---|---|---|
-| `APP_ACCESS_CODE` | Non (mais recommandé) | Code d'accès à saisir sur la page de connexion. Si absente, l'application reste accessible sans code (pour éviter de se retrouver bloqué dehors par erreur). |
-| `APP_AUTH_SECRET` | Non | Secret utilisé pour signer le cookie de session. Si absent, `APP_ACCESS_CODE` est utilisé à la place — il est recommandé d'utiliser une valeur distincte, longue et aléatoire. |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Non (mais recommandé) | Ajoutées automatiquement en connectant une base **Vercel KV** depuis l'onglet *Storage* du projet sur vercel.com. Permettent à `api/auth.js` de verrouiller progressivement une adresse IP après plusieurs échecs de connexion (partagé entre toutes les instances/régions). Sans ces variables, un compteur en mémoire local par instance sert de repli — moins robuste (se réinitialise à froid, non partagé entre régions) mais actif par défaut. |
-| `POSTGRES_URL` (ou équivalent) | Oui | Ajoutée automatiquement en connectant une base **Postgres** (Neon) depuis l'onglet *Storage* du projet sur vercel.com. Utilisée par `lib/db.js` pour toute la base de commandes. |
-| `APP_EXPORT_CODE` | Oui, pour Exporter/Nettoyer | Code demandé pour déverrouiller ces actions (distinct du code de connexion). Sans cette variable, elles échouent avec un message explicite plutôt que d'accepter n'importe quel code. |
+| `APP_AUTH_SECRET` | Oui (recommandé) | Secret utilisé pour signer le cookie de session (HMAC-SHA256). Une valeur longue et aléatoire, distincte de tout mot de passe. Si absent, l'app retombe sur `APP_ACCESS_CODE` (compatibilité) mais un vrai secret dédié est recommandé. |
+| `APP_ACCESS_CODE` | Non | Ancien code d'accès unique — n'a plus d'usage direct depuis le passage aux comptes utilisateurs, sauf comme repli pour `APP_AUTH_SECRET` s'il est absent. Peut être retiré une fois `APP_AUTH_SECRET` en place. |
+| `APP_BOOTSTRAP_ADMIN_EMAIL` | Recommandé | Email qui obtient automatiquement le rôle **admin** à l'inscription (`/register.html`) — amorce le tout premier compte, sans quoi personne ne pourrait jamais valider un compte. |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Non (mais recommandé) | Ajoutées automatiquement en connectant une base **Vercel KV** depuis l'onglet *Storage* du projet sur vercel.com. Permettent à `api/login.js`/`api/register.js` de verrouiller progressivement une adresse IP après plusieurs échecs (partagé entre toutes les instances/régions). Sans ces variables, un compteur en mémoire local par instance sert de repli — moins robuste (se réinitialise à froid, non partagé entre régions) mais actif par défaut. |
+| `POSTGRES_URL` (ou équivalent) | Oui | Ajoutée automatiquement en connectant une base **Postgres** (Neon) depuis l'onglet *Storage* du projet sur vercel.com. Utilisée par `lib/db.js`/`lib/users.js` pour toute la base (commandes + comptes). |
 
 Aucune autre variable n'est nécessaire : les fonctions de scraping n'utilisent pas de clé API
 externe (elles pilotent un navigateur headless directement).
@@ -208,11 +232,14 @@ externe (elles pilotent un navigateur headless directement).
 3. **Rechercher une commande** : utiliser le champ de recherche de la section 3 (scan possible via
    l'icône caméra), ou parcourir/filtrer la liste des commandes.
 4. **Sauvegarder** : chaque import/scraping/nettoyage écrit déjà directement dans Postgres — rien à
-   valider séparément. Alt+T pour déverrouiller (les boutons de nettoyage restent masqués tant que
-   ce n'est pas fait), puis **📤 Exporter** télécharge un CSV de toute la base (sauvegarde/analyse
-   externe), et les deux boutons **🧹 Nettoyer** retirent respectivement les colis sans N° Commande/
-   Amazon et les numéros dernier kilométrique invalides. Il n'y a volontairement plus de bouton pour
-   effacer toute la base d'un coup (retiré après un incident de perte de données).
+   valider séparément. **📤 Exporter** (rôles pc/admin) télécharge un CSV de toute la base
+   (sauvegarde/analyse externe), et les deux boutons **🧹 Nettoyer** (rôle admin uniquement)
+   retirent respectivement les colis sans N° Commande/Amazon et les numéros dernier kilométrique
+   invalides. Il n'y a volontairement plus de bouton pour effacer toute la base d'un coup (retiré
+   après un incident de perte de données).
+5. **Gérer les comptes** (admin uniquement) : bouton **👥 Comptes** dans la section "Colis" —
+   attribuer un rôle à un compte en attente, changer un rôle existant, ou réinitialiser le mot de
+   passe d'un compte.
 
 ---
 

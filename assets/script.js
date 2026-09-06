@@ -424,8 +424,13 @@
   // Détermine le meilleur numéro de suivi à partir d'une valeur scannée/collée : on commence par
   // retirer les caractères spéciaux en tout début/fin et on vérifie si le résultat correspond déjà
   // à une commande en base. Si non, on essaie chaque algorithme configuré (dans l'ordre) et on
-  // retient le premier résultat qui correspond à une commande en base. Si aucun ne correspond, on
-  // garde un ordre de repli par défaut (strip, puis premier algorithme calculable).
+  // retient le premier résultat qui correspond à une commande en base. Si aucun ne correspond
+  // (colis pas encore résolu, donc son num_suivi ne correspond à rien de "trouvable" — un scan de
+  // vérification avant résolution, typiquement), on garde un ordre de repli par défaut : un
+  // algorithme reconnu (résultat déjà nettoyé/découpé selon un format de transporteur connu) passe
+  // AVANT le simple "stripped" (juste les caractères spéciaux de bord retirés, donc tout le
+  // contenu brut du code-barres) — un candidat calculé par un algorithme a bien plus de chances
+  // d'être le bon numéro que les données brutes telles quelles.
   async function computeBestTracking(raw){
     const stripped = stripSpecialCharsEdges(raw);
     if(stripped && await trackingExistsInDb(stripped)) return stripped;
@@ -438,7 +443,7 @@
       if(await trackingExistsInDb(v)) return v;
     }
 
-    return stripped || results[0] || null;
+    return results[0] || stripped || null;
   }
 
   // Applique la transformation ci-dessus sur le champ de recherche

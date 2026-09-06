@@ -133,6 +133,10 @@
     }
     return null;
   }
+  // Si aucun candidat ne correspond exactement à un num_suivi déjà en base (colis pas encore
+  // résolu, typiquement), un résultat d'algorithme (déjà découpé selon un format de transporteur
+  // connu) passe AVANT le simple "stripped" (juste les bords retirés, donc les données brutes du
+  // code-barres) — bien plus susceptible d'être le bon numéro que le texte brut tel quel.
   async function computeBestTracking(raw){
     const stripped = stripSpecialCharsEdges(raw);
     if(stripped && await trackingExistsInDb(stripped)) return stripped;
@@ -140,7 +144,7 @@
     for(const v of results){
       if(await trackingExistsInDb(v)) return v;
     }
-    return stripped || results[0] || null;
+    return results[0] || stripped || null;
   }
 
   // ---------- affichage du résultat ----------

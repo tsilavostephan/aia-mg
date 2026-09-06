@@ -2988,10 +2988,10 @@
 
       row.querySelector('.userResetPwBtn').addEventListener('click', async (e)=>{
         const btn = e.currentTarget;
-        const password = prompt('Nouveau mot de passe (8 caractères minimum) :');
+        const password = prompt('Nouveau mot de passe (4 caractères minimum) :');
         if(!password) return;
-        if(password.length < 8){
-          alert('Le mot de passe doit contenir au moins 8 caractères.');
+        if(password.length < 4){
+          alert('Le mot de passe doit contenir au moins 4 caractères.');
           return;
         }
         btn.disabled = true;

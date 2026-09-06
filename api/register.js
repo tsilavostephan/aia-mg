@@ -41,8 +41,8 @@ module.exports = async function handler(req, res) {
     res.status(400).json({ error: 'Le trigramme doit contenir exactement 3 lettres.' });
     return;
   }
-  if (!password || String(password).length < 8) {
-    res.status(400).json({ error: 'Le mot de passe doit contenir au moins 8 caractères.' });
+  if (!password || String(password).length < 4) {
+    res.status(400).json({ error: 'Le mot de passe doit contenir au moins 4 caractères.' });
     return;
   }
 

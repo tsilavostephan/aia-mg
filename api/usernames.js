@@ -21,6 +21,13 @@ module.exports = async function handler(req, res) {
   try {
     res.status(200).json({ usernames: await listUsernames() });
   } catch (e) {
-    res.status(500).json({ error: e && e.message ? e.message : 'Erreur serveur.' });
+    // DIAGNOSTIC TEMPORAIRE — à retirer une fois la cause de "relation users does not exist"
+    // identifiée en prod/preview malgré une migration confirmée sur la base attendue. N'expose que
+    // l'hôte (jamais les identifiants) pour vérifier si cette fonction se connecte bien à la même
+    // base Postgres que celle migrée manuellement.
+    const host = (() => {
+      try { return new URL(process.env.POSTGRES_URL || '').host; } catch { return 'POSTGRES_URL absent/invalide'; }
+    })();
+    res.status(500).json({ error: e && e.message ? e.message : 'Erreur serveur.', debugHost: host });
   }
 };

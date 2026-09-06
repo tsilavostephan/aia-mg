@@ -55,8 +55,8 @@ module.exports = async function handler(req, res) {
 
       if (body.action === 'set-password') {
         const userId = Number(body.userId);
-        if (!userId || !body.password || String(body.password).length < 8) {
-          res.status(400).json({ error: 'Requête invalide (userId manquant ou mot de passe < 8 caractères).' });
+        if (!userId || !body.password || String(body.password).length < 4) {
+          res.status(400).json({ error: 'Requête invalide (userId manquant ou mot de passe < 4 caractères).' });
           return;
         }
         const ok = await setUserPassword(userId, body.password);

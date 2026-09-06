@@ -264,6 +264,18 @@
 
   const DEFAULT_SEARCH_ALGORITHMS = [
     {
+      // Courrier "Lettre Suivie"/Smart Data (SD) La Poste : contrairement à Colissimo/DPD, aucune
+      // clé de contrôle à recalculer — le datamatrix flashé (chaîne jusqu'à 72 caractères) contient
+      // directement les 14 chiffres du numéro de suivi entre le 9e et le 22e caractère (source :
+      // aide.laposte.fr, "Où trouver le numéro de mon courrier Suivi ?"), ex.
+      // "%000000087000635587726381250A18^BAA39F" -> "87000635587726". Pas de contrainte de longueur
+      // totale (variable selon la version du datamatrix) : seule la position 9-22 compte.
+      id: 'laposte', label: 'La Poste (SD / Lettre Suivie)', enabled: true,
+      rules: [
+        { length: null, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'laposteSdSlice', start: 9, end: 22 }
+      ]
+    },
+    {
       id: 'colissimo', label: 'Colissimo', enabled: true,
       rules: [
         // Code-barres 1D "Geopost" de 28 caractères débutant par % (étiquette domestique) : digit 1
@@ -339,6 +351,17 @@
         const firstPart = clean.slice(0, cut1);
         if(firstPart.length < cut2) return null;
         return firstPart.slice(cut2 - 1);
+      }
+      case 'laposteSdSlice': {
+        // Numéro de suivi La Poste SD (Lettre Suivie) : simple sous-chaîne à position fixe (9-22),
+        // aucune clé à calculer — mais on valide que le segment est bien 14 chiffres purs, pour ne
+        // pas capturer par erreur un Colissimo (qui a aussi un '%' de tête mais une lettre au milieu
+        // du segment, ex. positions 9-22 d'un Colissimo contiennent "...6A...").
+        const start = Number(rule.start), end = Number(rule.end);
+        if(!start || !end || end < start || clean.length < end) return null;
+        const segment = clean.slice(start - 1, end);
+        if(!/^[0-9]+$/.test(segment)) return null;
+        return segment;
       }
       case 'colissimoKey': {
         // Clé de contrôle Colissimo/Chronopost (technique GeoLabel) : préfixe (ex. "6A") + numéro
@@ -492,6 +515,7 @@
     dpdChecksum: 'Clé de contrôle DPD (ISO 7064 MOD 37,36)',
     colissimoKey: 'Clé de contrôle Colissimo (préfixe + numéro + clé calculée)',
     dpdPercentSlice: "DPD avec '%' de tête (plage de positions après le '%')",
+    laposteSdSlice: 'La Poste SD (plage de positions, sans clé de contrôle)',
   };
 
   function cloneAlgorithms(list){
@@ -617,7 +641,7 @@
 
     function renderParams(){
       paramsWrap.innerHTML = '';
-      if(rule.extractType === 'slice' || rule.extractType === 'dpdPercentSlice'){
+      if(rule.extractType === 'slice' || rule.extractType === 'dpdPercentSlice' || rule.extractType === 'laposteSdSlice'){
         const start = document.createElement('input');
         start.type = 'number'; start.min = '1'; start.placeholder = 'Début'; start.value = rule.start || '';
         start.addEventListener('input', ()=>{ rule.start = parseInt(start.value, 10) || null; });

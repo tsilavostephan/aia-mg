@@ -53,6 +53,12 @@
 
   const SEARCH_ALGOS_STORAGE_KEY = 'commandes-search-algos';
   const DEFAULT_SEARCH_ALGORITHMS = [
+    { id:'laposte', label:'La Poste (SD / Lettre Suivie)', enabled:true, rules:[
+      // Pas de clé de contrôle pour le courrier SD : les 14 chiffres du numéro de suivi sont
+      // directement entre le 9e et le 22e caractère du datamatrix (ex.
+      // "%000000087000635587726381250A18^BAA39F" -> "87000635587726").
+      { length:null, startsWith:'%', endsWith:'', contentType:'any', extractType:'laposteSdSlice', start:9, end:22 }
+    ]},
     { id:'colissimo', label:'Colissimo', enabled:true, rules:[
       // Le numéro de suivi complet inclut une clé de contrôle calculée (voir colissimoKey /
       // applyExtraction ci-dessous) — une simple sous-chaîne (ex. "6A0750391009") est un caractère
@@ -112,6 +118,13 @@
         const firstPart = clean.slice(0, cut1);
         if(firstPart.length < cut2) return null;
         return firstPart.slice(cut2 - 1);
+      }
+      case 'laposteSdSlice': {
+        const start = Number(rule.start), end = Number(rule.end);
+        if(!start || !end || end < start || clean.length < end) return null;
+        const segment = clean.slice(start - 1, end);
+        if(!/^[0-9]+$/.test(segment)) return null;
+        return segment;
       }
       case 'colissimoKey': {
         const prefixStart = Number(rule.prefixStart), prefixLen = Number(rule.prefixLen);

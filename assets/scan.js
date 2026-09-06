@@ -227,25 +227,47 @@
   // ---------- douchette code-barres (USB/Bluetooth, se comporte comme un clavier) ----------
   // Ce type d'appareil "tape" le code scanné puis Entrée dans l'élément qui a le focus — sans
   // champ de saisie toujours focus, ces frappes se perdraient (cette page n'a normalement aucun
-  // champ de texte, tout se fait par la caméra). #scanHiddenInput reste focus en permanence à
-  // cet effet, jamais visible ni ouvert de clavier virtuel (inputmode="none").
+  // champ de texte, tout se fait par la caméra). Deux mécanismes en parallèle, volontairement
+  // redondants :
+  //  1) #scanHiddenInput reste focus en permanence, jamais visible ni ouvert de clavier virtuel
+  //     (inputmode="none") — la méthode "propre", mais qui dépend de la gestion du focus.
+  //  2) Une capture globale sur `document`, indépendante du focus (tant que le focus est quelque
+  //     part sur la page, keydown remonte jusqu'à document) : un filet de sécurité si, sur un
+  //     appareil/navigateur donné, le focus venait à être repris par autre chose (ex. le bouton
+  //     lampe torche injecté par html5-qrcode) sans qu'on l'ait anticipé.
   function refocusHiddenInput(){
     els.hiddenInput.focus({ preventScroll: true });
   }
-
-  els.hiddenInput.addEventListener('keydown', (e)=>{
-    // La plupart des douchettes terminent par Entrée (certains modèles par Tabulation) — les deux
-    // sont traités comme "fin du code scanné".
-    if(e.key !== 'Enter' && e.key !== 'Tab') return;
-    e.preventDefault();
-    const value = els.hiddenInput.value.trim();
-    els.hiddenInput.value = '';
-    if(value) handleDecode(value);
-  });
   els.hiddenInput.addEventListener('blur', ()=> setTimeout(refocusHiddenInput, 50));
   document.addEventListener('click', ()=> setTimeout(refocusHiddenInput, 50));
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) refocusHiddenInput(); });
   refocusHiddenInput();
+
+  // Tampon global : une douchette "tape" ses caractères bien plus vite qu'un humain (quelques
+  // millisecondes entre chaque touche) — au-delà de HID_CHAR_GAP_MS sans nouveau caractère, on
+  // considère qu'il s'agissait d'autre chose (ou d'un scan précédent resté incomplet) et on repart
+  // de zéro, plutôt que d'accumuler indéfiniment.
+  let hidBuffer = '';
+  let hidLastCharTime = 0;
+  const HID_CHAR_GAP_MS = 150;
+
+  document.addEventListener('keydown', (e)=>{
+    // La plupart des douchettes terminent par Entrée (certains modèles par Tabulation).
+    if(e.key === 'Enter' || e.key === 'Tab'){
+      if(!hidBuffer) return;
+      const value = hidBuffer;
+      hidBuffer = '';
+      if(els.hiddenInput.value) els.hiddenInput.value = ''; // évite un doublon si les deux mécanismes ont capté la même frappe
+      e.preventDefault();
+      handleDecode(value);
+      return;
+    }
+    if(e.key.length !== 1) return; // ignore Shift/Alt/flèches/etc., un seul caractère "imprimable" à la fois
+    const now = Date.now();
+    if(now - hidLastCharTime > HID_CHAR_GAP_MS) hidBuffer = '';
+    hidBuffer += e.key;
+    hidLastCharTime = now;
+  });
 
   function scannerFormats(){
     if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;

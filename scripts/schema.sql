@@ -44,13 +44,24 @@ CREATE INDEX IF NOT EXISTS idx_colis_resolved_at ON colis (resolved_at) WHERE re
 
 -- Comptes utilisateurs (remplace le code d'accès unique partagé) : inscription libre, mais un
 -- compte reste "pending" (aucun accès à l'appli, voir middleware.js) tant qu'un admin ne lui
--- attribue pas explicitement un rôle depuis le panneau "Comptes" (voir api/users.js).
+-- attribue pas explicitement un rôle depuis le panneau "Comptes" (voir api/users.js). Identifiant
+-- de connexion = trigramme (3 lettres), pas un email — format validé côté application
+-- (api/register.js), pas par contrainte SQL.
 CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
-  email TEXT NOT NULL,
+  username TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'pending' CHECK (role IN ('pending','mobile','pc','admin')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   approved_at TIMESTAMPTZ
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users (lower(email));
+
+-- Migration depuis l'ancienne colonne "email" (table vide en pratique — aucun compte réel créé
+-- avant ce changement) : ADD/DROP COLUMN IF (NOT) EXISTS restent idempotents, contrairement à
+-- RENAME COLUMN (pas de variante "IF EXISTS" en Postgres), ce qui casserait un ré-lancement de ce
+-- script une fois déjà appliqué.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE users DROP COLUMN IF EXISTS email;
+ALTER TABLE users ALTER COLUMN username SET NOT NULL;
+DROP INDEX IF EXISTS idx_users_email_lower;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (lower(username));

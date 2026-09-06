@@ -1,5 +1,5 @@
-// Renvoie le rôle/email de la session en cours — utilisé par assets/script.js au chargement pour
-// adapter l'interface au rôle (masquer import/scraping/nettoyage pour un compte "pc", etc.).
+// Renvoie le rôle/trigramme de la session en cours — utilisé par assets/script.js au chargement
+// pour adapter l'interface au rôle (masquer import/scraping/nettoyage pour un compte "pc", etc.).
 // Remplace api/login-code.js (devenu du code mort après la suppression de la couche de chiffrement
 // AES des exports — plus aucun appelant côté client).
 const { setCorsHeaders } = require('./_scrapeLib');
@@ -27,5 +27,5 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  res.status(200).json({ role: user.role, email: user.email });
+  res.status(200).json({ role: user.role, username: user.username });
 };

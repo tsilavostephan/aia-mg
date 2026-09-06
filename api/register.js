@@ -1,14 +1,15 @@
 // Crée un nouveau compte (rôle "pending" par défaut — aucun accès à l'appli tant qu'un admin ne lui
-// attribue pas explicitement un rôle, voir api/users.js). Exception : si l'email correspond à
-// APP_BOOTSTRAP_ADMIN_EMAIL (variable d'environnement), le compte est créé directement en rôle
+// attribue pas explicitement un rôle, voir api/users.js). Exception : si le trigramme correspond à
+// APP_BOOTSTRAP_ADMIN_TRIGRAM (variable d'environnement), le compte est créé directement en rôle
 // "admin" et connecté immédiatement — sans ça, personne ne pourrait jamais approuver le tout
 // premier compte.
 const { setCorsHeaders } = require('./_scrapeLib');
 const { checkLockout, recordFailure, resetFailures, getClientIp } = require('./_rateLimit');
-const { findUserByEmail, createUser } = require('../lib/users');
+const { findUserByUsername, createUser } = require('../lib/users');
 const { setSessionCookie } = require('../lib/auth');
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Trigramme = exactement 3 lettres (initiales) — pas de chiffres ni de caractères spéciaux.
+const TRIGRAM_RE = /^[A-Za-z]{3}$/;
 
 module.exports = async function handler(req, res) {
   setCorsHeaders(res);
@@ -33,11 +34,11 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const { email, password } = req.body || {};
-  const cleanedEmail = String(email || '').trim();
+  const { username, password } = req.body || {};
+  const cleanedUsername = String(username || '').trim();
 
-  if (!EMAIL_RE.test(cleanedEmail)) {
-    res.status(400).json({ error: 'Adresse email invalide.' });
+  if (!TRIGRAM_RE.test(cleanedUsername)) {
+    res.status(400).json({ error: 'Le trigramme doit contenir exactement 3 lettres.' });
     return;
   }
   if (!password || String(password).length < 8) {
@@ -45,19 +46,19 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const existing = await findUserByEmail(cleanedEmail).catch(() => null);
+  const existing = await findUserByUsername(cleanedUsername).catch(() => null);
   if (existing) {
     try { await recordFailure(ip); } catch (e) { /* évite l'énumération de comptes par force brute */ }
-    res.status(409).json({ error: 'Un compte existe déjà avec cet email.' });
+    res.status(409).json({ error: 'Un compte existe déjà avec ce trigramme.' });
     return;
   }
 
-  const bootstrapEmail = (process.env.APP_BOOTSTRAP_ADMIN_EMAIL || '').trim().toLowerCase();
-  const isBootstrapAdmin = bootstrapEmail && cleanedEmail.toLowerCase() === bootstrapEmail;
+  const bootstrapTrigram = (process.env.APP_BOOTSTRAP_ADMIN_TRIGRAM || '').trim().toUpperCase();
+  const isBootstrapAdmin = bootstrapTrigram && cleanedUsername.toUpperCase() === bootstrapTrigram;
 
   let user;
   try {
-    user = await createUser(cleanedEmail, password, isBootstrapAdmin ? 'admin' : undefined);
+    user = await createUser(cleanedUsername, password, isBootstrapAdmin ? 'admin' : undefined);
   } catch (e) {
     res.status(500).json({ error: "Échec de la création du compte." });
     return;

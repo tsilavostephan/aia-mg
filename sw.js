@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
   // - /api/version : c'est justement ce que le client interroge pour détecter qu'une nouvelle
   //   version a été déployée (voir assets/script.js) — le mettre en cache le figerait sur la
   //   première version vue et casserait la détection.
-  // - /api/session : renvoie l'email/rôle du compte connecté (voir api/session.js) — le mettre en
+  // - /api/session : renvoie le trigramme/rôle du compte connecté (voir api/session.js) — le mettre en
   //   cache le rendrait lisible par quiconque inspecte le cache du service worker (et figerait le
   //   rôle affiché après un changement de rôle par un admin), sans même être authentifié à ce
   //   moment-là.

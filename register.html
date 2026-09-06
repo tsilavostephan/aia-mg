@@ -39,7 +39,7 @@
   <img class="login-logo" src="/assets/logo-aia.png" alt="AIA">
   <h1>Créer un compte</h1>
   <p>Le compte devra être validé par un administrateur avant de pouvoir être utilisé.</p>
-  <input type="email" id="emailInput" placeholder="Email" autocomplete="email" autofocus>
+  <input type="text" id="usernameInput" placeholder="Trigramme (3 lettres)" autocomplete="username" maxlength="3" style="text-transform:uppercase;" autofocus>
   <input type="password" id="passwordInput" placeholder="Mot de passe (8 caractères min.)" autocomplete="new-password">
   <input type="password" id="passwordConfirmInput" placeholder="Confirmer le mot de passe" autocomplete="new-password">
   <button type="submit" id="submitBtn">Créer le compte</button>
@@ -53,7 +53,7 @@
     const btn = document.getElementById('submitBtn');
     const errEl = document.getElementById('registerError');
     const okEl = document.getElementById('registerSuccess');
-    const email = document.getElementById('emailInput').value;
+    const username = document.getElementById('usernameInput').value;
     const password = document.getElementById('passwordInput').value;
     const passwordConfirm = document.getElementById('passwordConfirmInput').value;
     errEl.style.display = 'none';
@@ -71,12 +71,12 @@
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok) {
         if (json.role === 'admin') {
-          // Amorçage du premier compte admin (APP_BOOTSTRAP_ADMIN_EMAIL) : déjà connecté.
+          // Amorçage du premier compte admin (APP_BOOTSTRAP_ADMIN_TRIGRAM) : déjà connecté.
           window.location.href = '/';
           return;
         }

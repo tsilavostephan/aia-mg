@@ -38,7 +38,7 @@
   <img class="login-logo" src="/assets/logo-aia.png" alt="AIA">
   <h1>Page de connexion sécurisée</h1>
   <p>Entrez vos identifiants pour continuer.</p>
-  <input type="email" id="emailInput" placeholder="Email" autocomplete="email" autofocus>
+  <input type="text" id="usernameInput" placeholder="Trigramme" autocomplete="username" maxlength="3" style="text-transform:uppercase;" autofocus>
   <input type="password" id="passwordInput" placeholder="Mot de passe" autocomplete="current-password">
   <button type="submit" id="submitBtn">Se connecter</button>
   <p id="loginError"></p>
@@ -49,7 +49,7 @@
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
     const errEl = document.getElementById('loginError');
-    const email = document.getElementById('emailInput').value;
+    const username = document.getElementById('usernameInput').value;
     const password = document.getElementById('passwordInput').value;
     errEl.style.display = 'none';
     btn.disabled = true;
@@ -58,7 +58,7 @@
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok) {
@@ -67,7 +67,7 @@
         window.location.href = '/';
         return;
       }
-      errEl.textContent = json.error || 'Email ou mot de passe incorrect.';
+      errEl.textContent = json.error || 'Trigramme ou mot de passe incorrect.';
       errEl.style.display = 'block';
     } catch (err) {
       errEl.textContent = 'Erreur réseau, réessayez.';

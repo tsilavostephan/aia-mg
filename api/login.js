@@ -1,10 +1,10 @@
-// Vérifie l'email/mot de passe soumis depuis login.html et, si corrects, pose le cookie de session
-// ("aia_auth") que middleware.js contrôle ensuite sur toutes les autres pages/API. Remplace l'ancien
-// api/auth.js (code d'accès unique partagé, sans notion de compte) — voir lib/auth.js pour le format
-// du jeton de session et lib/users.js pour la vérification du mot de passe.
+// Vérifie le trigramme/mot de passe soumis depuis login.html et, si corrects, pose le cookie de
+// session ("aia_auth") que middleware.js contrôle ensuite sur toutes les autres pages/API. Remplace
+// l'ancien api/auth.js (code d'accès unique partagé, sans notion de compte) — voir lib/auth.js pour
+// le format du jeton de session et lib/users.js pour la vérification du mot de passe.
 const { setCorsHeaders } = require('./_scrapeLib');
 const { checkLockout, recordFailure, resetFailures, getClientIp } = require('./_rateLimit');
-const { findUserByEmail, verifyPasswordHash } = require('../lib/users');
+const { findUserByUsername, verifyPasswordHash } = require('../lib/users');
 const { setSessionCookie } = require('../lib/auth');
 
 module.exports = async function handler(req, res) {
@@ -35,13 +35,13 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const { email, password } = req.body || {};
-  const user = email ? await findUserByEmail(email).catch(() => null) : null;
+  const { username, password } = req.body || {};
+  const user = username ? await findUserByUsername(username).catch(() => null) : null;
   const valid = user && verifyPasswordHash(password || '', user.password_hash);
 
   if (!valid) {
     try { await recordFailure(ip); } catch (e) { /* dégradé : voir _rateLimit.js */ }
-    res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
+    res.status(401).json({ error: 'Trigramme ou mot de passe incorrect.' });
     return;
   }
 

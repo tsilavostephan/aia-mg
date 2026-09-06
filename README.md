@@ -95,7 +95,7 @@ commandes sans ralentissement.
   CSV/scraping écrit directement dans Postgres, sans étape d'export manuelle à part.
 
 ### 4. Comptes utilisateurs et rôles
-- Comptes individuels (email + mot de passe, `/register.html`) plutôt qu'un code d'accès unique
+- Comptes individuels (trigramme de 3 lettres + mot de passe, `/register.html`) plutôt qu'un code d'accès unique
   partagé. Un compte fraîchement créé reste **en attente** (`/pending.html`) tant qu'un admin ne
   lui attribue pas explicitement un rôle depuis le panneau **👥 Comptes**.
 - Trois rôles :
@@ -106,7 +106,7 @@ commandes sans ralentissement.
   - **Mobile** : redirigé vers `/scan.html`, une page dédiée qui n'affiche que la caméra et la
     version — aucun autre accès à l'application. Un scan trouvant une correspondance unique
     affiche directement la fiche du colis.
-- Le tout premier compte admin s'amorce via `APP_BOOTSTRAP_ADMIN_EMAIL` (voir plus bas) : sans
+- Le tout premier compte admin s'amorce via `APP_BOOTSTRAP_ADMIN_TRIGRAM` (voir plus bas) : sans
   cette étape, aucun compte ne pourrait jamais valider le tout premier.
 - Le routage par rôle est assuré par un Edge Middleware (`middleware.js`) qui vérifie un cookie de
   session signé (HMAC-SHA256, format JWT-like maison — voir `lib/auth.js`) ; les restrictions plus
@@ -123,7 +123,7 @@ commandes sans ralentissement.
 ```
 index.html                  Page principale (rôles pc/admin)
 scan.html                    Page "Mobile" : caméra + version uniquement (rôle mobile)
-login.html                  Page de connexion (email + mot de passe)
+login.html                  Page de connexion (trigramme + mot de passe)
 register.html                Page d'inscription (compte créé en attente de validation)
 pending.html                  Page affichée à un compte en attente de validation
 manifest.json, sw.js        Configuration PWA de l'app principale (installation, cache hors-ligne)
@@ -137,9 +137,9 @@ assets/
   *.png                     Logo et icônes PWA
 
 api/
-  login.js                   Vérifie email/mot de passe et pose le cookie de session
-  register.js                 Crée un compte (rôle "pending", sauf APP_BOOTSTRAP_ADMIN_EMAIL)
-  session.js                  Renvoie le rôle/email de la session en cours (adapte l'interface au rôle)
+  login.js                   Vérifie trigramme/mot de passe et pose le cookie de session
+  register.js                 Crée un compte (rôle "pending", sauf APP_BOOTSTRAP_ADMIN_TRIGRAM)
+  session.js                  Renvoie le rôle/trigramme de la session en cours (adapte l'interface au rôle)
   users.js                    Gestion des comptes (admin uniquement) : liste, attribution de rôle, mot de passe
   logout.js                   Efface le cookie de session
   db.js                      Point d'entrée unique vers la base Postgres (recherche, import, scraping, nettoyage, export CSV — voir lib/db.js), avec vérification du rôle par action
@@ -207,7 +207,7 @@ statique.
 |---|---|---|
 | `APP_AUTH_SECRET` | Oui (recommandé) | Secret utilisé pour signer le cookie de session (HMAC-SHA256). Une valeur longue et aléatoire, distincte de tout mot de passe. Si absent, l'app retombe sur `APP_ACCESS_CODE` (compatibilité) mais un vrai secret dédié est recommandé. |
 | `APP_ACCESS_CODE` | Non | Ancien code d'accès unique — n'a plus d'usage direct depuis le passage aux comptes utilisateurs, sauf comme repli pour `APP_AUTH_SECRET` s'il est absent. Peut être retiré une fois `APP_AUTH_SECRET` en place. |
-| `APP_BOOTSTRAP_ADMIN_EMAIL` | Recommandé | Email qui obtient automatiquement le rôle **admin** à l'inscription (`/register.html`) — amorce le tout premier compte, sans quoi personne ne pourrait jamais valider un compte. |
+| `APP_BOOTSTRAP_ADMIN_TRIGRAM` | Recommandé | Trigramme qui obtient automatiquement le rôle **admin** à l'inscription (`/register.html`) — amorce le tout premier compte, sans quoi personne ne pourrait jamais valider un compte. |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Non (mais recommandé) | Ajoutées automatiquement en connectant une base **Vercel KV** depuis l'onglet *Storage* du projet sur vercel.com. Permettent à `api/login.js`/`api/register.js` de verrouiller progressivement une adresse IP après plusieurs échecs (partagé entre toutes les instances/régions). Sans ces variables, un compteur en mémoire local par instance sert de repli — moins robuste (se réinitialise à froid, non partagé entre régions) mais actif par défaut. |
 | `POSTGRES_URL` (ou équivalent) | Oui | Ajoutée automatiquement en connectant une base **Postgres** (Neon) depuis l'onglet *Storage* du projet sur vercel.com. Utilisée par `lib/db.js`/`lib/users.js` pour toute la base (commandes + comptes). |
 

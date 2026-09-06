@@ -2945,9 +2945,9 @@
     try{
       const res = await fetch('/api/session', { cache: 'no-store' });
       if(!res.ok) throw new Error('session invalide');
-      const { role, email } = await res.json();
+      const { role, username } = await res.json();
       applyRoleUi(role);
-      els.userInfo.innerHTML = `<strong>${escapeHtmlAttr(email)}</strong> (${ROLE_LABELS[role] || role})`;
+      els.userInfo.innerHTML = `<strong>${escapeHtmlAttr(username)}</strong> (${ROLE_LABELS[role] || role})`;
     }catch(e){
       applyRoleUi('pc');
     }
@@ -2961,7 +2961,7 @@
     }
     els.usersList.innerHTML = users.map(u => `
       <div class="row users-row" data-user-id="${u.id}" style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
-        <span style="flex:1; min-width:200px; font-size:13px;">${escapeHtmlAttr(u.email)}${u.role === 'pending' ? ' <span style="color:var(--danger); font-weight:600;">(en attente)</span>' : ''}</span>
+        <span style="flex:1; min-width:200px; font-size:13px;">${escapeHtmlAttr(u.username)}${u.role === 'pending' ? ' <span style="color:var(--danger); font-weight:600;">(en attente)</span>' : ''}</span>
         <select class="userRoleSelect" style="font-size:13px;">
           ${['pending','mobile','pc','admin'].map(r => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${ROLE_LABELS[r]}</option>`).join('')}
         </select>

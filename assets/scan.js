@@ -269,6 +269,37 @@
     hidLastCharTime = now;
   });
 
+  // Certaines douchettes n'émettent aucune touche individuelle : elles collent directement le
+  // texte (soit un vrai "coller" avec presse-papier, soit une insertion IME côté Android/iOS) —
+  // le clavier "keydown" ci-dessus ne voit alors rien passer. Deux filets supplémentaires :
+  //  1) l'événement "paste" natif (Ctrl+V ou équivalent programmatique), traité immédiatement.
+  //  2) l'événement "input" du champ caché (se déclenche quel que soit le mécanisme d'insertion,
+  //     y compris une insertion IME sans "paste" ni "keydown") : on attend une courte pause sans
+  //     nouvelle frappe/insertion avant de considérer le texte complet, puisqu'il n'y a ici ni
+  //     Entrée ni séparateur fiable pour marquer la fin du collage.
+  document.addEventListener('paste', (e)=>{
+    const text = ((e.clipboardData || window.clipboardData) || {}).getData
+      ? (e.clipboardData || window.clipboardData).getData('text')
+      : '';
+    const value = String(text || '').trim();
+    if(!value) return;
+    e.preventDefault();
+    hidBuffer = '';
+    els.hiddenInput.value = '';
+    handleDecode(value);
+  });
+
+  let hiddenInputIdleTimer = null;
+  els.hiddenInput.addEventListener('input', ()=>{
+    clearTimeout(hiddenInputIdleTimer);
+    hiddenInputIdleTimer = setTimeout(()=>{
+      const value = els.hiddenInput.value.trim();
+      els.hiddenInput.value = '';
+      hidBuffer = '';
+      if(value) handleDecode(value);
+    }, 200);
+  });
+
   function scannerFormats(){
     if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
     return [

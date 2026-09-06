@@ -10,6 +10,7 @@
 
   const els = {
     readerContainer: document.getElementById('scanReaderContainer'),
+    readerPlaceholder: document.getElementById('scanReaderPlaceholder'),
     errorBox: document.getElementById('scanError'),
     resultOverlay: document.getElementById('scanResultOverlay'),
     resultBody: document.getElementById('scanResultBody'),
@@ -20,6 +21,7 @@
     notFoundOverlay: document.getElementById('scanNotFoundOverlay'),
     notFoundCode: document.getElementById('scanNotFoundCode'),
     version: document.getElementById('scanVersion'),
+    toggleCameraBtn: document.getElementById('toggleCameraBtn'),
   };
 
   async function dbGet(action, params){
@@ -375,13 +377,33 @@
     advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }],
   };
 
+  // ---------- activation/désactivation de la caméra ----------
+  // Bouton dans l'en-tête : coupe le flux vidéo (batterie, discrétion, ou simplement laisser la
+  // douchette code-barres travailler seule) sans quitter la page — la douchette et le champ caché
+  // restent actifs dans les deux états, seul le décodage par caméra est concerné.
+  let scannerInstance = null;
+  let cameraOn = false;
+
+  function setReaderVisible(visible){
+    els.readerContainer.style.display = visible ? 'block' : 'none';
+    els.readerPlaceholder.style.display = visible ? 'none' : 'flex';
+  }
+
+  function updateToggleBtn(){
+    els.toggleCameraBtn.textContent = cameraOn ? '📷 Désactiver' : '📷 Activer';
+    els.toggleCameraBtn.setAttribute('aria-pressed', cameraOn ? 'true' : 'false');
+    els.toggleCameraBtn.classList.toggle('camera-off', !cameraOn);
+  }
+
   async function startScanner(){
     if(typeof Html5Qrcode === 'undefined'){
       els.errorBox.textContent = "La bibliothèque de scan n'a pas pu être chargée — vérifiez votre connexion internet.";
       els.errorBox.style.display = 'block';
       return;
     }
-    const scanner = new Html5Qrcode('scanReaderContainer', {
+    els.errorBox.style.display = 'none';
+    setReaderVisible(true);
+    scannerInstance = new Html5Qrcode('scanReaderContainer', {
       formatsToSupport: scannerFormats(),
       verbose: false,
       experimentalFeatures: { useBarCodeDetectorIfSupported: true },
@@ -390,19 +412,49 @@
     const onFailure = () => { /* échecs de lecture image par image : ignorés silencieusement */ };
 
     try{
-      await scanner.start({ facingMode: 'environment' }, buildScanConfig(IDEAL_VIDEO_CONSTRAINTS), onDecode, onFailure);
+      await scannerInstance.start({ facingMode: 'environment' }, buildScanConfig(IDEAL_VIDEO_CONSTRAINTS), onDecode, onFailure);
+      cameraOn = true;
     }catch(err){
       // Repli : certains téléphones (souvent d'entrée de gamme) rejettent une résolution/focus
       // "idéale" trop précise pour leur caméra arrière — on retente avec des contraintes minimales
       // plutôt que de laisser la page entièrement inutilisable pour ces appareils.
       try{
-        await scanner.start({ facingMode: 'environment' }, buildScanConfig({ facingMode: 'environment' }), onDecode, onFailure);
+        await scannerInstance.start({ facingMode: 'environment' }, buildScanConfig({ facingMode: 'environment' }), onDecode, onFailure);
+        cameraOn = true;
       }catch(err2){
         els.errorBox.textContent = `Impossible d'accéder à la caméra (${err2 && err2.message ? err2.message : 'permission refusée ou aucune caméra détectée'}).`;
         els.errorBox.style.display = 'block';
+        scannerInstance = null;
+        setReaderVisible(false);
       }
     }
+    updateToggleBtn();
   }
+
+  async function stopScanner(){
+    if(scannerInstance){
+      try{ await scannerInstance.stop(); }catch(e){ /* déjà arrêtée, ou jamais vraiment démarrée */ }
+      try{ scannerInstance.clear(); }catch(e){ /* rien à nettoyer */ }
+      scannerInstance = null;
+    }
+    cameraOn = false;
+    els.errorBox.style.display = 'none';
+    setReaderVisible(false);
+    updateToggleBtn();
+  }
+
+  let toggleBusy = false;
+  els.toggleCameraBtn.addEventListener('click', async ()=>{
+    if(toggleBusy) return;
+    toggleBusy = true;
+    els.toggleCameraBtn.disabled = true;
+    try{
+      if(cameraOn) await stopScanner(); else await startScanner();
+    }finally{
+      els.toggleCameraBtn.disabled = false;
+      toggleBusy = false;
+    }
+  });
 
   fetch('/api/version', { cache: 'no-store' })
     .then(r => r.json())

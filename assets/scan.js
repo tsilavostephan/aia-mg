@@ -13,6 +13,7 @@
     errorBox: document.getElementById('scanError'),
     resultOverlay: document.getElementById('scanResultOverlay'),
     resultBody: document.getElementById('scanResultBody'),
+    resultQr: document.getElementById('scanResultQr'),
     newScanBtn: document.getElementById('newScanBtn'),
     message: document.getElementById('scanMessage'),
     version: document.getElementById('scanVersion'),
@@ -169,6 +170,22 @@
         <span class="scan-result-value${f.cls ? ' ' + f.cls : ''}">${escapeHtml(f.value) || '—'}</span>
       </div>
     `).join('');
+
+    // QR code encodant le numéro de suivi (même logique que la fiche colis de l'app principale,
+    // voir openPackageModal dans assets/script.js) : permet de rescanner ce colis plus tard.
+    els.resultQr.innerHTML = '';
+    if(r.numSuivi && typeof QRCode !== 'undefined'){
+      try{
+        new QRCode(els.resultQr, {
+          text: r.numSuivi,
+          width: 148,
+          height: 148,
+          colorDark: '#1f2937',
+          colorLight: '#ffffff',
+        });
+      }catch(e){ /* génération QR indisponible, on ignore silencieusement */ }
+    }
+
     els.resultOverlay.classList.add('visible');
   }
 
@@ -223,6 +240,39 @@
     ];
   }
 
+  // Réglages poussés au maximum pour la détection, cette page n'ayant que ça à faire :
+  // - fps 20 (au lieu de 15) : plus de tentatives de décodage par seconde.
+  // - zone de scan agrandie (0.92 x 0.6 au lieu de 0.85 x 0.5) : plus de marge pour cadrer un
+  //   code-barres 1D large sans le recadrer par erreur.
+  // - showTorchButtonIfSupported/showZoomSliderIfSupported (natifs à html5-qrcode) : bouton
+  //   lampe torche et curseur de zoom affichés automatiquement si le téléphone les supporte —
+  //   déterminant en entrepôt faiblement éclairé ou pour un petit code éloigné.
+  // - focusMode/exposureMode "continuous" : re-fait la mise au point/l'exposition en continu
+  //   plutôt qu'une fois au démarrage (Chrome Android respecte ces contraintes ; ignoré ailleurs
+  //   sans erreur, une contrainte "advanced" non supportée est simplement sautée).
+  function buildScanConfig(videoConstraints){
+    return {
+      fps: 20,
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        const size = Math.min(viewfinderWidth, viewfinderHeight);
+        return { width: Math.round(size * 0.92), height: Math.round(size * 0.6) };
+      },
+      aspectRatio: 1.5,
+      disableFlip: false,
+      showTorchButtonIfSupported: true,
+      showZoomSliderIfSupported: true,
+      defaultZoomValueIfSupported: 2,
+      videoConstraints,
+    };
+  }
+
+  const IDEAL_VIDEO_CONSTRAINTS = {
+    facingMode: 'environment',
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    advanced: [{ focusMode: 'continuous' }, { exposureMode: 'continuous' }],
+  };
+
   async function startScanner(){
     if(typeof Html5Qrcode === 'undefined'){
       els.errorBox.textContent = "La bibliothèque de scan n'a pas pu être chargée — vérifiez votre connexion internet.";
@@ -234,28 +284,21 @@
       verbose: false,
       experimentalFeatures: { useBarCodeDetectorIfSupported: true },
     });
+    const onDecode = (decodedText) => { handleDecode(decodedText); };
+    const onFailure = () => { /* échecs de lecture image par image : ignorés silencieusement */ };
+
     try{
-      await scanner.start(
-        { facingMode: 'environment' },
-        {
-          fps: 15,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const size = Math.min(viewfinderWidth, viewfinderHeight);
-            return { width: Math.round(size * 0.85), height: Math.round(size * 0.5) };
-          },
-          videoConstraints: {
-            facingMode: 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            advanced: [{ focusMode: 'continuous' }],
-          },
-        },
-        (decodedText) => { handleDecode(decodedText); },
-        () => { /* échecs de lecture image par image : ignorés silencieusement */ }
-      );
+      await scanner.start({ facingMode: 'environment' }, buildScanConfig(IDEAL_VIDEO_CONSTRAINTS), onDecode, onFailure);
     }catch(err){
-      els.errorBox.textContent = `Impossible d'accéder à la caméra (${err && err.message ? err.message : 'permission refusée ou aucune caméra détectée'}).`;
-      els.errorBox.style.display = 'block';
+      // Repli : certains téléphones (souvent d'entrée de gamme) rejettent une résolution/focus
+      // "idéale" trop précise pour leur caméra arrière — on retente avec des contraintes minimales
+      // plutôt que de laisser la page entièrement inutilisable pour ces appareils.
+      try{
+        await scanner.start({ facingMode: 'environment' }, buildScanConfig({ facingMode: 'environment' }), onDecode, onFailure);
+      }catch(err2){
+        els.errorBox.textContent = `Impossible d'accéder à la caméra (${err2 && err2.message ? err2.message : 'permission refusée ou aucune caméra détectée'}).`;
+        els.errorBox.style.display = 'block';
+      }
     }
   }
 

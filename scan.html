@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="AIA Scan">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <style>
   :root{
@@ -72,6 +73,9 @@
   .scan-result-value.qty-match{ color:var(--success); font-weight:700; }
   .scan-result-value.qty-mismatch{ color:var(--danger); font-weight:700; }
 
+  #scanResultQr{ display:flex; justify-content:center; padding:18px 0 6px; }
+  #scanResultQr img, #scanResultQr canvas{ border-radius:8px; background:#fff; padding:10px; }
+
   #newScanBtn{
     margin-top:16px; padding:14px; font-size:14px; font-weight:600; color:#fff;
     background:var(--primary); border:none; border-radius:10px; cursor:pointer;
@@ -96,6 +100,7 @@
 <div id="scanResultOverlay">
   <h2 class="scan-result-title">Détails du colis</h2>
   <div id="scanResultBody"></div>
+  <div id="scanResultQr"></div>
   <button type="button" id="newScanBtn">🔄 Nouveau scan</button>
 </div>
 

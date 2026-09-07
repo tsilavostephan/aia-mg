@@ -1,6 +1,6 @@
 // Service worker minimal : nécessaire pour que Chrome propose une vraie installation PWA
 // (WebAPK) plutôt qu'un simple raccourci. Stratégie "cache d'abord" sur les fichiers de l'app.
-const CACHE_NAME = 'aia-app-v1.2.22.08.09';
+const CACHE_NAME = 'aia-app-v1.2.08.09.01'; // bump : purge les réponses d'API mises en cache par erreur avant ce correctif
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -37,15 +37,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if(event.request.method !== 'GET') return;
 
-  // Toujours réseau, jamais de cache pour ces deux endpoints :
-  // - /api/version : c'est justement ce que le client interroge pour détecter qu'une nouvelle
-  //   version a été déployée (voir assets/script.js) — le mettre en cache le figerait sur la
-  //   première version vue et casserait la détection.
-  // - /api/session : renvoie le trigramme/rôle du compte connecté (voir api/session.js) — le mettre en
-  //   cache le rendrait lisible par quiconque inspecte le cache du service worker (et figerait le
-  //   rôle affiché après un changement de rôle par un admin), sans même être authentifié à ce
-  //   moment-là.
-  if(event.request.url.endsWith('/api/version') || event.request.url.endsWith('/api/session')){
+  // Toujours réseau, jamais de cache pour TOUTE requête d'API : contrairement aux fichiers de
+  // l'app (HTML/CSS/JS/images, ci-dessous), les réponses d'API changent constamment (colis,
+  // tableau de bord, comptes, config partagée...) et beaucoup utilisent une URL fixe sans
+  // paramètre variable (ex. "resolution-stats", "user-search-stats", la liste des comptes) — la
+  // stratégie "cache d'abord" plus bas répondrait alors indéfiniment avec la toute première
+  // réponse jamais reçue, sans jamais revérifier le serveur (constaté en prod : le Tableau de bord
+  // et les Comptes ne se mettaient à jour qu'après un redémarrage complet de l'app, qui recrée le
+  // service worker). /api/session en particulier ne doit jamais être mis en cache pour une autre
+  // raison aussi : il serait alors lisible par quiconque inspecte le cache du service worker, et
+  // figerait le rôle affiché après un changement de rôle par un admin.
+  if(new URL(event.request.url).pathname.startsWith('/api/')){
     event.respondWith(fetch(event.request));
     return;
   }

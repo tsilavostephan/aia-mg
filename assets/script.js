@@ -2531,11 +2531,11 @@
     { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click(), el: els.importBackupBtn },
     { code:'ArrowUp',   label:'Onglet transporteur précédent',  run: () => switchCarrierTab(-1), displayKey:'↑', el: els.carrierTabs },
     { code:'ArrowDown', label:'Onglet transporteur suivant',    run: () => switchCarrierTab(1),  displayKey:'↓', el: els.carrierTabs },
-    { code:'KeyC', label:'Page Colis',            run: () => showPage('colis'),          el: els.navColisBtn },
-    { code:'KeyI', label:'Page Import CSV',        run: () => { if(els.navImportBtn.style.display !== 'none') showPage('import'); },        el: els.navImportBtn },
-    { code:'KeyT', label:'Page Transporteurs',     run: () => { if(els.navTransporteursBtn.style.display !== 'none') showPage('transporteurs'); }, el: els.navTransporteursBtn },
-    { code:'KeyD', label:'Page Tableau de bord',   run: () => showPage('dashboard'),      el: els.dashboardBtn },
-    { code:'KeyU', label:'Page Comptes',           run: () => { if(els.usersBtn.style.display !== 'none') showPage('comptes'); },              el: els.usersBtn },
+    { code:'Digit1', displayKey:'1', label:'Page Base de données', run: () => showPage('colis'),          el: els.navColisBtn },
+    { code:'Digit2', displayKey:'2', label:'Page Import/Export',   run: () => { if(els.navImportBtn.style.display !== 'none') showPage('import'); },        el: els.navImportBtn },
+    { code:'Digit3', displayKey:'3', label:'Page Transporteurs',   run: () => { if(els.navTransporteursBtn.style.display !== 'none') showPage('transporteurs'); }, el: els.navTransporteursBtn },
+    { code:'Digit4', displayKey:'4', label:'Page Tableau de bord', run: () => showPage('dashboard'),      el: els.dashboardBtn },
+    { code:'Digit5', displayKey:'5', label:'Page Comptes',         run: () => { if(els.usersBtn.style.display !== 'none') showPage('comptes'); },              el: els.usersBtn },
   ];
 
   // Étiquette affichée par défaut (position QWERTY de la touche, ex. "KeyQ" -> "Q") — mise à jour

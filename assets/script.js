@@ -38,6 +38,9 @@
     backupProgressWrap: document.getElementById('backupProgressWrap'),
     backupProgressBar: document.getElementById('backupProgressBar'),
     backupProgressText: document.getElementById('backupProgressText'),
+    csvImportProgressWrap: document.getElementById('csvImportProgressWrap'),
+    csvImportProgressBar: document.getElementById('csvImportProgressBar'),
+    csvImportProgressText: document.getElementById('csvImportProgressText'),
     csvSection: document.getElementById('csvSection'),
     userMenu: document.getElementById('userMenu'),
     userMenuBtn: document.getElementById('userMenuBtn'),
@@ -1203,7 +1206,7 @@
     let batchesDone = 0;
 
     if(totalBatches > 0){
-      showBackupProgress(0, `Enregistrement en base… 0 / ${totalBatches} lot(s)`);
+      showCsvImportProgress(0, `Enregistrement en base… 0 / ${totalBatches} lot(s)`);
     }
 
     // Le dédoublonnage (clé N° Commande + Commande Amazon, protection du numéro dernier
@@ -1219,7 +1222,7 @@
           updated += result.updated;
           skippedNoKey += result.skipped;
           batchesDone++;
-          showBackupProgress((batchesDone / totalBatches) * 100, `Enregistrement en base… ${batchesDone} / ${totalBatches} lot(s) (${file.name})`);
+          showCsvImportProgress((batchesDone / totalBatches) * 100, `Enregistrement en base… ${batchesDone} / ${totalBatches} lot(s) (${file.name})`);
         }
       }catch(e){
         logLine(`${file.name} — échec de l'enregistrement en base (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
@@ -1238,10 +1241,15 @@
       }
     }
 
-    if(totalBatches > 0) showBackupProgress(100, 'Mise à jour de l\'affichage…');
+    if(totalBatches > 0) showCsvImportProgress(100, 'Mise à jour de l\'affichage…');
     currentOffset = 0;
-    await Promise.all([fetchAndRenderPage(), refreshStats(), refreshCarrierTrackingIfAdmin()]);
-    hideBackupProgress();
+    // Le rafraîchissement des colis non résolus/transporteurs (refreshCarrierTrackingIfAdmin) ne se
+    // fait plus automatiquement ici après chaque import (potentiellement lourd sur un gros import,
+    // et pas forcément utile si l'admin ne va pas immédiatement scraper) — il a lieu à la place à
+    // l'ouverture de l'onglet Transporteurs (voir showPage()), pour rester à jour quand on en a
+    // vraiment besoin sans le refaire à chaque ajout.
+    await Promise.all([fetchAndRenderPage(), refreshStats()]);
+    hideCsvImportProgress();
 
     selectedFiles = [];
     els.fileInput.value = '';
@@ -1251,11 +1259,6 @@
     if(totalAdded > 0) summaryParts.push(`${formatNumber(totalAdded)} ajoutée(s)`);
     if(totalUpdated > 0) summaryParts.push(`${formatNumber(totalUpdated)} mise(s) à jour`);
     logLine(`Import terminé — ${summaryParts.join(', ') || '0 commande'} au total.`);
-
-    // Lance automatiquement le scraping AUTO juste après l'import, sans attendre un clic manuel sur
-    // "Récupérer AUTO" — carrierGroups vient d'être recalculé juste au-dessus (updateCarrierTracking),
-    // scrapeAllCarriers() se contente de ne rien faire s'il n'y a aucun colis non résolu à traiter.
-    if(totalBatches > 0) scrapeAllCarriers();
   });
 
   // ---------- transporteurs pris en charge et gabarits d'URL de suivi ----------
@@ -1772,6 +1775,11 @@
     });
     if(key === 'dashboard') loadDashboard();
     if(key === 'comptes') loadUsersList();
+    // L'import CSV ne rafraîchit plus automatiquement les colis non résolus/transporteurs (voir
+    // els.importBtn plus haut) : on le fait ici à la place, à l'ouverture réelle de cet onglet,
+    // pour que "Récupérer AUTO" parte toujours de données à jour sans repayer ce coût à chaque
+    // import.
+    if(key === 'transporteurs') refreshCarrierTrackingIfAdmin();
   }
 
   document.querySelectorAll('.page-nav-btn').forEach(btn=>{
@@ -3472,10 +3480,25 @@
     els.backupProgressText.textContent = '';
   }
 
+  // Barre de progression dédiée à l'import CSV (page Import/Export), distincte de
+  // showBackupProgress/hideBackupProgress ci-dessus (page Base de données, utilisée par
+  // "Actualiser") : l'import se déclenche depuis Import/Export, la progression doit rester visible
+  // sur cette page-là plutôt que sur une autre page potentiellement masquée.
+  function showCsvImportProgress(percentage, label){
+    els.csvImportProgressWrap.style.display = '';
+    els.csvImportProgressBar.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+    els.csvImportProgressText.textContent = label;
+  }
+  function hideCsvImportProgress(){
+    els.csvImportProgressWrap.style.display = 'none';
+    els.csvImportProgressBar.style.width = '0%';
+    els.csvImportProgressText.textContent = '';
+  }
+
   els.exportJsonEncryptedBtn.addEventListener('click', async ()=>{
     els.exportJsonEncryptedBtn.disabled = true;
     try{
-      showBackupProgress(0, 'Préparation du CSV…');
+      showCsvImportProgress(0, 'Préparation du CSV…');
       // Plus de code d'export à fournir : le rôle du compte connecté (pc/admin, vérifié
       // côté serveur dans api/db.js) est désormais la seule autorisation nécessaire.
       const res = await fetch('/api/db?action=export-csv', { cache: 'no-store' });
@@ -3483,7 +3506,7 @@
         const errData = await res.json().catch(() => null);
         throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
       }
-      showBackupProgress(60, 'Téléchargement du fichier CSV…');
+      showCsvImportProgress(60, 'Téléchargement du fichier CSV…');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -3493,11 +3516,11 @@
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-      setDbLog('Export CSV téléchargé.', false);
+      logLine('Export CSV téléchargé.');
     }catch(e){
-      setDbLog(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+      logLine(`Échec de l'export (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
-      hideBackupProgress();
+      hideCsvImportProgress();
       els.exportJsonEncryptedBtn.disabled = false;
     }
   });
@@ -3521,14 +3544,14 @@
     try{
       const { removed } = await dbPost('clean-invalid', {});
       if(removed === 0){
-        setDbLog('Aucun colis sans N° Commande / Commande Amazon dans la base actuelle.', false);
+        logLine('Aucun colis sans N° Commande / Commande Amazon dans la base actuelle.');
       }else{
         currentOffset = 0;
         await Promise.all([fetchAndRenderPage(), refreshStats(), refreshCarrierTrackingIfAdmin()]);
-        setDbLog(`${removed} colis retiré(s) (sans N° Commande / Commande Amazon).`, false);
+        logLine(`${removed} colis retiré(s) (sans N° Commande / Commande Amazon).`);
       }
     }catch(e){
-      setDbLog(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+      logLine(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
       els.cleanInvalidBtn.disabled = false;
     }
@@ -3540,14 +3563,14 @@
     try{
       const { removed } = await dbPost('clean-invalid-km', {});
       if(removed === 0){
-        setDbLog('Aucun numéro dernier kilométrique invalide trouvé dans la base actuelle.', false);
+        logLine('Aucun numéro dernier kilométrique invalide trouvé dans la base actuelle.');
       }else{
         currentOffset = 0;
         await Promise.all([fetchAndRenderPage(), refreshStats(), refreshCarrierTrackingIfAdmin()]);
-        setDbLog(`${removed} numéro(s) dernier kilométrique invalide(s) vidé(s).`, false);
+        logLine(`${removed} numéro(s) dernier kilométrique invalide(s) vidé(s).`);
       }
     }catch(e){
-      setDbLog(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
+      logLine(`Échec du nettoyage (${e && e.message ? e.message : 'erreur inconnue'}).`, true);
     }finally{
       els.cleanInvalidKmBtn.disabled = false;
     }

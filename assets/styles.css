@@ -162,7 +162,7 @@
 
   .update-btn{
     display: inline-flex; align-items: center; gap: 6px;
-    margin-left: auto; flex-shrink: 0;
+    flex-shrink: 0;
     padding: 8px 14px;
     font-size: 13px; font-weight: 700;
     color: #fff; border: 1px solid var(--primary); border-radius: 999px;
@@ -172,9 +172,6 @@
   }
   .update-btn:hover{ background: var(--primary-dark); border-color: var(--primary-dark); }
   .update-btn:active{ transform: translateY(1px); }
-  /* .user-menu se colle à droite (margin-left:auto) ; le bouton MAJ, quand affiché avant lui, doit
-     pousser vers la droite à sa place à la place de .user-menu. */
-  .update-btn + .user-menu{ margin-left: 0; }
   @keyframes update-btn-pulse{
     0%, 100%{ box-shadow: 0 0 0 0 rgba(37,99,235,0.35); }
     50%{ box-shadow: 0 0 0 6px rgba(37,99,235,0); }

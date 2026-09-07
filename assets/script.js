@@ -2437,11 +2437,14 @@
     }
   }
 
+  // La visibilité de #carrierSection (page "Transporteurs") est désormais entièrement pilotée par
+  // showPage()/la classe .app-page (voir plus bas) — cette fonction ne doit plus toucher à
+  // style.display, un style inline l'emporterait sur la classe .active et laisserait la section
+  // visible en permanence, sur tous les onglets à la fois (peu importe l'onglet actif).
   function updateCarrierTracking(){
     carrierGroups = computeCarrierGroups();
 
     if(carrierGroups.length === 0){
-      els.carrierSection.style.display = 'none';
       activeCarrierKey = null;
       return;
     }
@@ -2450,7 +2453,6 @@
       activeCarrierKey = carrierGroups[0].key;
     }
 
-    els.carrierSection.style.display = 'block';
     renderCarrierTabs();
     renderCarrierPanel();
   }

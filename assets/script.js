@@ -3170,7 +3170,7 @@
       recordSearchStatIfFound(currentPageRows[0]);
     }
 
-    if(term && els.autoDetailsCheckbox.checked && document.body.classList.contains('focus-mode') && currentSearchTotal === 1 && currentPageRows.length === 1){
+    if(term && els.autoDetailsCheckbox.checked && currentSearchTotal === 1 && currentPageRows.length === 1){
       if(autoOpenedRecord !== currentPageRows[0]){
         autoOpenedRecord = currentPageRows[0];
         openPackageModal(currentPageRows[0]);

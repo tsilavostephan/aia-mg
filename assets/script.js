@@ -139,13 +139,6 @@
   let currentSearchTotal = 0;
   let unresolvedRows = [];
 
-  // Posé à true juste avant les recherches "automatiques" (collage, Entrée, douchette via
-  // applyTrackingTransformIfNeeded, scan caméra normal) — remis à false après le prochain
-  // fetchAndRenderPage(), qu'il ait servi ou non. Distingue ces recherches délibérées du simple
-  // filtrage au clavier (bien plus bruyant) pour le compteur par utilisateur (voir
-  // fetchAndRenderPage/handleRafaleDecode et la table user_search_stats).
-  let lastSearchWasAutomatic = false;
-
   function recordSearchStatIfFound(row){
     dbPost('record-search-stat', { found: !!(row && row.numDernierKm) }).catch(()=>{});
   }
@@ -527,7 +520,6 @@
     const transformed = await computeBestTracking(els.search.value);
     if(transformed){
       els.search.value = transformed;
-      lastSearchWasAutomatic = true; // collage/Entrée/douchette — voir fetchAndRenderPage
       render();
       return true;
     }
@@ -3128,7 +3120,6 @@
           stopScanner();
           const transformed = await computeBestTracking(decodedText);
           els.search.value = transformed || decodedText;
-          lastSearchWasAutomatic = true; // scan caméra — voir fetchAndRenderPage
           els.search.dispatchEvent(new Event('input'));
           els.search.focus();
         },
@@ -3172,13 +3163,12 @@
     currentPageRows = result.rows;
     currentSearchTotal = result.total;
 
-    // Compteur par utilisateur (voir déclaration de lastSearchWasAutomatic) : uniquement pour les
-    // recherches automatiques (scan/collage/Entrée/douchette) qui aboutissent à exactement un
-    // colis — remis à false dans tous les cas pour ne pas compter la frappe manuelle suivante.
-    if(lastSearchWasAutomatic && currentSearchTotal === 1 && currentPageRows.length === 1){
+    // Compteur par utilisateur : toute recherche (frappe manuelle comprise, plus seulement
+    // scan/collage) qui aboutit à exactement un colis compte, dès lors qu'un terme a été saisi
+    // (un champ vide qui ne renverrait qu'une seule ligne, base quasi vide, ne doit pas compter).
+    if(term && currentSearchTotal === 1 && currentPageRows.length === 1){
       recordSearchStatIfFound(currentPageRows[0]);
     }
-    lastSearchWasAutomatic = false;
 
     if(term && els.autoDetailsCheckbox.checked && document.body.classList.contains('focus-mode') && currentSearchTotal === 1 && currentPageRows.length === 1){
       if(autoOpenedRecord !== currentPageRows[0]){

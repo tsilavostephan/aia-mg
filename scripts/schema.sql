@@ -89,3 +89,26 @@ CREATE TABLE IF NOT EXISTS user_search_stats (
   found_km INT NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Recherche insensible aux accents, mais UNIQUEMENT sur la colonne Nom (ex. "Stephanie" trouve
+-- aussi "Stéphanie") — voir search() dans lib/db.js, qui ajoute une condition supplémentaire par
+-- terme portant spécifiquement sur cette expression, en plus du search_text normal (qui, lui,
+-- reste sensible aux accents pour les autres colonnes).
+--
+-- unaccent(text) — la forme à un seul argument — dépend du search_path courant pour résoudre le
+-- dictionnaire par défaut et est donc classée STABLE, pas IMMUTABLE : Postgres refuse une fonction
+-- STABLE dans une expression d'index. immutable_unaccent() est le contournement standard : appelle
+-- explicitement le dictionnaire "unaccent" par nom (forme à 2 arguments), qui ne change jamais en
+-- pratique sur une base donnée, et se déclare donc IMMUTABLE. Le nom du dictionnaire ET la fonction
+-- unaccent() elle-même doivent être qualifiés par le schéma (public.unaccent(...)) : sans ça,
+-- CREATE INDEX échoue avec "function unaccent(regdictionary, text) does not exist" (le search_path
+-- résolu au moment de la validation de l'expression d'index diffère de celui d'une requête normale
+-- exécutant la même fonction — constaté en pratique sur cette base).
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+CREATE OR REPLACE FUNCTION immutable_unaccent(text) RETURNS text AS $$
+  SELECT public.unaccent('public.unaccent'::regdictionary, $1)
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_colis_nom_unaccent_trgm ON colis
+  USING GIN (immutable_unaccent(lower(coalesce(nom, ''))) gin_trgm_ops);

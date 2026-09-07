@@ -37,7 +37,15 @@
   <a href="/api/logout" class="logout-btn" title="Se déconnecter">⏻ Se déconnecter</a>
 </div>
 
-<fieldset id="csvSection">
+<div class="page-nav" id="pageNav">
+  <button type="button" id="navColisBtn" class="page-nav-btn" data-page="colis">📦 Colis</button>
+  <button type="button" id="navImportBtn" class="page-nav-btn" data-page="import" style="display:none;">📥 Import CSV</button>
+  <button type="button" id="navTransporteursBtn" class="page-nav-btn" data-page="transporteurs" style="display:none;">🚚 Transporteurs</button>
+  <button type="button" id="dashboardBtn" class="page-nav-btn" data-page="dashboard" title="Taux de résolution par transporteur, par jour/semaine/mois">📊 Tableau de bord</button>
+  <button type="button" id="usersBtn" class="page-nav-btn" data-page="comptes" style="display:none;" title="Gérer les comptes utilisateurs">👥 Comptes</button>
+</div>
+
+<fieldset id="csvSection" class="app-page">
   <h2>Importer des fichiers CSV</h2>
   <div class="row">
     <div id="dropzone" class="dropzone">
@@ -58,7 +66,7 @@
   <div id="log"></div>
 </fieldset>
 
-<fieldset id="carrierSection" style="display:none;">
+<fieldset id="carrierSection" class="app-page">
   <h2 class="section-title">
     <span>Numéros dernier kilomètre<span id="carrierSectionUpdatedCount" style="color:var(--card);"></span></span>
     <span class="section-title-actions">
@@ -76,13 +84,9 @@
   <div id="carrierPanel"></div>
 </fieldset>
 
-<fieldset id="dbSection">
+<fieldset id="dbSection" class="app-page">
   <h2 class="section-title">
     <span>Colis (<span id="rowCount">0</span> enregistrés, <span id="resolvedCount">0</span> à jour<span id="resolvedPercent"></span>)</span>
-    <span class="section-title-actions">
-      <button type="button" id="dashboardBtn" class="secondary" title="Taux de résolution par transporteur, par jour/semaine/mois">📊 Tableau de bord</button>
-      <button type="button" id="usersBtn" class="secondary" style="display:none;" title="Gérer les comptes utilisateurs">👥 Comptes</button>
-    </span>
   </h2>
   <div class="row search-row">
     <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)" title="Virgule = OU entre plusieurs recherches (ex. « 4PX, YANWEN »). + = ET, pour combiner des critères (ex. « Colissimo + Rasoa »).">
@@ -173,19 +177,14 @@
   </div>
 </div>
 
-<div id="dashboardModalBg" class="modal-bg" style="display:none;">
-  <div class="modal-box modal-box-wide">
-    <h2 class="modal-title">Tableau de bord</h2>
-    <p class="modal-subtext">
-      Volumes de colis ajoutés et de numéros dernier kilométrique résolus, par transporteur (valeur
-      brute trouvée dans vos CSV), toutes périodes confondues.
-    </p>
-    <div id="dashboardBody" style="margin-top:12px;"></div>
-    <div class="actions">
-      <button type="button" id="dashboardCloseBtn" class="secondary">✕ Fermer</button>
-    </div>
-  </div>
-</div>
+<fieldset id="dashboardPage" class="app-page">
+  <h2>Tableau de bord</h2>
+  <p class="modal-subtext">
+    Volumes de colis ajoutés et de numéros dernier kilométrique résolus, par transporteur (valeur
+    brute trouvée dans vos CSV), toutes périodes confondues.
+  </p>
+  <div id="dashboardBody" style="margin-top:12px;"></div>
+</fieldset>
 
 <div id="carrierMappingModalBg" class="modal-bg" style="display:none;">
   <div class="modal-box modal-box-wide">
@@ -249,20 +248,15 @@
   </div>
 </div>
 
-<div id="usersModalBg" class="modal-bg" style="display:none;">
-  <div class="modal-box modal-box-wide">
-    <h2 class="modal-title">Comptes utilisateurs</h2>
-    <p class="modal-subtext">
-      Rôle <strong>Admin</strong> : accès complet. <strong>PC</strong> : tableau de bord, recherche,
-      actualisation, export. <strong>Mobile</strong> : recherche par caméra uniquement, sur une page
-      dédiée. <strong>En attente</strong> : aucun accès tant qu'un rôle n'est pas attribué.
-    </p>
-    <div id="usersList"></div>
-    <div class="actions">
-      <button type="button" id="usersCloseBtn" class="secondary">✕ Fermer</button>
-    </div>
-  </div>
-</div>
+<fieldset id="comptesPage" class="app-page">
+  <h2>Comptes utilisateurs</h2>
+  <p class="modal-subtext">
+    Rôle <strong>Admin</strong> : accès complet. <strong>PC</strong> : tableau de bord, recherche,
+    actualisation, export. <strong>Mobile</strong> : recherche par caméra uniquement, sur une page
+    dédiée. <strong>En attente</strong> : aucun accès tant qu'un rôle n'est pas attribué.
+  </p>
+  <div id="usersList"></div>
+</fieldset>
 
 <div id="csvOptionsModalBg" class="modal-bg" style="display:none;">
   <div class="modal-box">

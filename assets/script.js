@@ -41,9 +41,7 @@
     csvSection: document.getElementById('csvSection'),
     userInfo: document.getElementById('userInfo'),
     usersBtn: document.getElementById('usersBtn'),
-    usersModalBg: document.getElementById('usersModalBg'),
     usersList: document.getElementById('usersList'),
-    usersCloseBtn: document.getElementById('usersCloseBtn'),
     dbLog: document.getElementById('dbLog'),
     cleanInvalidBtn: document.getElementById('cleanInvalidBtn'),
     cleanInvalidKmBtn: document.getElementById('cleanInvalidKmBtn'),
@@ -51,9 +49,13 @@
     carrierTabs: document.getElementById('carrierTabs'),
     carrierPanel: document.getElementById('carrierPanel'),
     dashboardBtn: document.getElementById('dashboardBtn'),
-    dashboardModalBg: document.getElementById('dashboardModalBg'),
     dashboardBody: document.getElementById('dashboardBody'),
-    dashboardCloseBtn: document.getElementById('dashboardCloseBtn'),
+    dbSection: document.getElementById('dbSection'),
+    navColisBtn: document.getElementById('navColisBtn'),
+    navImportBtn: document.getElementById('navImportBtn'),
+    navTransporteursBtn: document.getElementById('navTransporteursBtn'),
+    dashboardPage: document.getElementById('dashboardPage'),
+    comptesPage: document.getElementById('comptesPage'),
     carrierMappingBtn: document.getElementById('carrierMappingBtn'),
     carrierSectionUpdatedCount: document.getElementById('carrierSectionUpdatedCount'),
     carrierMappingModalBg: document.getElementById('carrierMappingModalBg'),
@@ -1624,18 +1626,32 @@
     }
   }
 
-  function openDashboardModal(){
-    els.dashboardModalBg.style.display = 'block';
-    loadDashboard();
-  }
-  function closeDashboardModal(){
-    els.dashboardModalBg.style.display = 'none';
+  // ---------- navigation par onglets (remplace l'ancien empilement de sections + les fenêtres
+  // pop-up Tableau de bord/Comptes) : une seule page visible à la fois parmi les 5 possibles,
+  // filtrées par rôle (voir applyRoleUi). Recharge les données à chaque fois qu'on arrive sur
+  // Tableau de bord/Comptes, comme le faisait l'ouverture de leur ancienne modale.
+  const PAGES = {
+    colis: els.dbSection,
+    import: els.csvSection,
+    transporteurs: els.carrierSection,
+    dashboard: els.dashboardPage,
+    comptes: els.comptesPage,
+  };
+  let currentPage = 'colis';
+
+  function showPage(key){
+    if(!PAGES[key]) return;
+    currentPage = key;
+    Object.entries(PAGES).forEach(([k, el])=>{ if(el) el.classList.toggle('active', k === key); });
+    document.querySelectorAll('.page-nav-btn').forEach(btn=>{
+      btn.classList.toggle('active', btn.dataset.page === key);
+    });
+    if(key === 'dashboard') loadDashboard();
+    if(key === 'comptes') loadUsersList();
   }
 
-  els.dashboardBtn.addEventListener('click', openDashboardModal);
-  els.dashboardCloseBtn.addEventListener('click', closeDashboardModal);
-  els.dashboardModalBg.addEventListener('click', (e)=>{
-    if(e.target === els.dashboardModalBg) closeDashboardModal();
+  document.querySelectorAll('.page-nav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> showPage(btn.dataset.page));
   });
 
   async function openCarrierMappingModal(){
@@ -2342,10 +2358,6 @@
       closeSearchOptionsModal();
     }else if(els.fourPxApiConfigModalBg.style.display === 'block'){
       closeScrapeConfigModal();
-    }else if(els.dashboardModalBg.style.display === 'block'){
-      closeDashboardModal();
-    }else if(els.usersModalBg.style.display === 'block'){
-      els.usersModalBg.style.display = 'none';
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){
@@ -2383,6 +2395,11 @@
     { code:'KeyJ', label:'Actualiser depuis la base',           run: () => els.importBackupBtn.click(), el: els.importBackupBtn },
     { code:'ArrowUp',   label:'Onglet transporteur précédent',  run: () => switchCarrierTab(-1), displayKey:'↑', el: els.carrierTabs },
     { code:'ArrowDown', label:'Onglet transporteur suivant',    run: () => switchCarrierTab(1),  displayKey:'↓', el: els.carrierTabs },
+    { code:'KeyC', label:'Page Colis',            run: () => showPage('colis'),          el: els.navColisBtn },
+    { code:'KeyI', label:'Page Import CSV',        run: () => { if(els.navImportBtn.style.display !== 'none') showPage('import'); },        el: els.navImportBtn },
+    { code:'KeyT', label:'Page Transporteurs',     run: () => { if(els.navTransporteursBtn.style.display !== 'none') showPage('transporteurs'); }, el: els.navTransporteursBtn },
+    { code:'KeyD', label:'Page Tableau de bord',   run: () => showPage('dashboard'),      el: els.dashboardBtn },
+    { code:'KeyU', label:'Page Comptes',           run: () => { if(els.usersBtn.style.display !== 'none') showPage('comptes'); },              el: els.usersBtn },
   ];
 
   // Étiquette affichée par défaut (position QWERTY de la touche, ex. "KeyQ" -> "Q") — mise à jour
@@ -3086,11 +3103,12 @@
     currentUserRole = role;
     const isAdmin = role === 'admin';
     document.body.classList.toggle('focus-mode', !isAdmin);
-    els.csvSection.style.display = isAdmin ? '' : 'none';
-    if(!isAdmin) els.carrierSection.style.display = 'none';
+    els.navImportBtn.style.display = isAdmin ? '' : 'none';
+    els.navTransporteursBtn.style.display = isAdmin ? '' : 'none';
     els.cleanInvalidBtn.style.display = isAdmin ? '' : 'none';
     els.cleanInvalidKmBtn.style.display = isAdmin ? '' : 'none';
     els.usersBtn.style.display = isAdmin ? '' : 'none';
+    showPage('colis'); // page par défaut pour les deux rôles
     render(); // ré-évalue "Détails auto" : la recherche peut déjà correspondre à un seul colis
   }
 
@@ -3199,15 +3217,6 @@
     }
     return res.json();
   }
-
-  els.usersBtn.addEventListener('click', ()=>{
-    els.usersModalBg.style.display = 'block';
-    loadUsersList();
-  });
-  els.usersCloseBtn.addEventListener('click', ()=>{ els.usersModalBg.style.display = 'none'; });
-  els.usersModalBg.addEventListener('click', (e)=>{
-    if(e.target === els.usersModalBg) els.usersModalBg.style.display = 'none';
-  });
 
   // ---------- "Détails auto" : ouvre automatiquement le détail d'un colis en mode plein écran ----------
   const AUTO_DETAILS_KEY = 'commandes-auto-details';

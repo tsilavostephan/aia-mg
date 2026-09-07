@@ -459,6 +459,13 @@
   .copy-icon.copied{ color: var(--success); opacity: 1; }
 
   #count{ font-size: 12.5px; color: var(--muted); margin: 8px 0; }
+
+  /* Interligne plus compact entre le titre, la barre de recherche et le compte de résultats de la
+     page Base de données — les valeurs génériques ci-dessus (h2, .row, #count) restent inchangées
+     pour les autres pages. */
+  #dbSection h2{ margin-bottom: 8px; }
+  #dbSection .search-row{ margin: 6px 0; }
+  #dbSection #count{ margin: 4px 0; }
   #emptyState{ color: var(--muted); font-size: 13px; padding: 16px 0; text-align: center; }
 
   .actions{ margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 0; }

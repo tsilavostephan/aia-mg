@@ -67,7 +67,7 @@
     body{ max-width: 1360px; }
   }
   h1{ font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
-  h2{ font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--primary); margin: 0 0 16px; }
+  h2{ font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--primary); margin: 0 0 10px; }
   #scrapeAllBtn.scrape-all-success{ background: var(--success); color:#fff; border-color: var(--success); }
   #scrapeAllBtn.scrape-all-error{ background: var(--danger); color:#fff; border-color: var(--danger); }
 
@@ -96,7 +96,7 @@
 
   .page-nav{
     display: flex; gap: 8px; flex-wrap: wrap;
-    margin: 0 0 22px;
+    margin: 0 0 14px;
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
   }
@@ -121,7 +121,7 @@
     box-shadow: 0 0 0 3px var(--primary-soft), 0 0 0 1px var(--primary);
   }
 
-  .app-header{ display: flex; align-items: center; gap: 20px; margin: 0 0 28px; flex-wrap: wrap; }
+  .app-header{ display: flex; align-items: center; gap: 20px; margin: 0 0 16px; flex-wrap: wrap; }
   .app-logo{ height: 56px; width: auto; flex-shrink: 0; }
   .app-header-text{ min-width: 0; }
   .app-version{ color: var(--muted); margin: 0; font-size: 12px; }
@@ -181,13 +181,13 @@
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 22px 24px;
-    margin: 0 0 22px;
+    padding: 16px 20px;
+    margin: 0 0 14px;
     box-shadow: 0 1px 2px rgba(16,24,40,0.04);
     min-width: 0;
   }
 
-  .row{ margin: 12px 0; }
+  .row{ margin: 8px 0; }
   .search-row{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .toggle-switch{
     display: inline-flex; align-items: center; gap: 8px;
@@ -458,14 +458,7 @@
   .copy-icon:hover{ color: var(--primary); background: var(--primary-soft); }
   .copy-icon.copied{ color: var(--success); opacity: 1; }
 
-  #count{ font-size: 12.5px; color: var(--muted); margin: 8px 0; }
-
-  /* Interligne plus compact entre le titre, la barre de recherche et le compte de résultats de la
-     page Base de données — les valeurs génériques ci-dessus (h2, .row, #count) restent inchangées
-     pour les autres pages. */
-  #dbSection h2{ margin-bottom: 8px; }
-  #dbSection .search-row{ margin: 6px 0; }
-  #dbSection #count{ margin: 4px 0; }
+  #count{ font-size: 12.5px; color: var(--muted); margin: 4px 0; }
   #emptyState{ color: var(--muted); font-size: 13px; padding: 16px 0; text-align: center; }
 
   .actions{ margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 0; }
@@ -815,7 +808,7 @@
   @media (max-width: 720px){
     body{ margin: 0; padding: 14px 14px 48px; }
 
-    .app-header{ gap: 10px 14px; margin-bottom: 20px; }
+    .app-header{ gap: 10px 14px; margin-bottom: 12px; }
     .app-logo{ height: 42px; }
     h1{ font-size: 22px; }
     p.desc{ display: none; } /* superflu sur petit écran, laisse la place à l'essentiel */

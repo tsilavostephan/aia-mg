@@ -39,7 +39,19 @@
     backupProgressBar: document.getElementById('backupProgressBar'),
     backupProgressText: document.getElementById('backupProgressText'),
     csvSection: document.getElementById('csvSection'),
-    userInfo: document.getElementById('userInfo'),
+    userMenu: document.getElementById('userMenu'),
+    userMenuBtn: document.getElementById('userMenuBtn'),
+    userMenuDropdown: document.getElementById('userMenuDropdown'),
+    userMenuName: document.getElementById('userMenuName'),
+    changePasswordBtn: document.getElementById('changePasswordBtn'),
+    changePasswordModalBg: document.getElementById('changePasswordModalBg'),
+    currentPasswordInput: document.getElementById('currentPasswordInput'),
+    newPasswordInput: document.getElementById('newPasswordInput'),
+    confirmPasswordInput: document.getElementById('confirmPasswordInput'),
+    changePasswordError: document.getElementById('changePasswordError'),
+    changePasswordSaveBtn: document.getElementById('changePasswordSaveBtn'),
+    changePasswordCancelBtn: document.getElementById('changePasswordCancelBtn'),
+    userStatsBody: document.getElementById('userStatsBody'),
     usersBtn: document.getElementById('usersBtn'),
     usersList: document.getElementById('usersList'),
     dbLog: document.getElementById('dbLog'),
@@ -126,6 +138,17 @@
   let currentOffset = 0;
   let currentSearchTotal = 0;
   let unresolvedRows = [];
+
+  // Posé à true juste avant les recherches "automatiques" (collage, Entrée, douchette via
+  // applyTrackingTransformIfNeeded, scan caméra normal) — remis à false après le prochain
+  // fetchAndRenderPage(), qu'il ait servi ou non. Distingue ces recherches délibérées du simple
+  // filtrage au clavier (bien plus bruyant) pour le compteur par utilisateur (voir
+  // fetchAndRenderPage/handleRafaleDecode et la table user_search_stats).
+  let lastSearchWasAutomatic = false;
+
+  function recordSearchStatIfFound(row){
+    dbPost('record-search-stat', { found: !!(row && row.numDernierKm) }).catch(()=>{});
+  }
 
   // ---------- appels à /api/db (recherche/import/scraping/nettoyage — voir api/db.js) ----------
   async function dbGet(action, params){
@@ -504,6 +527,7 @@
     const transformed = await computeBestTracking(els.search.value);
     if(transformed){
       els.search.value = transformed;
+      lastSearchWasAutomatic = true; // collage/Entrée/douchette — voir fetchAndRenderPage
       render();
       return true;
     }
@@ -1380,6 +1404,17 @@
   // Chargée via /api/config (partagée entre tous les comptes admin) — voir loadSharedCarrierConfig.
   let carrierIncludeUnresolved = {};
 
+  // Transporteurs exclus du Tableau de bord (n'ont jamais de numéro dernier kilométrique par
+  // nature — les compter fausserait à la baisse le taux de résolution). Valeurs brutes de
+  // `colis.transporteur`, filtrées côté serveur dans resolutionStats() (voir lib/db.js).
+  const DASHBOARD_EXCLUDED_CARRIERS_KEY = 'dashboard-excluded-carriers';
+  let dashboardExcludedCarriers = [];
+
+  function saveDashboardExcludedCarriers(list){
+    dashboardExcludedCarriers = list;
+    saveSharedConfig(DASHBOARD_EXCLUDED_CARRIERS_KEY, list);
+  }
+
   function carrierIncludesUnresolved(key){
     return !!carrierIncludeUnresolved[key]; // décoché par défaut pour tous les transporteurs, y compris GOFO
   }
@@ -1557,14 +1592,16 @@
 
   function renderDashboardTable(entries, overall){
     const chartHtml = renderDashboardChart(entries);
+    const isAdmin = currentUserRole === 'admin';
 
     if(!entries.length){
-      els.dashboardBody.innerHTML = chartHtml + '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucun transporteur avec au moins 100 colis pour le moment.</p>';
+      els.dashboardBody.innerHTML = chartHtml + '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Aucun transporteur avec au moins 100 colis pour le moment.</p>' + renderExcludedCarriersSection();
       animateDashboardVisuals();
+      wireExcludedCarriersSection();
       return;
     }
 
-    const rowHtml = (label, total, resolved, extraClass) => {
+    const rowHtml = (label, total, resolved, extraClass, excludeBtn) => {
       const pct = total > 0 ? (resolved / total) * 100 : 0;
       return `<tr${extraClass ? ` class="${extraClass}"` : ''}>
         <td>${label}</td>
@@ -1576,10 +1613,14 @@
             <span class="dash-rate-text">${total > 0 ? pct.toFixed(2) + ' %' : '—'}</span>
           </div>
         </td>
+        ${isAdmin ? `<td>${excludeBtn || ''}</td>` : ''}
       </tr>`;
     };
 
-    const rowsHtml = entries.map(e => rowHtml(e.transporteur, e.total, e.resolved)).join('');
+    const rowsHtml = entries.map(e => rowHtml(
+      e.transporteur, e.total, e.resolved, '',
+      `<button type="button" class="dash-exclude-btn" data-carrier="${escapeHtmlAttr(e.transporteur)}" title="Exclure ce transporteur (n'a jamais de numéro dernier km)">✕ Exclure</button>`
+    )).join('');
 
     els.dashboardBody.innerHTML = chartHtml + `
       <div style="overflow-x:auto;">
@@ -1589,6 +1630,7 @@
             <th style="text-align:right;">Ajoutés</th>
             <th style="text-align:right;">Résolus</th>
             <th>Taux</th>
+            ${isAdmin ? '<th></th>' : ''}
           </tr></thead>
           <tbody>
             ${rowHtml('Total (tous transporteurs)', overall.total, overall.resolved, 'dashboard-total-row')}
@@ -1596,8 +1638,58 @@
           </tbody>
         </table>
       </div>
-      <p class="modal-footnote">Seuls les transporteurs avec au moins 100 colis sont listés (le Total reste calculé sur toute la base).</p>`;
+      <p class="modal-footnote">Seuls les transporteurs avec au moins 100 colis sont listés (le Total exclut les transporteurs retirés ci-dessous, s'il y en a).</p>
+      ${renderExcludedCarriersSection()}`;
     animateDashboardVisuals();
+    wireExcludedCarriersSection();
+
+    if(isAdmin){
+      els.dashboardBody.querySelectorAll('.dash-exclude-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const carrier = btn.dataset.carrier;
+          if(!dashboardExcludedCarriers.includes(carrier)){
+            saveDashboardExcludedCarriers([...dashboardExcludedCarriers, carrier]);
+          }
+          loadDashboard();
+        });
+      });
+    }
+  }
+
+  // Section "Transporteurs exclus" (admin uniquement — pc voit un tableau déjà filtré côté serveur,
+  // sans avoir à gérer la liste) : masquée si vide, repliable sinon.
+  function renderExcludedCarriersSection(){
+    if(currentUserRole !== 'admin' || !dashboardExcludedCarriers.length) return '';
+    return `
+      <div class="dash-excluded-section">
+        <button type="button" class="dash-excluded-toggle" id="dashExcludedToggle">
+          Transporteurs exclus (${dashboardExcludedCarriers.length}) — afficher/masquer
+        </button>
+        <div class="dash-excluded-list" id="dashExcludedList" style="display:none;">
+          ${dashboardExcludedCarriers.map(c => `
+            <span class="dash-excluded-chip">${escapeHtmlAttr(c)}
+              <button type="button" class="dash-reinclude-btn" data-carrier="${escapeHtmlAttr(c)}">↩️ Réintégrer</button>
+            </span>
+          `).join('')}
+        </div>
+      </div>`;
+  }
+
+  function wireExcludedCarriersSection(){
+    const toggle = document.getElementById('dashExcludedToggle');
+    const list = document.getElementById('dashExcludedList');
+    if(toggle && list){
+      toggle.addEventListener('click', ()=>{
+        list.style.display = list.style.display === 'none' ? 'flex' : 'none';
+      });
+    }
+    els.dashboardBody.querySelectorAll('.dash-reinclude-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const carrier = btn.dataset.carrier;
+        saveDashboardExcludedCarriers(dashboardExcludedCarriers.filter(c => c !== carrier));
+        loadDashboard();
+      });
+    });
   }
 
   // Pose les vraies valeurs (offset des anneaux, largeur des barres) une frame après l'insertion
@@ -1616,11 +1708,46 @@
     });
   }
 
+  function renderUserStatsTable(stats){
+    if(!stats.length){
+      els.userStatsBody.innerHTML = '';
+      return;
+    }
+    const rowsHtml = stats.map(s=>{
+      const pct = s.totalSearches > 0 ? (s.foundKm / s.totalSearches) * 100 : 0;
+      return `<tr>
+        <td>${escapeHtmlAttr(s.username)}</td>
+        <td style="text-align:right;">${formatNumber(s.foundKm)}</td>
+        <td style="text-align:right;">${formatNumber(s.totalSearches)}</td>
+        <td style="text-align:right;">${s.totalSearches > 0 ? pct.toFixed(2) + ' %' : '—'}</td>
+      </tr>`;
+    }).join('');
+    els.userStatsBody.innerHTML = `
+      <h2 style="margin-top:0;">Par utilisateur</h2>
+      <div style="overflow-x:auto;">
+        <table class="dashboard-table">
+          <thead><tr>
+            <th>Utilisateur</th>
+            <th style="text-align:right;">Trouvés</th>
+            <th style="text-align:right;">Recherches</th>
+            <th style="text-align:right;">%</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      <p class="modal-footnote">Ne compte que les recherches qui aboutissent à exactement un colis via un scan ou un collage (pas le filtrage au clavier).</p>`;
+  }
+
   async function loadDashboard(){
     els.dashboardBody.innerHTML = '<p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">Chargement…</p>';
+    els.userStatsBody.innerHTML = '';
     try{
-      const result = await dbGet('resolution-stats', {});
+      const [result, userStatsResult] = await Promise.all([
+        dbGet('resolution-stats', {}),
+        dbGet('user-search-stats', {}).catch(() => ({ stats: [] })),
+      ]);
       renderDashboardTable(result.entries || [], result.overall || { total:0, resolved:0 });
+      renderUserStatsTable(userStatsResult.stats || []);
     }catch(e){
       els.dashboardBody.innerHTML = `<p style="font-size:13px; color:var(--danger); text-align:center; padding:20px 0;">Erreur de chargement (${e && e.message ? e.message : 'erreur inconnue'}).</p>`;
     }
@@ -1909,6 +2036,9 @@
       }
       if(cfg[SCRAPE_CONFIG_KEY] && typeof cfg[SCRAPE_CONFIG_KEY] === 'object'){
         scrapeConfig = cfg[SCRAPE_CONFIG_KEY];
+      }
+      if(Array.isArray(cfg[DASHBOARD_EXCLUDED_CARRIERS_KEY])){
+        dashboardExcludedCarriers = cfg[DASHBOARD_EXCLUDED_CARRIERS_KEY];
       }
     }catch(e){ /* échec réseau : on garde les valeurs par défaut jusqu'au prochain chargement de page */ }
   }
@@ -2358,6 +2488,10 @@
       closeSearchOptionsModal();
     }else if(els.fourPxApiConfigModalBg.style.display === 'block'){
       closeScrapeConfigModal();
+    }else if(els.changePasswordModalBg.style.display === 'block'){
+      closeChangePasswordModal();
+    }else if(els.userMenuDropdown.style.display === 'block'){
+      els.userMenuDropdown.style.display = 'none';
     }else if(els.scannerModalBg && els.scannerModalBg.style.display === 'block'){
       stopScanner();
     }else if(els.search.value){
@@ -2890,6 +3024,7 @@
     try{
       const result = await dbGet('search', { q: value, limit: 2, offset: 0 });
       if(result.total === 1 && result.rows.length === 1){
+        recordSearchStatIfFound(result.rows[0]);
         openPackageModal(result.rows[0]);
         rafaleAutoCloseTimer = setTimeout(()=>{
           if(els.packageModalBg.style.display === 'block') closePackageModal();
@@ -2981,6 +3116,7 @@
           stopScanner();
           const transformed = await computeBestTracking(decodedText);
           els.search.value = transformed || decodedText;
+          lastSearchWasAutomatic = true; // scan caméra — voir fetchAndRenderPage
           els.search.dispatchEvent(new Event('input'));
           els.search.focus();
         },
@@ -3023,6 +3159,14 @@
 
     currentPageRows = result.rows;
     currentSearchTotal = result.total;
+
+    // Compteur par utilisateur (voir déclaration de lastSearchWasAutomatic) : uniquement pour les
+    // recherches automatiques (scan/collage/Entrée/douchette) qui aboutissent à exactement un
+    // colis — remis à false dans tous les cas pour ne pas compter la frappe manuelle suivante.
+    if(lastSearchWasAutomatic && currentSearchTotal === 1 && currentPageRows.length === 1){
+      recordSearchStatIfFound(currentPageRows[0]);
+    }
+    lastSearchWasAutomatic = false;
 
     if(term && els.autoDetailsCheckbox.checked && document.body.classList.contains('focus-mode') && currentSearchTotal === 1 && currentPageRows.length === 1){
       if(autoOpenedRecord !== currentPageRows[0]){
@@ -3132,11 +3276,68 @@
       if(!res.ok) throw new Error('session invalide');
       const { role, username } = await res.json();
       applyRoleUi(role);
-      els.userInfo.innerHTML = `<strong>${escapeHtmlAttr(username)}</strong> (${ROLE_LABELS[role] || role})`;
+      els.userMenuBtn.textContent = String(username || '').slice(0, 3);
+      els.userMenuName.innerHTML = `<strong>${escapeHtmlAttr(username)}</strong> (${ROLE_LABELS[role] || role})`;
     }catch(e){
       applyRoleUi('pc');
     }
   }
+
+  // ---------- menu utilisateur (avatar trigramme -> Déconnexion / Modifier le mot de passe) ----------
+  els.userMenuBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const isOpen = els.userMenuDropdown.style.display === 'block';
+    els.userMenuDropdown.style.display = isOpen ? 'none' : 'block';
+  });
+  document.addEventListener('click', (e)=>{
+    if(els.userMenuDropdown.style.display === 'block' && !els.userMenu.contains(e.target)){
+      els.userMenuDropdown.style.display = 'none';
+    }
+  });
+
+  function openChangePasswordModal(){
+    els.userMenuDropdown.style.display = 'none';
+    els.currentPasswordInput.value = '';
+    els.newPasswordInput.value = '';
+    els.confirmPasswordInput.value = '';
+    els.changePasswordError.textContent = '';
+    els.changePasswordModalBg.style.display = 'block';
+  }
+  function closeChangePasswordModal(){
+    els.changePasswordModalBg.style.display = 'none';
+  }
+  els.changePasswordBtn.addEventListener('click', openChangePasswordModal);
+  els.changePasswordCancelBtn.addEventListener('click', closeChangePasswordModal);
+  els.changePasswordModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.changePasswordModalBg) closeChangePasswordModal();
+  });
+  els.changePasswordSaveBtn.addEventListener('click', async ()=>{
+    const currentPassword = els.currentPasswordInput.value;
+    const newPassword = els.newPasswordInput.value;
+    const confirmPassword = els.confirmPasswordInput.value;
+    if(!currentPassword){
+      els.changePasswordError.textContent = 'Veuillez saisir votre mot de passe actuel.';
+      return;
+    }
+    if(newPassword.length < 4){
+      els.changePasswordError.textContent = 'Le nouveau mot de passe doit contenir au moins 4 caractères.';
+      return;
+    }
+    if(newPassword !== confirmPassword){
+      els.changePasswordError.textContent = 'Les deux mots de passe ne correspondent pas.';
+      return;
+    }
+    els.changePasswordError.textContent = '';
+    els.changePasswordSaveBtn.disabled = true;
+    try{
+      await dbPostTo('/api/users', { action:'set-own-password', currentPassword, newPassword });
+      closeChangePasswordModal();
+    }catch(err){
+      els.changePasswordError.textContent = err && err.message ? err.message : 'Échec de la mise à jour du mot de passe.';
+    }finally{
+      els.changePasswordSaveBtn.disabled = false;
+    }
+  });
 
   // ---------- fenêtre "Comptes" (admin uniquement) ----------
   function renderUsersList(users){

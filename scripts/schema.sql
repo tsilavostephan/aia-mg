@@ -77,3 +77,15 @@ CREATE TABLE IF NOT EXISTS app_config (
   value JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Compteur par utilisateur (colis trouvés déjà résolus / recherches totales), alimenté uniquement
+-- par les recherches qui aboutissent à exactement un colis via un scan ou un collage (pas par le
+-- filtrage au clavier, trop bruyant — voir recordSearchStat dans lib/db.js et son point d'appel
+-- unique côté client, applyTrackingTransformIfNeeded/handleRafaleDecode dans assets/script.js et
+-- handleDecode dans assets/scan.js). Affiché dans le Tableau de bord (action 'user-search-stats').
+CREATE TABLE IF NOT EXISTS user_search_stats (
+  user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  total_searches INT NOT NULL DEFAULT 0,
+  found_km INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

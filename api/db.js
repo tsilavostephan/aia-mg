@@ -8,13 +8,14 @@
 // est donc vérifiée ici, via le rôle du jeton de session (voir lib/auth.js).
 const { setCorsHeaders } = require('./_scrapeLib');
 const { getSession } = require('../lib/auth');
+const { getAllConfig } = require('../lib/config');
 const db = require('../lib/db');
 
 // null = toutes les actions autorisées pour ce rôle.
 const ROLE_ALLOWED_ACTIONS = {
   admin: null,
-  pc: ['exists', 'stats', 'search', 'resolution-stats', 'export-csv'],
-  mobile: ['exists', 'search'],
+  pc: ['exists', 'stats', 'search', 'resolution-stats', 'export-csv', 'user-search-stats', 'record-search-stat'],
+  mobile: ['exists', 'search', 'record-search-stat'],
 };
 
 function actionAllowedForRole(role, action) {
@@ -67,7 +68,14 @@ module.exports = async function handler(req, res) {
       }
 
       if (action === 'resolution-stats') {
-        res.status(200).json(await db.resolutionStats());
+        const cfg = await getAllConfig();
+        const excluded = Array.isArray(cfg['dashboard-excluded-carriers']) ? cfg['dashboard-excluded-carriers'] : [];
+        res.status(200).json(await db.resolutionStats(excluded));
+        return;
+      }
+
+      if (action === 'user-search-stats') {
+        res.status(200).json({ stats: await db.getUserSearchStats() });
         return;
       }
 
@@ -82,7 +90,7 @@ module.exports = async function handler(req, res) {
         return;
       }
 
-      res.status(400).json({ error: "Action inconnue pour GET (attendu : 'stats', 'search', 'unresolved-rows', 'distinct-transporteurs', 'resolution-stats' ou 'export-csv')." });
+      res.status(400).json({ error: "Action inconnue pour GET (attendu : 'stats', 'search', 'unresolved-rows', 'distinct-transporteurs', 'resolution-stats', 'user-search-stats' ou 'export-csv')." });
       return;
     }
 
@@ -119,7 +127,17 @@ module.exports = async function handler(req, res) {
         return;
       }
 
-      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'import-batch', 'apply-scrape-results', 'clean-invalid' ou 'clean-invalid-km')." });
+      if (body.action === 'record-search-stat') {
+        if (!session || !session.uid) {
+          res.status(403).json({ error: 'Session invalide.' });
+          return;
+        }
+        await db.recordSearchStat(session.uid, !!body.found);
+        res.status(200).json({ ok: true });
+        return;
+      }
+
+      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'import-batch', 'apply-scrape-results', 'clean-invalid', 'clean-invalid-km' ou 'record-search-stat')." });
       return;
     }
 

@@ -1,9 +1,12 @@
 // Gestion des comptes (panneau "👥 Comptes", admin uniquement) : liste des comptes, attribution
 // d'un rôle (approuve un compte "pending" ou change un rôle existant), réinitialisation de mot de
 // passe (pas d'envoi d'email dans ce projet — l'admin communique le nouveau mot de passe lui-même).
+// Une action distincte ('set-own-password') est ouverte à TOUTE session authentifiée (menu
+// utilisateur, changement de son propre mot de passe) — elle exige l'ancien mot de passe, contrairement
+// à la réinitialisation admin ci-dessus qui n'en a pas besoin (c'est le mécanisme de récupération).
 const { setCorsHeaders } = require('./_scrapeLib');
 const { getSession } = require('../lib/auth');
-const { listUsers, setUserRole, setUserPassword, findUserById } = require('../lib/users');
+const { listUsers, setUserRole, setUserPassword, findUserById, verifyPasswordHash } = require('../lib/users');
 
 const VALID_ROLES = ['pending', 'mobile', 'pc', 'admin'];
 
@@ -17,19 +20,45 @@ module.exports = async function handler(req, res) {
   }
 
   const session = getSession(req);
-  if (!session || session.role !== 'admin') {
-    res.status(403).json({ error: "Réservé aux comptes administrateur." });
+  if (!session) {
+    res.status(403).json({ error: 'Session invalide.' });
     return;
   }
 
   try {
     if (req.method === 'GET') {
+      if (session.role !== 'admin') {
+        res.status(403).json({ error: "Réservé aux comptes administrateur." });
+        return;
+      }
       res.status(200).json({ users: await listUsers() });
       return;
     }
 
     if (req.method === 'POST') {
       const body = req.body || {};
+
+      if (body.action === 'set-own-password') {
+        const newPassword = String(body.newPassword || '');
+        if (!body.currentPassword || newPassword.length < 4) {
+          res.status(400).json({ error: 'Ancien mot de passe manquant, ou nouveau mot de passe < 4 caractères.' });
+          return;
+        }
+        const user = await findUserById(session.uid);
+        if (!user || !verifyPasswordHash(body.currentPassword, user.password_hash)) {
+          res.status(400).json({ error: "Ancien mot de passe incorrect." });
+          return;
+        }
+        await setUserPassword(session.uid, newPassword);
+        res.status(200).json({ ok: true });
+        return;
+      }
+
+      // Actions restantes (gestion d'un autre compte) : réservées aux administrateurs.
+      if (session.role !== 'admin') {
+        res.status(403).json({ error: "Réservé aux comptes administrateur." });
+        return;
+      }
 
       if (body.action === 'set-role') {
         const userId = Number(body.userId);
@@ -68,7 +97,7 @@ module.exports = async function handler(req, res) {
         return;
       }
 
-      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'set-role' ou 'set-password')." });
+      res.status(400).json({ error: "Action inconnue pour POST (attendu : 'set-own-password', 'set-role' ou 'set-password')." });
       return;
     }
 

@@ -126,23 +126,39 @@
   .app-header-text{ min-width: 0; }
   .app-version{ color: var(--muted); margin: 0; font-size: 12px; }
 
-  .user-info{
-    margin-left: auto; flex-shrink: 0;
-    font-size: 12.5px; color: var(--muted);
-    white-space: nowrap;
+  /* ---------- menu utilisateur (avatar trigramme + déroulant Déconnexion/Mot de passe) ---------- */
+  .user-menu{ position: relative; margin-left: auto; flex-shrink: 0; }
+  .user-avatar-btn{
+    width: 38px; height: 38px; padding: 0; margin: 0;
+    border-radius: 50%; border: 1px solid var(--primary);
+    background: var(--primary); color: #fff;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+    text-transform: uppercase;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
   }
-  .user-info strong{ color: var(--text); font-weight: 600; }
-
-  .logout-btn{
-    display: inline-flex; align-items: center; gap: 6px;
-    flex-shrink: 0;
-    padding: 8px 14px;
-    font-size: 13px; font-weight: 600;
-    color: var(--text); text-decoration: none;
-    background: #fff; border: 1px solid var(--border); border-radius: 999px;
-    transition: background .12s, border-color .12s, color .12s;
+  .user-avatar-btn:hover{ background: var(--primary-dark); border-color: var(--primary-dark); }
+  .user-menu-dropdown{
+    position: absolute; top: calc(100% + 8px); right: 0;
+    min-width: 210px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(16,24,40,0.18);
+    padding: 6px;
+    z-index: 50;
   }
-  .logout-btn:hover{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+  .user-menu-name{
+    padding: 8px 10px 6px; font-size: 12.5px; color: var(--muted);
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  }
+  .user-menu-name strong{ color: var(--text); font-weight: 700; }
+  .user-menu-item{
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 9px 10px;
+    font-size: 13px; font-weight: 500; text-align: left; text-decoration: none;
+    color: var(--text); background: none; border: none; border-radius: 7px;
+    cursor: pointer; margin: 0;
+  }
+  .user-menu-item:hover{ background: var(--primary-soft); color: var(--primary); }
 
   .update-btn{
     display: inline-flex; align-items: center; gap: 6px;
@@ -156,10 +172,9 @@
   }
   .update-btn:hover{ background: var(--primary-dark); border-color: var(--primary-dark); }
   .update-btn:active{ transform: translateY(1px); }
-  /* .user-info se colle à droite (margin-left:auto) ; le bouton MAJ, quand affiché avant lui, doit
-     pousser vers la droite à sa place à la place de .user-info — et .logout-btn n'a plus besoin de
-     son propre auto-margin, il suit simplement .user-info. */
-  .update-btn + .user-info{ margin-left: 0; }
+  /* .user-menu se colle à droite (margin-left:auto) ; le bouton MAJ, quand affiché avant lui, doit
+     pousser vers la droite à sa place à la place de .user-menu. */
+  .update-btn + .user-menu{ margin-left: 0; }
   @keyframes update-btn-pulse{
     0%, 100%{ box-shadow: 0 0 0 0 rgba(37,99,235,0.35); }
     50%{ box-shadow: 0 0 0 6px rgba(37,99,235,0); }
@@ -737,6 +752,30 @@
   }
   .modal-error{ font-size: 13px; color: var(--danger); margin-top: 8px; min-height: 1px; }
 
+  /* ---------- transporteurs exclus du tableau de bord ---------- */
+  .dash-exclude-btn{
+    padding: 2px 7px; margin: 0; font-size: 11px; font-weight: 600;
+    color: var(--muted); background: none; border: 1px solid var(--border); border-radius: 6px;
+    cursor: pointer;
+  }
+  .dash-exclude-btn:hover{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
+  .dash-excluded-section{ margin-top: 14px; font-size: 12.5px; }
+  .dash-excluded-toggle{
+    background: none; border: none; padding: 0; margin: 0;
+    color: var(--muted); font-size: 12.5px; text-decoration: underline; cursor: pointer;
+  }
+  .dash-excluded-list{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .dash-excluded-chip{
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 6px 4px 10px; font-size: 12px;
+    background: #f3f4f6; color: var(--text); border-radius: 999px;
+  }
+  .dash-excluded-chip button{
+    padding: 2px 6px; margin: 0; font-size: 11px; font-weight: 600;
+    background: #fff; color: var(--primary); border: 1px solid var(--border); border-radius: 999px;
+    cursor: pointer;
+  }
+
   /* ---------- rappel des raccourcis clavier (affiché tant qu'Alt est maintenu) ----------
      Un badge "Q"/"A"/... posé directement sur chaque bouton concerné (position calculée en JS via
      getBoundingClientRect, voir positionShortcutBadges) plutôt qu'une liste texte séparée — on voit
@@ -776,7 +815,7 @@
     .app-logo{ height: 42px; }
     h1{ font-size: 22px; }
     p.desc{ display: none; } /* superflu sur petit écran, laisse la place à l'essentiel */
-    .logout-btn, .update-btn, .user-info{ margin-left: 0; }
+    .update-btn, .user-menu{ margin-left: 0; }
 
     fieldset{ padding: 16px 14px; margin-bottom: 16px; }
 

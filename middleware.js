@@ -14,7 +14,7 @@ export const config = {
 // Chemins accessibles au rôle "mobile" (voir plus bas) sans être redirigé vers /scan.html.
 // La restriction fine (seule l'action "search" de /api/db est autorisée pour ce rôle) se fait
 // côté serveur dans api/db.js, pas ici : le middleware ne lit pas le corps des requêtes.
-const MOBILE_ALLOWED_PREFIXES = ['/scan.html', '/assets/', '/sw.js', '/api/db', '/api/logout'];
+const MOBILE_ALLOWED_PREFIXES = ['/scan.html', '/assets/', '/sw.js', '/api/db', '/api/logout', '/api/users'];
 
 function base64UrlToBytes(str) {
   const b64 = str.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (str.length % 4)) % 4);

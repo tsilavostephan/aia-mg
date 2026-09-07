@@ -22,6 +22,18 @@
     notFoundCode: document.getElementById('scanNotFoundCode'),
     version: document.getElementById('scanVersion'),
     toggleCameraBtn: document.getElementById('toggleCameraBtn'),
+    userMenu: document.getElementById('userMenu'),
+    userMenuBtn: document.getElementById('userMenuBtn'),
+    userMenuDropdown: document.getElementById('userMenuDropdown'),
+    userMenuName: document.getElementById('userMenuName'),
+    changePasswordBtn: document.getElementById('changePasswordBtn'),
+    changePasswordModalBg: document.getElementById('changePasswordModalBg'),
+    currentPasswordInput: document.getElementById('currentPasswordInput'),
+    newPasswordInput: document.getElementById('newPasswordInput'),
+    confirmPasswordInput: document.getElementById('confirmPasswordInput'),
+    changePasswordError: document.getElementById('changePasswordError'),
+    changePasswordSaveBtn: document.getElementById('changePasswordSaveBtn'),
+    changePasswordCancelBtn: document.getElementById('changePasswordCancelBtn'),
   };
 
   async function dbGet(action, params){
@@ -33,6 +45,99 @@
     }
     return res.json();
   }
+
+  async function dbPost(action, body){
+    const res = await fetch('/api/db', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...body }),
+    });
+    if(!res.ok){
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  // Petit POST JSON générique vers une route qui n'est pas /api/db (copie de dbPostTo dans
+  // assets/script.js) — utilisé pour le changement de mot de passe en libre-service (/api/users).
+  async function dbPostTo(url, body){
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if(!res.ok){
+      const errData = await res.json().catch(() => null);
+      throw new Error(errData && errData.error ? errData.error : `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  // ---------- menu utilisateur (avatar trigramme -> Déconnexion / Modifier le mot de passe) ----------
+  els.userMenuBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const isOpen = els.userMenuDropdown.style.display === 'block';
+    els.userMenuDropdown.style.display = isOpen ? 'none' : 'block';
+  });
+  document.addEventListener('click', (e)=>{
+    if(els.userMenuDropdown.style.display === 'block' && !els.userMenu.contains(e.target)){
+      els.userMenuDropdown.style.display = 'none';
+    }
+  });
+
+  function openChangePasswordModal(){
+    els.userMenuDropdown.style.display = 'none';
+    els.currentPasswordInput.value = '';
+    els.newPasswordInput.value = '';
+    els.confirmPasswordInput.value = '';
+    els.changePasswordError.textContent = '';
+    els.changePasswordModalBg.style.display = 'flex';
+  }
+  function closeChangePasswordModal(){
+    els.changePasswordModalBg.style.display = 'none';
+  }
+  els.changePasswordBtn.addEventListener('click', openChangePasswordModal);
+  els.changePasswordCancelBtn.addEventListener('click', closeChangePasswordModal);
+  els.changePasswordModalBg.addEventListener('click', (e)=>{
+    if(e.target === els.changePasswordModalBg) closeChangePasswordModal();
+  });
+  els.changePasswordSaveBtn.addEventListener('click', async ()=>{
+    const currentPassword = els.currentPasswordInput.value;
+    const newPassword = els.newPasswordInput.value;
+    const confirmPassword = els.confirmPasswordInput.value;
+    if(!currentPassword){
+      els.changePasswordError.textContent = 'Veuillez saisir votre mot de passe actuel.';
+      return;
+    }
+    if(newPassword.length < 4){
+      els.changePasswordError.textContent = 'Le nouveau mot de passe doit contenir au moins 4 caractères.';
+      return;
+    }
+    if(newPassword !== confirmPassword){
+      els.changePasswordError.textContent = 'Les deux mots de passe ne correspondent pas.';
+      return;
+    }
+    els.changePasswordError.textContent = '';
+    els.changePasswordSaveBtn.disabled = true;
+    try{
+      await dbPostTo('/api/users', { action:'set-own-password', currentPassword, newPassword });
+      closeChangePasswordModal();
+    }catch(err){
+      els.changePasswordError.textContent = err && err.message ? err.message : 'Échec de la mise à jour du mot de passe.';
+    }finally{
+      els.changePasswordSaveBtn.disabled = false;
+    }
+  });
+
+  fetch('/api/session', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(({ role, username }) => {
+      const trigram = String(username || '').slice(0, 3);
+      els.userMenuBtn.textContent = trigram;
+      els.userMenuName.innerHTML = `<strong>${escapeHtml(username)}</strong>`;
+    })
+    .catch(() => {});
 
   // ---------- reconnaissance du numéro de suivi scanné (copie de assets/script.js) ----------
   function cleanNumSuivi(v){
@@ -314,6 +419,9 @@
       const value = transformed || decodedText;
       const result = await dbGet('search', { q: value, limit: 2, offset: 0 });
       if(result.total === 1 && result.rows.length === 1){
+        // Compteur par utilisateur (voir user_search_stats, lib/db.js) : chaque scan qui aboutit à
+        // exactement un colis compte, que son numéro dernier km soit déjà renseigné ou non.
+        dbPost('record-search-stat', { found: !!result.rows[0].numDernierKm }).catch(()=>{});
         showPackageResult(result.rows[0]);
       }else if(result.total === 0){
         showNotFoundPopup(value);
@@ -336,7 +444,18 @@
   //     part sur la page, keydown remonte jusqu'à document) : un filet de sécurité si, sur un
   //     appareil/navigateur donné, le focus venait à être repris par autre chose (ex. le bouton
   //     lampe torche injecté par html5-qrcode) sans qu'on l'ait anticipé.
+  // Le menu utilisateur (changement de mot de passe) introduit de VRAIS champs éditables sur cette
+  // page — jusqu'ici le seul champ existant était #scanHiddenInput, jamais destiné à recevoir de
+  // frappe humaine directe. Sans cette vérification, reprendre le focus/intercepter les touches
+  // pendant la saisie d'un mot de passe rendrait la fenêtre inutilisable (focus repris en boucle,
+  // Entrée détournée vers handleDecode au lieu de valider le formulaire).
+  function isEditableModalFocused(){
+    const active = document.activeElement;
+    return !!active && active !== els.hiddenInput && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  }
+
   function refocusHiddenInput(){
+    if(isEditableModalFocused()) return;
     els.hiddenInput.focus({ preventScroll: true });
   }
   els.hiddenInput.addEventListener('blur', ()=> setTimeout(refocusHiddenInput, 50));
@@ -353,6 +472,7 @@
   const HID_CHAR_GAP_MS = 150;
 
   document.addEventListener('keydown', (e)=>{
+    if(isEditableModalFocused()) return; // laisse la saisie du mot de passe se faire normalement
     // La plupart des douchettes terminent par Entrée (certains modèles par Tabulation).
     if(e.key === 'Enter' || e.key === 'Tab'){
       if(!hidBuffer) return;
@@ -379,6 +499,7 @@
   //     nouvelle frappe/insertion avant de considérer le texte complet, puisqu'il n'y a ici ni
   //     Entrée ni séparateur fiable pour marquer la fin du collage.
   document.addEventListener('paste', (e)=>{
+    if(isEditableModalFocused()) return; // laisse le collage normal se faire dans le champ actif
     const text = ((e.clipboardData || window.clipboardData) || {}).getData
       ? (e.clipboardData || window.clipboardData).getData('text')
       : '';

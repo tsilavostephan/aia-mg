@@ -29,17 +29,22 @@
 <div class="app-header">
   <img class="app-logo" src="assets/logo-aia.png" alt="AIA">
   <div class="app-header-text">
-    <p class="desc">Importez vos fichiers CSV pour alimenter la base, puis recherchez, suivez et scannez vos colis.</p>
     <p class="app-version" id="appVersion">v1.2 &middot; &copy; TSLV</p>
   </div>
   <button type="button" id="updateAvailableBtn" class="update-btn" style="display:none;" title="Une nouvelle version de l'application est disponible">⟳ MAJ</button>
-  <span id="userInfo" class="user-info"></span>
-  <a href="/api/logout" class="logout-btn" title="Se déconnecter">⏻ Se déconnecter</a>
+  <div class="user-menu" id="userMenu">
+    <button type="button" id="userMenuBtn" class="user-avatar-btn" title="Compte"></button>
+    <div class="user-menu-dropdown" id="userMenuDropdown" style="display:none;">
+      <div class="user-menu-name" id="userMenuName"></div>
+      <button type="button" id="changePasswordBtn" class="user-menu-item">🔑 Modifier le mot de passe</button>
+      <a href="/api/logout" class="user-menu-item">⏻ Déconnexion</a>
+    </div>
+  </div>
 </div>
 
 <div class="page-nav" id="pageNav">
-  <button type="button" id="navColisBtn" class="page-nav-btn" data-page="colis">📦 Colis</button>
-  <button type="button" id="navImportBtn" class="page-nav-btn" data-page="import" style="display:none;">📥 Import CSV</button>
+  <button type="button" id="navColisBtn" class="page-nav-btn" data-page="colis">📦 Base de données</button>
+  <button type="button" id="navImportBtn" class="page-nav-btn" data-page="import" style="display:none;">📥 Import/Export</button>
   <button type="button" id="navTransporteursBtn" class="page-nav-btn" data-page="transporteurs" style="display:none;">🚚 Transporteurs</button>
   <button type="button" id="dashboardBtn" class="page-nav-btn" data-page="dashboard" title="Taux de résolution par transporteur, par jour/semaine/mois">📊 Tableau de bord</button>
   <button type="button" id="usersBtn" class="page-nav-btn" data-page="comptes" style="display:none;" title="Gérer les comptes utilisateurs">👥 Comptes</button>
@@ -64,6 +69,11 @@
     <button id="csvOptionsBtn" type="button" class="secondary">⚙️ Options</button>
   </div>
   <div id="log"></div>
+  <div class="actions actions-bottom">
+    <button id="exportJsonEncryptedBtn" class="secondary" title="Télécharger un export CSV de toute la base">📤 Exporter</button>
+    <button id="cleanInvalidBtn" class="secondary" style="display:none;">🧹 Nettoyer les colis sans N°/Amazon</button>
+    <button id="cleanInvalidKmBtn" class="secondary" style="display:none;">🧹 Nettoyer les numéros dernier km invalides</button>
+  </div>
 </fieldset>
 
 <fieldset id="carrierSection" class="app-page">
@@ -86,7 +96,7 @@
 
 <fieldset id="dbSection" class="app-page">
   <h2 class="section-title">
-    <span>Colis (<span id="rowCount">0</span> enregistrés, <span id="resolvedCount">0</span> à jour<span id="resolvedPercent"></span>)</span>
+    <span>Base de données (<span id="rowCount">0</span> enregistrés, <span id="resolvedCount">0</span> à jour<span id="resolvedPercent"></span>)</span>
   </h2>
   <div class="row search-row">
     <input type="text" id="search" placeholder="Rechercher (numéro, transporteur, suivi…)" title="Virgule = OU entre plusieurs recherches (ex. « 4PX, YANWEN »). + = ET, pour combiner des critères (ex. « Colissimo + Rasoa »).">
@@ -132,10 +142,7 @@
     <div id="backupProgressText" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
   </div>
   <div class="actions actions-bottom">
-    <button id="exportJsonEncryptedBtn" class="secondary" title="Télécharger un export CSV de toute la base">📤 Exporter</button>
     <button id="importBackupBtn" class="secondary" title="Recharge la liste et les compteurs depuis la base">📥 Actualiser</button>
-    <button id="cleanInvalidBtn" class="secondary" style="display:none;">🧹 Nettoyer les colis sans N°/Amazon</button>
-    <button id="cleanInvalidKmBtn" class="secondary" style="display:none;">🧹 Nettoyer les numéros dernier km invalides</button>
   </div>
 </fieldset>
 
@@ -179,11 +186,8 @@
 
 <fieldset id="dashboardPage" class="app-page">
   <h2>Tableau de bord</h2>
-  <p class="modal-subtext">
-    Volumes de colis ajoutés et de numéros dernier kilométrique résolus, par transporteur (valeur
-    brute trouvée dans vos CSV), toutes périodes confondues.
-  </p>
   <div id="dashboardBody" style="margin-top:12px;"></div>
+  <div id="userStatsBody" style="margin-top:24px;"></div>
 </fieldset>
 
 <div id="carrierMappingModalBg" class="modal-bg" style="display:none;">
@@ -250,13 +254,28 @@
 
 <fieldset id="comptesPage" class="app-page">
   <h2>Comptes utilisateurs</h2>
-  <p class="modal-subtext">
-    Rôle <strong>Admin</strong> : accès complet. <strong>PC</strong> : tableau de bord, recherche,
-    actualisation, export. <strong>Mobile</strong> : recherche par caméra uniquement, sur une page
-    dédiée. <strong>En attente</strong> : aucun accès tant qu'un rôle n'est pas attribué.
-  </p>
   <div id="usersList"></div>
 </fieldset>
+
+<div id="changePasswordModalBg" class="modal-bg" style="display:none;">
+  <div class="modal-box modal-box-narrow">
+    <h2 class="modal-title">Modifier le mot de passe</h2>
+    <div class="row"><label>Mot de passe actuel<br>
+      <input type="password" id="currentPasswordInput" style="width:100%;"></label>
+    </div>
+    <div class="row"><label>Nouveau mot de passe (4 caractères minimum)<br>
+      <input type="password" id="newPasswordInput" style="width:100%;"></label>
+    </div>
+    <div class="row"><label>Confirmer le nouveau mot de passe<br>
+      <input type="password" id="confirmPasswordInput" style="width:100%;"></label>
+    </div>
+    <div class="modal-error" id="changePasswordError"></div>
+    <div class="actions">
+      <button type="button" id="changePasswordSaveBtn">💾 Enregistrer</button>
+      <button type="button" id="changePasswordCancelBtn" class="secondary">✕ Annuler</button>
+    </div>
+  </div>
+</div>
 
 <div id="csvOptionsModalBg" class="modal-bg" style="display:none;">
   <div class="modal-box">

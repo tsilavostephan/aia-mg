@@ -1638,7 +1638,7 @@
           </tbody>
         </table>
       </div>
-      <p class="modal-footnote">Seuls les transporteurs avec au moins 100 colis sont listés (le Total exclut les transporteurs retirés ci-dessous, s'il y en a).</p>
+      <p class="modal-footnote">Seuls les transporteurs avec au moins 100 colis sont listés. Exclure un transporteur masque uniquement sa ligne — le Total reste calculé sur tous les colis.</p>
       ${renderExcludedCarriersSection()}`;
     animateDashboardVisuals();
     wireExcludedCarriersSection();
@@ -1710,7 +1710,12 @@
 
   function renderUserStatsTable(stats){
     if(!stats.length){
-      els.userStatsBody.innerHTML = '';
+      els.userStatsBody.innerHTML = `
+        <h2 style="margin-top:0;">Par utilisateur</h2>
+        <p style="font-size:13px; color:var(--muted); text-align:center; padding:20px 0;">
+          Aucune recherche comptée pour le moment — seuls les scans/collages qui trouvent
+          directement un colis (pas le filtrage au clavier) alimentent ce compteur.
+        </p>`;
       return;
     }
     const rowsHtml = stats.map(s=>{

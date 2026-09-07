@@ -2582,6 +2582,11 @@
       .then(layoutMap => {
         let changed = false;
         KEYBOARD_SHORTCUTS.forEach(s => {
+          // Un displayKey explicite (ex. les chiffres 1-5 du menu de navigation, ou ↑/↓) est une
+          // étiquette volontairement fixe, pas une lettre à corriger selon la disposition — sur
+          // AZERTY, la ligne des chiffres correspond sans Shift à &/é/"/'/( : appliquer la
+          // correction ici afficherait ces symboles à la place de "1".."5".
+          if(s.displayKey) return;
           const real = layoutMap.get(s.code);
           if(real && real.toUpperCase() !== shortcutDisplayKeys[s.code]){
             shortcutDisplayKeys[s.code] = real.toUpperCase();

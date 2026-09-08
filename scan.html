@@ -25,9 +25,15 @@
     margin:0; background:var(--bg); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     display:flex; flex-direction:column; align-items:center;
-    min-height:100vh; padding:16px; padding-bottom:calc(16px + env(safe-area-inset-bottom));
+    min-height:100vh; padding:16px;
+    /* viewport-fit=cover étend le contenu sous l'encoche/la barre système : sans cette marge, le
+       header (bouton caméra + avatar) se retrouve collé à la barre de statut iOS, voire recouvert
+       par elle (constaté en prod, aggravé par le bandeau d'enregistrement d'écran qui réduit encore
+       l'espace utile en haut). */
+    padding-top:calc(16px + env(safe-area-inset-top));
+    padding-bottom:calc(16px + env(safe-area-inset-bottom));
   }
-  .scan-header{ display:flex; align-items:center; gap:10px; margin-bottom:14px; width:100%; max-width:480px; }
+  .scan-header{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; width:100%; max-width:480px; }
   .scan-header img{ height:34px; width:auto; }
   .scan-header-text{ flex:1; }
   .scan-title{ font-size:14px; font-weight:700; margin:0; }

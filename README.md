@@ -285,7 +285,7 @@ périodiquement) — utile par exemple après un CAPTCHA intermittent lié à la
 datacenter Vercel :
 
 ```
-cp .env.local-worker.example .env.local-worker   # puis remplir APP_BASE_URL et APP_ACCESS_CODE
+cp .env.local-worker.example .env.local-worker   # puis remplir APP_BASE_URL, APP_LOGIN_USERNAME et APP_LOGIN_PASSWORD (un compte admin)
 node --env-file=.env.local-worker scripts/local-scrape-worker.js
 ```
 

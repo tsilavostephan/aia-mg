@@ -7,7 +7,9 @@
 //
 // Variables d'environnement attendues (voir .env.local-worker.example) :
 //   APP_BASE_URL          URL de l'app déployée (ex. https://aia-mg-test-xxxx.vercel.app)
-//   APP_ACCESS_CODE       Code d'accès (identique à celui utilisé sur /login.html)
+//   APP_LOGIN_USERNAME    Trigramme d'un compte de rôle admin (unresolved-rows/apply-scrape-results
+//                         sont réservées à ce rôle côté serveur, voir api/db.js)
+//   APP_LOGIN_PASSWORD    Mot de passe de ce compte
 //   CHROME_PATH           Chemin vers chrome.exe (optionnel, sinon emplacement standard Windows)
 //   CONCURRENCY           Onglets en parallèle (défaut 6 — un PC de bureau encaisse mieux la
 //                         concurrence qu'une fonction serverless Vercel à CPU partagé)
@@ -17,7 +19,8 @@ const path = require('node:path');
 const wanbexpress = require('../lib/scrapers/wanbexpress');
 
 const BASE_URL = (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
-const ACCESS_CODE = process.env.APP_ACCESS_CODE;
+const LOGIN_USERNAME = process.env.APP_LOGIN_USERNAME;
+const LOGIN_PASSWORD = process.env.APP_LOGIN_PASSWORD;
 const CHROME_PATH = process.env.CHROME_PATH || path.join('C:', 'Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe');
 // Valeur par défaut plus agressive qu'en production Vercel (2) : sur un PC de bureau, plusieurs
 // onglets en parallèle ne se font pas concurrence de la même façon que dans un conteneur serverless
@@ -37,16 +40,16 @@ function normCarrierName(v) {
   return String(v || '').trim().toUpperCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-if (!BASE_URL || !ACCESS_CODE) {
-  console.error('APP_BASE_URL et APP_ACCESS_CODE sont requis (voir .env.local-worker.example).');
+if (!BASE_URL || !LOGIN_USERNAME || !LOGIN_PASSWORD) {
+  console.error('APP_BASE_URL, APP_LOGIN_USERNAME et APP_LOGIN_PASSWORD sont requis (voir .env.local-worker.example).');
   process.exit(1);
 }
 
 async function login() {
-  const res = await fetch(`${BASE_URL}/api/auth`, {
+  const res = await fetch(`${BASE_URL}/api/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: ACCESS_CODE }),
+    body: JSON.stringify({ username: LOGIN_USERNAME, password: LOGIN_PASSWORD }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -56,7 +59,7 @@ async function login() {
     ? res.headers.getSetCookie()
     : [res.headers.get('set-cookie')].filter(Boolean);
   const authCookie = setCookieList.map(c => c.split(';')[0]).find(c => c.startsWith('aia_auth='));
-  if (!authCookie) throw new Error('Cookie de session introuvable dans la réponse de /api/auth.');
+  if (!authCookie) throw new Error('Cookie de session introuvable dans la réponse de /api/login.');
   return authCookie;
 }
 

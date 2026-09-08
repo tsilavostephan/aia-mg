@@ -806,7 +806,10 @@
 
   /* ---------- adaptations tactiles / petits écrans ---------- */
   @media (max-width: 720px){
-    body{ margin: 0; padding: 14px 14px 48px; }
+    /* viewport-fit=cover (voir index.html/scan.html) étend le contenu sous l'encoche/la barre
+       système — sans cette marge, l'en-tête (logo, avatar, onglets) se retrouve collé à la barre de
+       statut du téléphone, voire recouvert par elle (même bug déjà corrigé sur scan.html). */
+    body{ margin: 0; padding: 14px 14px 48px; padding-top: calc(14px + env(safe-area-inset-top)); }
 
     .app-header{ gap: 10px 14px; margin-bottom: 12px; }
     .app-logo{ height: 42px; }

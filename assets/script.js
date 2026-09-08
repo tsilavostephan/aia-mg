@@ -2907,6 +2907,11 @@
 
   // ---------- fenêtre de détails d'un colis (clic sur une carte) ----------
   function openPackageModal(r){
+    // Compteur par utilisateur : point d'entrée unique de tout affichage du détail d'un colis
+    // (clic manuel sur une carte, auto-ouverture "Détails auto", mode rafale) — un seul appel par
+    // ouverture, quel que soit le déclencheur, pas de double comptage entre eux.
+    recordSearchStatIfFound(r);
+
     const qteClass = computeQtyMatchClass(r.qteCommande, r.qteExpedie);
 
     const fields = [
@@ -3036,7 +3041,6 @@
     try{
       const result = await dbGet('search', { q: value, limit: 2, offset: 0 });
       if(result.total === 1 && result.rows.length === 1){
-        recordSearchStatIfFound(result.rows[0]);
         openPackageModal(result.rows[0]);
         rafaleAutoCloseTimer = setTimeout(()=>{
           if(els.packageModalBg.style.display === 'block') closePackageModal();
@@ -3171,12 +3175,10 @@
     currentPageRows = result.rows;
     currentSearchTotal = result.total;
 
-    // Compteur par utilisateur : toute recherche (frappe manuelle comprise, plus seulement
-    // scan/collage) qui aboutit à exactement un colis compte, dès lors qu'un terme a été saisi
-    // (un champ vide qui ne renverrait qu'une seule ligne, base quasi vide, ne doit pas compter).
-    if(term && currentSearchTotal === 1 && currentPageRows.length === 1){
-      recordSearchStatIfFound(currentPageRows[0]);
-    }
+    // Compteur par utilisateur : voir openPackageModal (compte désormais chaque colis dont le
+    // détail est effectivement ouvert — auto-ouverture ci-dessous, clic manuel sur une carte, ou
+    // mode rafale — plutôt que dès qu'une recherche narrowe à un seul résultat sans forcément
+    // l'ouvrir).
 
     if(term && els.autoDetailsCheckbox.checked && currentSearchTotal === 1 && currentPageRows.length === 1){
       if(autoOpenedRecord !== currentPageRows[0]){

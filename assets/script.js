@@ -285,6 +285,22 @@
 
   const DEFAULT_SEARCH_ALGORITHMS = [
     {
+      // Variante avec clé de contrôle constatée sur un scan douchette réel : les 14 chiffres bruts
+      // aux positions 9-22 (voir 'laposte' ci-dessous) ne sont alors qu'une partie du numéro — il
+      // faut leur ajouter une clé calculée par ISO/IEC 7064 MOD 37,36 (même algorithme que DPD,
+      // réutilisé tel quel via extractType 'dpdChecksum') pour obtenir le vrai numéro de suivi, ex.
+      // "%000000088500073912380600250A18^52d2d79" -> 14 chiffres bruts "88500073912380" + clé "8"
+      // -> "885000739123808" (chiffre final absent d'une simple sous-chaîne du code-barres).
+      // Algorithme séparé de 'laposte' (mêmes conditions de correspondance, %, longueur libre) :
+      // computeBestTracking() génère les deux candidats et retient celui confirmé en base, ou celui-
+      // ci en priorité par défaut (constaté deux fois sur des scans réels, contrairement à l'exemple
+      // sans clé de la documentation officielle qui pourrait être une illustration simplifiée).
+      id: 'laposte_checksum', label: 'La Poste (SD, avec clé de contrôle)', enabled: true,
+      rules: [
+        { length: null, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'dpdChecksum', numStart: 9, numLen: 14 }
+      ]
+    },
+    {
       // Courrier "Lettre Suivie"/Smart Data (SD) La Poste : contrairement à Colissimo/DPD, aucune
       // clé de contrôle à recalculer — le datamatrix flashé (chaîne jusqu'à 72 caractères) contient
       // directement les 14 chiffres du numéro de suivi entre le 9e et le 22e caractère (source :

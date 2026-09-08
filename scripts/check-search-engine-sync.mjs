@@ -30,7 +30,8 @@ const CASES = [
   { label: 'DPD clé ISO 7064 (bloc avec lettre finale)', algoId: 'dpd', input: '009415010913008577590101902P', expected: '10913008577590U' },
   { label: "DPD '%' purement numérique", algoId: 'dpd', input: '%009415005438800036587327901', expected: '05438800036587' },
   { label: "DPD '%' purement numérique (variante)", algoId: 'dpd', input: '%009415001505417833052101902', expected: '01505417833052' },
-  { label: 'La Poste SD (datamatrix Lettre Suivie)', algoId: 'laposte', input: '%000000087000635587726381250A18^BAA39F', expected: '87000635587726' },
+  { label: 'La Poste SD (datamatrix Lettre Suivie, sans clé)', algoId: 'laposte', input: '%000000087000635587726381250A18^BAA39F', expected: '87000635587726' },
+  { label: 'La Poste SD (avec clé de contrôle)', algoId: 'laposte_checksum', input: '%000000088500073912380600250A18^52d2d79', expected: '885000739123808' },
 ];
 
 function extractEngine(filePath){

@@ -158,6 +158,13 @@
 
   const SEARCH_ALGOS_STORAGE_KEY = 'commandes-search-algos';
   const DEFAULT_SEARCH_ALGORITHMS = [
+    { id:'laposte_checksum', label:'La Poste (SD, avec clé de contrôle)', enabled:true, rules:[
+      // Variante avec clé de contrôle constatée sur un scan douchette réel : les 14 chiffres bruts
+      // (positions 9-22) ne sont qu'une partie du numéro — clé calculée par ISO/IEC 7064 MOD 37,36
+      // (même algorithme que DPD, réutilisé via extractType 'dpdChecksum'), ex.
+      // "%000000088500073912380600250A18^52d2d79" -> "88500073912380" + clé "8" -> "885000739123808".
+      { length:null, startsWith:'%', endsWith:'', contentType:'any', extractType:'dpdChecksum', numStart:9, numLen:14 }
+    ]},
     { id:'laposte', label:'La Poste (SD / Lettre Suivie)', enabled:true, rules:[
       // Pas de clé de contrôle pour le courrier SD : les 14 chiffres du numéro de suivi sont
       // directement entre le 9e et le 22e caractère du datamatrix (ex.

@@ -163,13 +163,13 @@
       // (positions 9-22) ne sont qu'une partie du numéro — clé calculée par ISO/IEC 7064 MOD 37,36
       // (même algorithme que DPD, réutilisé via extractType 'dpdChecksum'), ex.
       // "%000000088500073912380600250A18^52d2d79" -> "88500073912380" + clé "8" -> "885000739123808".
-      { length:null, startsWith:'%', endsWith:'', contentType:'any', extractType:'dpdChecksum', numStart:9, numLen:14 }
+      { length:null, startsWith:'%', endsWith:'^', contentType:'any', extractType:'dpdChecksum', numStart:9, numLen:14 }
     ]},
     { id:'laposte', label:'La Poste (SD / Lettre Suivie)', enabled:true, rules:[
       // Pas de clé de contrôle pour le courrier SD : les 14 chiffres du numéro de suivi sont
       // directement entre le 9e et le 22e caractère du datamatrix (ex.
       // "%000000087000635587726381250A18^BAA39F" -> "87000635587726").
-      { length:null, startsWith:'%', endsWith:'', contentType:'any', extractType:'laposteSdSlice', start:9, end:22 }
+      { length:null, startsWith:'%', endsWith:'^', contentType:'any', extractType:'laposteSdSlice', start:9, end:22 }
     ]},
     { id:'colissimo', label:'Colissimo', enabled:true, rules:[
       // Le numéro de suivi complet inclut une clé de contrôle calculée (voir colissimoKey /

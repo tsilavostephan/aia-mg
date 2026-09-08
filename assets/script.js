@@ -295,9 +295,13 @@
       // computeBestTracking() génère les deux candidats et retient celui confirmé en base, ou celui-
       // ci en priorité par défaut (constaté deux fois sur des scans réels, contrairement à l'exemple
       // sans clé de la documentation officielle qui pourrait être une illustration simplifiée).
+      // endsWith:'^' est indispensable ici (contrairement à la longueur, volontairement libre) :
+      // sans lui, cette règle "avale" aussi les codes-barres Colissimo/Chronopost (28 caractères,
+      // eux aussi préfixés par '%', mais sans jamais de '^') et pollue le résultat par défaut d'un
+      // colis pas encore résolu — constaté en prod sur un vrai scan Colissimo.
       id: 'laposte_checksum', label: 'La Poste (SD, avec clé de contrôle)', enabled: true,
       rules: [
-        { length: null, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'dpdChecksum', numStart: 9, numLen: 14 }
+        { length: null, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'dpdChecksum', numStart: 9, numLen: 14 }
       ]
     },
     {
@@ -309,7 +313,7 @@
       // totale (variable selon la version du datamatrix) : seule la position 9-22 compte.
       id: 'laposte', label: 'La Poste (SD / Lettre Suivie)', enabled: true,
       rules: [
-        { length: null, startsWith: '%', endsWith: '', contentType: 'any', extractType: 'laposteSdSlice', start: 9, end: 22 }
+        { length: null, startsWith: '%', endsWith: '^', contentType: 'any', extractType: 'laposteSdSlice', start: 9, end: 22 }
       ]
     },
     {

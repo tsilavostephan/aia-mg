@@ -3256,6 +3256,30 @@
   els.search.addEventListener('input', render);
   els.displayLimit.addEventListener('change', render);
 
+  // Douchette qui tape directement dans #search (le champ a déjà le focus, donc le tampon global au
+  // niveau document plus haut ne s'en charge pas — il ne s'active que quand le focus est ailleurs) :
+  // sans ce qui suit, il fallait presser Entrée manuellement pour que la transformation s'applique,
+  // même quand l'appareil avait fini d'envoyer le code-barres. Une douchette tape ses caractères
+  // bien plus vite qu'un humain (quelques ms entre deux frappes) — dès qu'une salve de frappes très
+  // rapprochées est détectée puis s'arrête, on déclenche la transformation tout seul, sans attendre
+  // une éventuelle touche Entrée. Un utilisateur qui tape normalement au clavier n'atteint jamais ce
+  // seuil de vitesse : son comportement (Entrée manuelle pour transformer) reste inchangé.
+  let searchLastInputTime = 0;
+  let searchBurstCount = 0;
+  let searchBurstTimer = null;
+  const SEARCH_BURST_GAP_MS = 40;   // en dessous de ça entre 2 frappes, impossible pour un humain
+  const SEARCH_BURST_MIN_CHARS = 5; // évite de réagir à un simple raccourci clavier/collage rapide
+  const SEARCH_BURST_IDLE_MS = 150; // fin de salve = code-barres entièrement reçu
+  els.search.addEventListener('input', ()=>{
+    const now = Date.now();
+    searchBurstCount = (now - searchLastInputTime <= SEARCH_BURST_GAP_MS) ? searchBurstCount + 1 : 1;
+    searchLastInputTime = now;
+    clearTimeout(searchBurstTimer);
+    if(searchBurstCount >= SEARCH_BURST_MIN_CHARS){
+      searchBurstTimer = setTimeout(()=>{ applyTrackingTransformIfNeeded(); }, SEARCH_BURST_IDLE_MS);
+    }
+  });
+
   // Transformation du numéro de suivi : au collage (Ctrl+V), à la touche Entrée (bipeur physique)
   // ou en quittant le champ (change).
   els.search.addEventListener('paste', ()=>{
